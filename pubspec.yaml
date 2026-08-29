@@ -1,0 +1,64 @@
+name: lockinpoint
+description: "LockInPoint — practise real past questions for JAMB, WAEC, NECO, NABTEB, GCE and Post UTME."
+publish_to: "none"
+
+# VERSIONING LAW.
+#   1.0.0  · what a human reads, semantic
+#   +1     · the build number, MONOTONIC and never reused
+#
+# The build number is what Google Play and the App Store compare, so it only
+# ever goes up. The application identity — com.lockinpoint.app — and the
+# signing key are fixed for the life of the product: change either and every
+# existing installation loses the ability to update, which is the one mistake
+# that cannot be undone from the server side.
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ---- state, routing -----------------------------------------------------
+  flutter_riverpod: ^3.0.2
+  riverpod_annotation: ^3.0.2
+  go_router: ^17.0.0
+
+  # ---- the network --------------------------------------------------------
+  dio: ^5.9.0
+  connectivity_plus: ^7.0.0
+
+  # ---- identity and secrets ----------------------------------------------
+  supabase_flutter: ^2.10.4
+  flutter_secure_storage: ^9.2.4
+
+  # ---- the offline vault --------------------------------------------------
+  drift: ^2.28.2
+  sqlite3_flutter_libs: ^0.5.42
+  path_provider: ^2.1.5
+  path: ^1.9.1
+
+  # ---- rendering a question ----------------------------------------------
+  # A stem is sanitised HTML with KaTeX inside it on the website. These two
+  # together are the mobile half of that pipeline.
+  flutter_html: ^3.0.0
+  flutter_math_fork: ^0.7.4
+  cached_network_image: ^3.4.1
+
+  # ---- polish -------------------------------------------------------------
+  google_fonts: ^6.3.3
+  shared_preferences: ^2.5.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.9.0
+  riverpod_generator: ^3.0.2
+  custom_lint: ^0.8.1
+  riverpod_lint: ^3.0.2
+  drift_dev: ^2.28.2
+
+flutter:
+  uses-material-design: true

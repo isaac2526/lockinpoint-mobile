@@ -1,0 +1,44 @@
+# =============================================================================
+# THE FAST CHECK · runs on every push.
+#
+# Format, analyse, test. No Android SDK, no Gradle, no APK — so it finishes in
+# a few minutes instead of half an hour. A typo fix must never cost you a
+# thirty minute wait, which is the whole reason this is separate from build.yml.
+# =============================================================================
+name: check
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+# A second push cancels the first: no point analysing a commit already replaced.
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.2"
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      # Formatting is checked, not applied, so a diff never lands by surprise.
+      - name: Formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Analyse
+        run: flutter analyze --fatal-infos
+
+      - name: Test
+        run: flutter test --reporter expanded

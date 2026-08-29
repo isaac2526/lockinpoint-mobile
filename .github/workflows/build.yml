@@ -1,0 +1,53 @@
+# =============================================================================
+# THE BUILD · a real, installable APK.
+#
+# This is where the APK actually comes from: a GitHub runner has the Android
+# SDK, so it can compile what a plain checkout cannot. Runs on a pull request
+# into main, or whenever you press "Run workflow" — never on an ordinary push,
+# because compiling Android is the slow part.
+#
+# The artifact it uploads is the file you install on your phone.
+# =============================================================================
+name: build
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.2"
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      # Debug, deliberately: it installs on any phone without a signing key.
+      # Release signing arrives with release.yml when there is something to
+      # release, so no key material is needed to get a build into your hands.
+      - name: Build debug APK
+        run: flutter build apk --debug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lockinpoint-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 14
+          if-no-files-found: error
