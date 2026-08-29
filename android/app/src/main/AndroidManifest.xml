@@ -1,6 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The app is a client of the LockInPoint API; without this every
+         request fails on a device with no message a student could act on. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Read so the app can tell "you are offline" from "the server is slow". -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <application
-        android:label="lockinpoint"
+        android:label="LockInPoint"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
