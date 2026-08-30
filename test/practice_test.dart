@@ -16,6 +16,7 @@ import 'package:lockinpoint/features/practice/question_html.dart';
 
 class _FakeRepo extends Fake implements PracticeRepository {
   int saves = 0;
+  Map<String, String>? savedAnswers;
   Map<String, String>? submittedAnswers;
 
   @override
@@ -27,6 +28,7 @@ class _FakeRepo extends Fake implements PracticeRepository {
     Map<String, bool> flags = const {},
   }) async {
     saves++;
+    savedAnswers = {...answers};
   }
 
   @override
@@ -235,6 +237,37 @@ void main() {
       await tester.tap(find.text('Stay'));
       await tester.pumpAndSettle();
       expect(find.textContaining('What is 2 + 2?'), findsOneWidget);
+    });
+
+    testWidgets('an answer given seconds before leaving is still saved', (
+      tester,
+    ) async {
+      final repo = await _pumpSession(tester);
+      await tester.tap(find.textContaining('4').first);
+      await tester.pump();
+      // Straight out, well inside the two second autosave debounce.
+      await tester.tap(find.byTooltip('Leave'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Leave'));
+      await tester.pumpAndSettle();
+      // The save was flushed on the way out, not cancelled with the timer.
+      expect(repo.saves, greaterThan(0));
+      expect(repo.savedAnswers?['q1'], 'B');
+    });
+
+    testWidgets('a sitting with no questions lets the student out', (
+      tester,
+    ) async {
+      const empty = Sitting(
+        attemptId: 'gone',
+        mode: 'practice',
+        label: 'Empty',
+        questions: [],
+        passages: {},
+      );
+      await _pumpSession(tester, sitting: empty);
+      expect(find.text('This sitting has no questions'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('a question can be flagged and the grid shows it', (

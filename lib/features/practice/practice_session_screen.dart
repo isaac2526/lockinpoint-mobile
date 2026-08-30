@@ -16,16 +16,19 @@ import 'question_html.dart';
 import 'review_screen.dart';
 
 /// ===========================================================================
-/// A PRACTICE SITTING
+/// A SITTING · both rooms
 ///
-/// Practice is the untimed room: pick an answer, see at once whether it is
-/// right, read the explanation, move on. The server sent the answer key with
-/// the questions (practice mode only), so marking costs no round trip and
-/// works in a tunnel.
+/// PRACTICE is untimed: pick an answer, see at once whether it is right, read
+/// the explanation, move on. The server sends the answer key with a fresh
+/// practice paper, so marking costs no round trip and works in a tunnel.
 ///
-/// Every answer autosaves in the background. Leaving the room keeps the
-/// sitting alive — it becomes the Continue card on the dashboard. Submitting
-/// grades it for good and feeds the streak.
+/// CBT is the timed room and behaves like the hall: a clock, no marking until
+/// the paper goes in, and time up submits by itself. The key is never in a
+/// timed payload, and this screen would ignore it if it were.
+///
+/// Both autosave every answer in the background. An untimed sitting survives
+/// leaving and comes back as the Continue card; a timed one keeps running,
+/// and the exit offered is the one that keeps the score.
 /// ===========================================================================
 class PracticeSessionScreen extends ConsumerStatefulWidget {
   const PracticeSessionScreen({
@@ -48,10 +51,12 @@ class PracticeSessionScreen extends ConsumerStatefulWidget {
 }
 
 class _SessionState extends ConsumerState<PracticeSessionScreen> {
-  late int _idx = widget.sitting.initialIndex.clamp(
-    0,
-    widget.sitting.questions.length - 1,
-  );
+  late int _idx = widget.sitting.questions.isEmpty
+      ? 0
+      : widget.sitting.initialIndex.clamp(
+          0,
+          widget.sitting.questions.length - 1,
+        );
   late final Map<String, String> _answers = {...widget.sitting.initialAnswers};
   late final Map<String, bool> _checked = {...widget.sitting.initialChecked};
   late final Map<String, bool> _flags = {...widget.sitting.initialFlags};
@@ -113,17 +118,24 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
 
   void _queueSave() {
     _saveDebounce?.cancel();
-    _saveDebounce = Timer(const Duration(seconds: 2), () {
-      ref
-          .read(practiceRepositoryProvider)
-          .saveProgress(
-            attemptId: sitting.attemptId,
-            answers: _answers,
-            checked: _checked,
-            flags: _flags,
-            idx: _idx,
-          );
-    });
+    _saveDebounce = Timer(const Duration(seconds: 2), _saveNow);
+  }
+
+  /// Writes progress immediately. Called on the way out as well as on the
+  /// debounce, because a student who answers and leaves within two seconds
+  /// would otherwise lose that answer: dispose cancels the pending timer, and
+  /// the answer would never have left the phone.
+  Future<void> _saveNow() {
+    _saveDebounce?.cancel();
+    return ref
+        .read(practiceRepositoryProvider)
+        .saveProgress(
+          attemptId: sitting.attemptId,
+          answers: _answers,
+          checked: _checked,
+          flags: _flags,
+          idx: _idx,
+        );
   }
 
   void _choose(String letter) {
@@ -287,6 +299,9 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
     if (choice == 'submit') {
       await _submit(force: true);
     } else if (choice == 'leave') {
+      // The last answer goes up BEFORE the screen goes away.
+      await _saveNow();
+      if (!mounted) return;
       ref.invalidate(dashboardProvider);
       Navigator.of(context).pop();
     }
@@ -296,6 +311,21 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
   Widget build(BuildContext context) {
     if (_result != null) {
       return _ResultView(result: _result!, label: sitting.label);
+    }
+    /* The server refuses to open an empty paper, so this is only reachable by
+       resuming a sitting whose questions have since gone. Say so and let the
+       student out, rather than indexing into nothing. */
+    if (sitting.questions.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: LipEmpty(
+          icon: Icons.inbox_rounded,
+          title: 'This sitting has no questions',
+          message: 'Start a fresh one from the dashboard.',
+          actionLabel: 'Back',
+          onAction: () => Navigator.of(context).pop(),
+        ),
+      );
     }
     final c = context.lip;
     final total = sitting.questions.length;
