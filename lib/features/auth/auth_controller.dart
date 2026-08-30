@@ -77,27 +77,22 @@ class AuthController extends AsyncNotifier<AuthState> {
     final refresh = await _store.refreshToken();
     if (refresh == null) return const SignedOut();
 
-    // A stored token is not a session. Ask the server before showing home.
+    /* A stored token is not a session. Ask the server before showing home.
+       The Api enforces the 401 law for us: a 401 comes back `unauthorised`
+       ONLY after the auth server itself refused the refresh token. Every
+       other failure — offline, a mid-deploy backend, an auth hiccup — leaves
+       the session standing, and a standing session means the student goes to
+       their dashboard, where cached numbers and pull-to-refresh live. */
     try {
-      final me = await _api.get('/api/me', retainSessionOn401: true);
+      final me = await _api.get('/api/me');
       return SignedIn((me['name'] as String?) ?? 'Champion');
     } on ApiFailure catch (e) {
       if (e.unauthorised) {
-        /* The API said no. That is either a genuinely dead session, or a
-           server build that does not yet read bearer tokens. The auth server
-           itself is the referee: if it still honours the refresh token, the
-           session is real and the student stays in. */
-        final revived = await _reviveFromRefreshToken(refresh);
-        if (revived != null) return SignedIn(await _resolveName());
-        await _store.clear();
-        return const SignedOut(
-          message: 'Your session has ended. Please log in again.',
-        );
+        return SignedOut(message: e.message);
       }
-      // Offline with a token we cannot verify: let them in. A bus going
-      // through a tunnel is not a reason to lock a student out.
-      if (e.offline) return const SignedIn('Champion');
-      return const SignedOut();
+      // A token we could not verify: let them in. A bus going through a
+      // tunnel is not a reason to lock a student out.
+      return SignedIn(await _resolveName());
     }
   }
 
@@ -206,28 +201,11 @@ class AuthController extends AsyncNotifier<AuthState> {
        every rotation. */
   }
 
-  /// The auth server is asked directly whether a refresh token still lives.
-  Future<sb.Session?> _reviveFromRefreshToken(String refresh) async {
-    try {
-      final res = await _supabase.auth.setSession(refresh);
-      final session = res.session;
-      if (session != null) {
-        await _store.save(
-          access: session.accessToken,
-          refresh: session.refreshToken ?? refresh,
-        );
-      }
-      return session;
-    } catch (_) {
-      return null;
-    }
-  }
-
   /// The student's first name: API first, own profile row second, a warm
   /// default third. Never a failure — a greeting is not worth an error screen.
   Future<String> _resolveName({String? hint}) async {
     try {
-      final me = await _api.get('/api/me', retainSessionOn401: true);
+      final me = await _api.get('/api/me');
       final n = me['name'] as String?;
       if (n != null && n.isNotEmpty) return n;
     } catch (_) {}

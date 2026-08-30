@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lockinpoint/core/api.dart';
+import 'package:lockinpoint/core/session_refresher.dart';
 import 'package:lockinpoint/core/session_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -116,6 +117,26 @@ class FakeAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+/// An auth server that answers refresh attempts exactly as scripted, and
+/// counts how many times it was actually asked.
+class FakeAuthServer {
+  FakeAuthServer(this.outcome);
+
+  RefreshOutcome outcome;
+  int asks = 0;
+  final List<String> tokensSeen = [];
+
+  Future<RefreshOutcome> exchange(String refresh) async {
+    asks++;
+    tokensSeen.add(refresh);
+    /* A real auth round-trip is never instant. Resolving on a timer rather
+       than a microtask lets every request already in flight reach its 401 —
+       which is exactly the window the single-flight rule exists for. */
+    await Future<void>.delayed(Duration.zero);
+    return outcome;
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -179,10 +200,12 @@ void main() {
     late SessionStore store;
     late Api api;
     late FakeAdapter net;
+    late FakeAuthServer auth;
 
     setUp(() {
       store = SessionStore(secure: FakeSecureStorage());
-      api = Api(store);
+      auth = FakeAuthServer(const RefreshRefused());
+      api = Api(store, SessionRefresher(store, auth.exchange));
       net = FakeAdapter();
       api.dio.httpClientAdapter = net;
     });
@@ -219,35 +242,109 @@ void main() {
       },
     );
 
-    test('a 401 with a key attached is a genuinely ended session', () async {
-      await store.save(access: 'tok-123', refresh: 'r');
-      net.enqueue(401, {'ok': false, 'message': 'Not signed in.'});
-      await expectLater(
-        api.get('/api/mobile/dashboard'),
-        throwsA(
-          isA<ApiFailure>()
-              .having((e) => e.unauthorised, 'unauthorised', isTrue)
-              .having(
-                (e) => e.message,
-                'message',
-                contains('session has ended'),
-              ),
-        ),
-      );
-      // The dead session is gone; nothing will retry it in a loop.
-      expect(await store.accessToken(), isNull);
-    });
-
     test(
-      'retainSessionOn401 keeps the tokens a fresh login stands on',
+      'a 401 whose refresh token the auth server REFUSES ends the session',
       () async {
         await store.save(access: 'tok-123', refresh: 'r');
+        auth.outcome = const RefreshRefused();
+        net.enqueue(401, {'ok': false, 'message': 'Not signed in.'});
+        await expectLater(
+          api.get('/api/mobile/dashboard'),
+          throwsA(
+            isA<ApiFailure>()
+                .having((e) => e.unauthorised, 'unauthorised', isTrue)
+                .having(
+                  (e) => e.message,
+                  'message',
+                  contains('session has ended'),
+                ),
+          ),
+        );
+        // The refresh token was actually presented before anyone gave up.
+        expect(auth.tokensSeen, ['r']);
+        // The dead session is gone; nothing will retry it in a loop.
+        expect(await store.accessToken(), isNull);
+      },
+    );
+
+    test(
+      'a 401 on an expired key refreshes and retries instead of signing out',
+      () async {
+        await store.save(access: 'stale', refresh: 'r1');
+        auth.outcome = const RefreshedSession(access: 'fresh', refresh: 'r2');
+        net.enqueue(401, {'ok': false, 'message': 'Not signed in.'});
+        net.enqueue(200, {'ok': true, 'student': 'data'});
+
+        final data = await api.get('/api/mobile/dashboard');
+        expect(data['student'], 'data');
+        // The retry carried the fresh key, not the stale one.
+        expect(net.requests, hasLength(2));
+        expect(net.requests.last.headers['Authorization'], 'Bearer fresh');
+        // And the rotated pair is what the store now holds.
+        expect(await store.accessToken(), 'fresh');
+        expect(await store.refreshToken(), 'r2');
+      },
+    );
+
+    test(
+      'a live session the API still refuses is kept, and named honestly',
+      () async {
+        /* The stale-backend trap: the auth server honours the refresh token,
+           yet the API 401s the fresh key too — a deployed build that cannot
+           read bearers. Signing the student out cannot fix a server, so the
+           session stays and the failure is not called "session ended". */
+        await store.save(access: 'stale', refresh: 'r1');
+        auth.outcome = const RefreshedSession(access: 'fresh', refresh: 'r2');
+        net.enqueue(401, {'ok': false});
         net.enqueue(401, {'ok': false});
         await expectLater(
-          api.get('/api/me', retainSessionOn401: true),
-          throwsA(isA<ApiFailure>()),
+          api.get('/api/mobile/dashboard'),
+          throwsA(
+            isA<ApiFailure>()
+                .having((e) => e.unauthorised, 'unauthorised', isFalse)
+                .having(
+                  (e) => e.message,
+                  'message',
+                  contains('could not verify'),
+                ),
+          ),
         );
-        expect(await store.accessToken(), 'tok-123');
+        expect(await store.accessToken(), 'fresh');
+      },
+    );
+
+    test(
+      'an unreachable auth server is an offline moment, never a sign-out',
+      () async {
+        await store.save(access: 'tok', refresh: 'r1');
+        auth.outcome = const RefreshUnreachable();
+        net.enqueue(401, {'ok': false});
+        await expectLater(
+          api.get('/api/mobile/dashboard'),
+          throwsA(
+            isA<ApiFailure>()
+                .having((e) => e.offline, 'offline', isTrue)
+                .having((e) => e.unauthorised, 'unauthorised', isFalse),
+          ),
+        );
+        expect(await store.accessToken(), 'tok');
+      },
+    );
+
+    test(
+      'two requests hitting 401 together share ONE refresh exchange',
+      () async {
+        /* Supabase burns a refresh token on first use. If two 401s each
+           presented it, the second would be refused and sign the student out
+           — the race this law exists to prevent. */
+        await store.save(access: 'stale', refresh: 'r1');
+        auth.outcome = const RefreshedSession(access: 'fresh', refresh: 'r2');
+        net.enqueue(401, {'ok': false});
+        net.enqueue(401, {'ok': false});
+        net.enqueue(200, {'ok': true});
+        net.enqueue(200, {'ok': true});
+        await Future.wait([api.get('/api/me'), api.get('/api/leaderboard')]);
+        expect(auth.asks, 1);
       },
     );
 
