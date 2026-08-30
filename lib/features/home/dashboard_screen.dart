@@ -19,6 +19,7 @@ import '../auth/auth_controller.dart';
 import '../practice/practice_flow_screen.dart';
 import '../practice/practice_repository.dart';
 import '../practice/practice_session_screen.dart';
+import '../search/search_screen.dart';
 
 /// ===========================================================================
 /// THE HOME'S DATA · cached first, fresh behind.
@@ -507,7 +508,7 @@ const _cards = <({IconData icon, String title, String sub, bool ready})>[
     icon: Icons.search_rounded,
     title: 'Question search',
     sub: 'Find any past question fast',
-    ready: false,
+    ready: true,
   ),
   (
     icon: Icons.insights_rounded,
@@ -530,9 +531,14 @@ class _DashCard extends StatelessWidget {
   /// Each ready card knows its own door. Practice opens the chooser; the rest
   /// arrive build by build and say so honestly until they do.
   void _open(BuildContext context) {
-    if (card.title == 'Practice & CBT') {
+    final destination = switch (card.title) {
+      'Practice & CBT' => const PracticeFlowScreen(),
+      'Question search' => const SearchScreen(),
+      _ => null,
+    };
+    if (destination != null) {
       Navigator.of(context)
-          .push(MaterialPageRoute(builder: (_) => const PracticeFlowScreen()));
+          .push(MaterialPageRoute(builder: (_) => destination));
     }
   }
 
