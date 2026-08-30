@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app/theme_controller.dart';
-import 'core/config.dart';
 import 'design/aura.dart';
 import 'design/theme.dart';
 import 'design/motion_widgets.dart';
@@ -14,19 +12,12 @@ import 'features/auth/auth_controller.dart';
 import 'features/home/dashboard_screen.dart';
 import 'features/onboarding/welcome_screen.dart';
 
-Future<void> main() async {
+void main() {
+  /* There is deliberately nothing to initialise before the first frame: the
+     app carries no auth SDK and no compiled-in project address. Identity is
+     three routes on the one backend — login, refresh, logout — and the only
+     startup work is reading the keystore, which the splash already covers. */
   WidgetsFlutterBinding.ensureInitialized();
-
-  /* Supabase is initialised for its auth session handling. Every read of real
-     data still goes through the LockInPoint API, because RLS deliberately
-     grants no anonymous access to questions, attempts, notes or documents. */
-  await Supabase.initialize(
-    url: AppConfig.supabaseUrl,
-    publishableKey: const String.fromEnvironment(
-      'LIP_SUPABASE_ANON',
-      defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmcXN1Z3Zxbmt1aXV2dG9kdXNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzMTc5ODAsImV4cCI6MjA5OTg5Mzk4MH0.UdeUp71M2FGw9_G3EeGyJXrKORZBA2apz8kXNT-DPcY',
-    ),
-  );
 
   runApp(
     ProviderScope(

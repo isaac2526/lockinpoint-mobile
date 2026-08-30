@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
 import '../../core/api.dart';
 import '../../core/session_store.dart';
@@ -31,58 +30,34 @@ class SignedIn extends AuthState {
 /// ===========================================================================
 /// IDENTITY
 ///
-/// Login and signup go through the WEBSITE's routes first, because those
-/// routes do more than check a password: they heal a missing profile row,
-/// record the device, hold the one account per device slot and write the
-/// activity log.
+/// Login and signup go through the WEBSITE's routes, and ONLY the website's
+/// routes: they check the password, heal a missing profile row, record the
+/// device, hold the one-account-per-device slot, write the activity log —
+/// and hand back the session pair in their JSON body.
 ///
-/// But the app must never be stranded by what one response happened to carry.
-/// So the session is established through a chain, and any link is enough:
-///
-///   1. tokens in the route's JSON body (login and signup both send them)
-///   2. a direct sign in against the auth server with the email in hand
-///
-/// And the name on the dashboard resolves the same way: the API if it answers,
-/// the student's own profile row straight from the database if not. The
-/// profile read works because Row Level Security explicitly allows a student
-/// to read their own row.
+/// The app deliberately holds no other road to a session. An earlier build
+/// also signed in directly against a Supabase project compiled into the APK,
+/// as a fallback — and that address quietly drifted from the project the
+/// server actually uses, so the app ended up carrying tokens one auth server
+/// had issued while another rejected them on every request. One backend, one
+/// door, nothing compiled in that can drift.
 /// ===========================================================================
 class AuthController extends AsyncNotifier<AuthState> {
   Api get _api => ref.read(apiProvider);
   SessionStore get _store => ref.read(sessionStoreProvider);
-  sb.SupabaseClient get _supabase => ref.read(supabaseProvider);
-
-  static bool _syncingTokens = false;
-
-  /// Whenever the Supabase client refreshes the session on its own — the
-  /// startup revive, or its background auto-refresh near expiry — the rotated
-  /// pair must land back in OUR store immediately. Supabase invalidates a
-  /// refresh token once it is used, so letting the client rotate silently
-  /// would leave the store holding a dead token, and the next launch would
-  /// sign the student out for no reason they can see.
-  void _keepStoreInSync() {
-    if (_syncingTokens) return;
-    _syncingTokens = true;
-    _supabase.auth.onAuthStateChange.listen((event) {
-      final s = event.session;
-      if (s != null && s.refreshToken != null) {
-        _store.save(access: s.accessToken, refresh: s.refreshToken!);
-      }
-    });
-  }
 
   @override
   Future<AuthState> build() async {
-    _keepStoreInSync();
     final refresh = await _store.refreshToken();
     if (refresh == null) return const SignedOut();
 
     /* A stored token is not a session. Ask the server before showing home.
        The Api enforces the 401 law for us: a 401 comes back `unauthorised`
-       ONLY after the auth server itself refused the refresh token. Every
-       other failure — offline, a mid-deploy backend, an auth hiccup — leaves
-       the session standing, and a standing session means the student goes to
-       their dashboard, where cached numbers and pull-to-refresh live. */
+       ONLY after the backend's refresh route refused the refresh token.
+       Every other failure — offline, a mid-deploy backend, an auth hiccup —
+       leaves the session standing, and a standing session means the student
+       goes to their dashboard, where cached numbers and pull-to-refresh
+       live. */
     try {
       final me = await _api.get('/api/me');
       return SignedIn((me['name'] as String?) ?? 'Champion');
@@ -92,7 +67,7 @@ class AuthController extends AsyncNotifier<AuthState> {
       }
       // A token we could not verify: let them in. A bus going through a
       // tunnel is not a reason to lock a student out.
-      return SignedIn(await _resolveName());
+      return const SignedIn('Champion');
     }
   }
 
@@ -106,16 +81,8 @@ class AuthController extends AsyncNotifier<AuthState> {
         '/api/auth/login',
         body: {'identifier': identifier.trim(), 'password': password},
       );
-      await _establishSession(
-        res,
-        email:
-            (res['email'] as String?) ??
-            (identifier.contains('@') ? identifier.trim() : null),
-        password: password,
-      );
-      state = AsyncData(
-        SignedIn(await _resolveName(hint: res['name'] as String?)),
-      );
+      await _establishSession(res);
+      state = AsyncData(SignedIn(_nameFrom(res, hint: null)));
     } on ApiFailure catch (e, st) {
       state = AsyncError(e, st);
     }
@@ -125,13 +92,9 @@ class AuthController extends AsyncNotifier<AuthState> {
     state = const AsyncLoading();
     try {
       final res = await _api.post('/api/auth/signup', body: form);
-      await _establishSession(
-        res,
-        email: (res['email'] as String?) ?? form['email'] as String?,
-        password: form['password'] as String?,
-      );
+      await _establishSession(res);
       state = AsyncData(
-        SignedIn(await _resolveName(hint: form['first_name'] as String?)),
+        SignedIn(_nameFrom(res, hint: form['first_name'] as String?)),
       );
     } on ApiFailure catch (e, st) {
       state = AsyncError(e, st);
@@ -144,83 +107,36 @@ class AuthController extends AsyncNotifier<AuthState> {
     } on ApiFailure {
       // The server may be unreachable; the phone still forgets the session.
     }
-    try {
-      await _supabase.auth.signOut(scope: sb.SignOutScope.local);
-    } catch (_) {}
     await _store.clear();
     state = const AsyncData(SignedOut());
   }
 
   // -------------------------------------------------------------------------
 
-  /// Turns a successful login or signup response into a stored session,
-  /// through whichever link of the chain works.
-  Future<void> _establishSession(
-    Map<String, dynamic> res, {
-    String? email,
-    String? password,
-  }) async {
-    var access = res['access_token'] as String?;
-    var refresh = res['refresh_token'] as String?;
-
-    // The route answered without tokens. Exchange the credentials directly
-    // with the auth server instead; it is the same session either way.
-    if ((access == null || refresh == null) &&
-        email != null &&
-        password != null) {
-      try {
-        final direct = await _supabase.auth.signInWithPassword(
-          email: email.trim(),
-          password: password,
-        );
-        access = direct.session?.accessToken;
-        refresh = direct.session?.refreshToken;
-      } on sb.AuthException catch (e) {
-        throw ApiFailure(e.message);
-      }
-    }
-
+  /// Turns a successful login or signup response into a stored session. The
+  /// route's body is the ONLY source of tokens, so a response without them is
+  /// a named failure, not a silent detour to some other auth server.
+  Future<void> _establishSession(Map<String, dynamic> res) async {
+    final access = res['access_token'] as String?;
+    final refresh = res['refresh_token'] as String?;
     if (access == null || refresh == null) {
       // Name the missing pieces, so a screenshot of this message is a
       // diagnosis rather than a mystery.
       throw ApiFailure(
-        'Signed in, but no session was issued '
+        'Signed in, but the server issued no session '
         '(response carried: ${res.keys.join(', ')}). '
-        'Please try again, and report this if it repeats.',
+        'The website needs its update deployed.',
       );
     }
-
     await _store.save(access: access, refresh: refresh);
-
-    /* And that is ALL login does with them. An earlier build also handed the
-       refresh token to the Supabase client here (setSession) so profile reads
-       would work — but setSession CONSUMES the refresh token and issues a new
-       pair, which meant two stores each believing a different token was the
-       live one. The API tokens stand on their own; the Supabase client earns
-       a session at startup revive instead, where _keepStoreInSync records
-       every rotation. */
   }
 
-  /// The student's first name: API first, own profile row second, a warm
-  /// default third. Never a failure — a greeting is not worth an error screen.
-  Future<String> _resolveName({String? hint}) async {
-    try {
-      final me = await _api.get('/api/me');
-      final n = me['name'] as String?;
-      if (n != null && n.isNotEmpty) return n;
-    } catch (_) {}
-    try {
-      final uid = _supabase.auth.currentUser?.id;
-      if (uid != null) {
-        final row = await _supabase
-            .from('profiles')
-            .select('first_name')
-            .eq('id', uid)
-            .maybeSingle();
-        final n = row?['first_name'] as String?;
-        if (n != null && n.isNotEmpty) return n;
-      }
-    } catch (_) {}
+  /// The student's first name, from the route's own response — the same
+  /// answer /api/me would give, without a second request. Never a failure:
+  /// a greeting is not worth an error screen.
+  String _nameFrom(Map<String, dynamic> res, {String? hint}) {
+    final n = res['name'] as String?;
+    if (n != null && n.isNotEmpty) return n;
     return (hint != null && hint.isNotEmpty) ? hint : 'Champion';
   }
 }

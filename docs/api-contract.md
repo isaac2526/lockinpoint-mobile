@@ -22,6 +22,14 @@ forged bearer token fails exactly as a forged cookie does.
 `POST /api/auth/login` returns `access_token` and `refresh_token` in its JSON
 body. The app stores them in the platform keystore, never in preferences.
 
+`POST /api/auth/refresh` with `{ refresh_token }` renews the session: 200 with
+a fresh pair, 401 when the auth server refused the token (the ONE signal a
+session is dead), anything else proves nothing. The app carries **no Supabase
+URL or key of its own** — the server refreshes against whichever project ITS
+configuration names, so the app can never refresh at one auth project while
+being verified against another. That drift is exactly what once had every
+request 401 while the session looked alive.
+
 ## Row Level Security
 
 RLS grants anonymous read on eleven reference tables only: exams, subjects,

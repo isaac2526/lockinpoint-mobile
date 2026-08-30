@@ -334,7 +334,7 @@ void main() {
     test(
       'two requests hitting 401 together share ONE refresh exchange',
       () async {
-        /* Supabase burns a refresh token on first use. If two 401s each
+        /* The auth server burns a refresh token on first use. If two 401s each
            presented it, the second would be refused and sign the student out
            — the race this law exists to prevent. */
         await store.save(access: 'stale', refresh: 'r1');
@@ -365,24 +365,21 @@ void main() {
       );
     });
 
-    test(
-      'a 404 is called a deployment in progress, not a dead session',
-      () async {
-        net.enqueue(404, 'page not found');
-        await expectLater(
-          api.get('/api/mobile/dashboard'),
-          throwsA(
-            isA<ApiFailure>()
-                .having((e) => e.unauthorised, 'unauthorised', isFalse)
-                .having(
-                  (e) => e.message,
-                  'message',
-                  contains('still updating'),
-                ),
-          ),
-        );
-      },
-    );
+    test('a 404 names the missing deployment, never a dead session', () async {
+      net.enqueue(404, 'page not found');
+      await expectLater(
+        api.get('/api/mobile/dashboard'),
+        throwsA(
+          isA<ApiFailure>()
+              .having((e) => e.unauthorised, 'unauthorised', isFalse)
+              .having(
+                (e) => e.message,
+                'message',
+                contains('needs its update deployed'),
+              ),
+        ),
+      );
+    });
 
     test('a 500 is the server\'s fault, said plainly', () async {
       net.enqueue(500, 'internal error');
@@ -396,6 +393,76 @@ void main() {
           ),
         ),
       );
+    });
+
+    test('every failure names its exact request in the small print', () async {
+      await store.save(access: 'tok', refresh: 'r');
+      auth.outcome = const RefreshRefused('refresh token not found');
+      net.enqueue(401, {'ok': false, 'message': 'Not signed in.'});
+      await expectLater(
+        api.get('/api/mobile/dashboard'),
+        throwsA(
+          isA<ApiFailure>().having(
+            (e) => e.detail,
+            'detail',
+            allOf(
+              contains('GET /api/mobile/dashboard'),
+              contains('401'),
+              contains('refresh token not found'),
+            ),
+          ),
+        ),
+      );
+    });
+  });
+
+  group('the backend refresh exchange reads the route honestly', () {
+    late Dio dio;
+    late FakeAdapter net;
+    late RefreshExchange exchange;
+
+    setUp(() {
+      dio = Dio(Api.baseOptions());
+      net = FakeAdapter();
+      dio.httpClientAdapter = net;
+      exchange = backendRefreshExchange(dio);
+    });
+
+    test('a 200 with the pair is a refreshed session', () async {
+      net.enqueue(200, {
+        'ok': true,
+        'access_token': 'a2',
+        'refresh_token': 'r2',
+      });
+      final out = await exchange('r1');
+      expect(out, isA<RefreshedSession>());
+      expect((out as RefreshedSession).access, 'a2');
+      expect(out.refresh, 'r2');
+      // The refresh token travelled in the body, never in a header or URL.
+      expect(net.requests.single.path, '/api/auth/refresh');
+      expect((net.requests.single.data as Map)['refresh_token'], 'r1');
+    });
+
+    test('a 401 is the one true refusal, with the server\'s words', () async {
+      net.enqueue(401, {'ok': false, 'message': 'This session has ended.'});
+      final out = await exchange('r1');
+      expect(out, isA<RefreshRefused>());
+      expect((out as RefreshRefused).why, 'This session has ended.');
+    });
+
+    test(
+      'a 404 means the server needs deploying, NOT a dead session',
+      () async {
+        net.enqueue(404, 'not found');
+        final out = await exchange('r1');
+        expect(out, isA<RefreshUnreachable>());
+        expect((out as RefreshUnreachable).why, contains('deployed'));
+      },
+    );
+
+    test('a 500 proves nothing about the session', () async {
+      net.enqueue(500, 'oops');
+      expect(await exchange('r1'), isA<RefreshUnreachable>());
     });
   });
 }

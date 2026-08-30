@@ -124,6 +124,7 @@ class DashboardScreen extends ConsumerWidget {
                   message: e is ApiFailure
                       ? e.message
                       : 'Pull down to try again.',
+                  detail: e is ApiFailure ? e.detail : null,
                   onRetry: () => ref.read(dashboardProvider.notifier).refresh(),
                 ),
                 // The screen must never become a trap: whatever the server is

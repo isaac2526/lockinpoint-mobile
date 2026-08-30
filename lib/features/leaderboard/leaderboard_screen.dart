@@ -93,6 +93,7 @@ class LeaderboardScreen extends ConsumerWidget {
                   message: e is ApiFailure
                       ? e.message
                       : 'Pull down to try again.',
+                  detail: e is ApiFailure ? e.detail : null,
                   onRetry: () => ref.invalidate(leaderboardProvider),
                 ),
               ],
