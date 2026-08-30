@@ -218,6 +218,18 @@ void main() {
       expect(net.requests.single.headers['Authorization'], 'Bearer tok-123');
     });
 
+    test('every request names the app, never Dart\'s default agent', () async {
+      /* Unset, Dart sends `Dart/3.x (dart:io)` — the signature a bot filter
+         blocks while every browser passes, which is the exact shape of the
+         failure this app hit against production. */
+      net.enqueue(200, {'ok': true});
+      await api.get('/api/me');
+      final ua = net.requests.single.headers['User-Agent'] as String?;
+      expect(ua, isNotNull);
+      expect(ua, contains('LockInPoint'));
+      expect(ua, isNot(contains('Dart/')));
+    });
+
     test('with no token, no Authorization header is sent at all', () async {
       net.enqueue(200, {'ok': true});
       await api.get('/api/public/exam-tree');

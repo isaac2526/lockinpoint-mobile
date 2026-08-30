@@ -66,7 +66,18 @@ class Api {
     connectTimeout: const Duration(seconds: 20),
     receiveTimeout: const Duration(seconds: 30),
     sendTimeout: const Duration(seconds: 30),
-    headers: {'Accept': 'application/json'},
+    headers: {
+      'Accept': 'application/json',
+      /* IDENTIFY OURSELVES. Left unset, Dart sends `Dart/3.x (dart:io)` —
+         a string bot-filters and firewall rules routinely block, while every
+         browser sails past. That is the shape of the failure being chased
+         here: the website works in a browser and the app is refused by
+         something standing in front of it. This does NOT prove that is the
+         cause, and a rule that allows only known browsers would refuse this
+         too — but shipping a real app's name is right regardless, and it
+         removes the one signature most likely to be filtered. */
+      'User-Agent': AppConfig.userAgent,
+    },
     // We read the status ourselves so a 401 is a typed failure, not a throw.
     validateStatus: (_) => true,
     /* A 3xx is NEVER followed. Dart's HttpClient follows redirects on POST by

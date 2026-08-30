@@ -34,6 +34,7 @@ class _ForgotScreenState extends ConsumerState<ForgotScreen> {
   bool _busy = false;
   bool _hidden = true;
   String? _error;
+  String? _errorDetail;
   String? _notice;
 
   @override
@@ -47,7 +48,10 @@ class _ForgotScreenState extends ConsumerState<ForgotScreen> {
   Future<void> _sendCode() async {
     final email = _email.text.trim();
     if (!email.contains('@')) {
-      setState(() => _error = 'Enter the email you signed up with.');
+      setState(() {
+        _errorDetail = null;
+        _error = 'Enter the email you signed up with.';
+      });
       return;
     }
     setState(() {
@@ -70,21 +74,31 @@ class _ForgotScreenState extends ConsumerState<ForgotScreen> {
       setState(() {
         _busy = false;
         _error = e.message;
+        _errorDetail = e.detail;
       });
     }
   }
 
   Future<void> _reset() async {
     if (_password.text.length < 8) {
-      setState(() => _error = 'Choose a password of at least 8 characters.');
+      setState(() {
+        _errorDetail = null;
+        _error = 'Choose a password of at least 8 characters.';
+      });
       return;
     }
     if (_password.text != _confirm.text) {
-      setState(() => _error = 'The two passwords do not match.');
+      setState(() {
+        _errorDetail = null;
+        _error = 'The two passwords do not match.';
+      });
       return;
     }
     if (_code.text.trim().isEmpty) {
-      setState(() => _error = 'Enter the code from your email.');
+      setState(() {
+        _errorDetail = null;
+        _error = 'Enter the code from your email.';
+      });
       return;
     }
     setState(() {
@@ -116,6 +130,7 @@ class _ForgotScreenState extends ConsumerState<ForgotScreen> {
       setState(() {
         _busy = false;
         _error = e.message;
+        _errorDetail = e.detail;
       });
     }
   }
@@ -150,7 +165,7 @@ class _ForgotScreenState extends ConsumerState<ForgotScreen> {
             const SizedBox(height: Gap.xl),
 
             if (_error != null) ...[
-              _Banner(text: _error!, colour: c.danger),
+              LipFormError(message: _error!, detail: _errorDetail),
               const SizedBox(height: Gap.lg),
             ],
             if (_notice != null) ...[

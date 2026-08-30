@@ -417,6 +417,56 @@ class LipError extends StatelessWidget {
   );
 }
 
+/// The error card a FORM shows: one red sentence, and under it — in small
+/// print — the exact request that failed.
+///
+/// The small print exists because of a real week lost to its absence. The app
+/// knew precisely which request failed, at what status, and who answered it,
+/// and then showed the student a sentence and threw the evidence away. Every
+/// screen that can fail must be able to say what it saw.
+class LipFormError extends StatelessWidget {
+  const LipFormError({super.key, required this.message, this.detail});
+
+  final String message;
+
+  /// [ApiFailure.detail] — never a token, never a password.
+  final String? detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.lip;
+    return GlassSurface(
+      tier: GlassTier.deep,
+      radius: Radii.md,
+      padding: const EdgeInsets.symmetric(horizontal: Gap.md, vertical: Gap.md),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.error_outline_rounded, size: 17, color: c.danger),
+          const SizedBox(width: Gap.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(message, style: LipType.small.copyWith(color: c.danger)),
+                if (detail != null) ...[
+                  const SizedBox(height: Gap.sm),
+                  SelectableText(
+                    detail!,
+                    style: LipType.label.copyWith(
+                      color: c.text3.withValues(alpha: 0.9),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// The bar that appears when the phone loses signal. Not a dialog — a student
 /// mid-question must not be interrupted, only informed.
 class LipOfflineBar extends StatelessWidget {

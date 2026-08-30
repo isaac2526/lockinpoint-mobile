@@ -13,6 +13,12 @@ class AppConfig {
     defaultValue: 'https://lockinpoint.com',
   );
 
+  /// How the app names itself on every request. Kept in step with the
+  /// pubspec version by `scripts/verify.sh`, which fails if the two drift.
+  static const appVersion = '1.0.12';
+
+  static const userAgent = 'LockInPoint/$appVersion (Android; Flutter)';
+
   static const whatsappChannel =
       'https://whatsapp.com/channel/0029Vb7NwWk9hXFD6TSas40m';
 

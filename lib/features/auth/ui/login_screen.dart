@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api.dart';
 import '../../../design/components.dart';
-import '../../../design/glass.dart';
 import '../../../design/theme.dart';
 import '../../../design/tokens.dart';
 import '../../../design/typography.dart';
@@ -29,6 +28,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _hidden = true;
   bool _busy = false;
   String? _error;
+  String? _errorDetail;
 
   @override
   void dispose() {
@@ -58,6 +58,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _error = e is ApiFailure
             ? e.message
             : 'That did not work. Please try again.';
+        _errorDetail = e is ApiFailure ? e.detail : null;
       });
       return;
     }
@@ -86,30 +87,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             const SizedBox(height: Gap.xl),
 
             if (_error != null) ...[
-              GlassSurface(
-                tier: GlassTier.deep,
-                radius: Radii.md,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: Gap.md,
-                  vertical: Gap.md,
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.error_outline_rounded,
-                      size: 17,
-                      color: c.danger,
-                    ),
-                    const SizedBox(width: Gap.sm),
-                    Expanded(
-                      child: Text(
-                        _error!,
-                        style: LipType.small.copyWith(color: c.danger),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              LipFormError(message: _error!, detail: _errorDetail),
               const SizedBox(height: Gap.lg),
             ],
 
