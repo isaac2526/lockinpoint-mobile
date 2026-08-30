@@ -56,10 +56,77 @@ every real read goes through the web API.
   "options": ["..."], "letters": ["A","B"], "media": {} }
 ```
 
-**`answer` and `explanation` are deliberately absent.** Marking happens on the
-server when the attempt is submitted. The Offline Vault is the one exception
-and has its own signed, encrypted, account-bound pack format — see
-`docs/offline-vault.md` when that phase lands.
+**`answer` and `explanation` are absent in every mode except a fresh
+`practice` start**, and absent on `resume` in all modes. That single exception
+is what lets the untimed practice room mark instantly and work in a tunnel;
+everywhere else — a timed CBT, a JAMB mock, any resumed sitting — marking
+happens on the server at submit, and the app must never assume a key is
+present. The Offline Vault is the other exception and has its own signed,
+encrypted, account-bound pack format: see `docs/offline-vault.md` when that
+phase lands.
+
+Verified against the real backend, 2026-08-30: a `practice` start carries
+`answer` and `explanation`; a `cbt` start and every `resume` do not.
+
+### Content format
+
+`question`, each option, `explanation` and a passage `body` are **sanitised
+HTML** from `lib/rich-text.ts` — a small tag set (`b i u s sup sub p span div
+ul ol li table tr td th small mark code pre blockquote hr br`), no attributes
+beyond `colspan`/`rowspan`/`scope`, no links, no scripts.
+
+LaTeX is left **inside** that HTML between three delimiters, and the app
+renders it with the same meaning KaTeX gives it on the website:
+
+| Delimiter | Renders |
+|---|---|
+| `\( … \)` | inline |
+| `\[ … \]` | display |
+| `$$ … $$` | display |
+
+## Modes and the clock
+
+`action: "start"` takes `mode`, one of `practice`, `cbt`, `jamb_mock`,
+`jamb_mini`, and answers with `duration`, the seconds remaining:
+
+| Mode | duration | Marking |
+|---|---|---|
+| `practice` | `0` (untimed) | instantly on the phone, from the key in the payload |
+| `cbt` | `minutes × 60` | server side, at submit |
+| `jamb_mock` | `7200` | server side, at submit |
+| `jamb_mini` | `40 × questions` | server side, at submit |
+
+On `resume`, `duration` is recomputed by the server from the attempt's
+creation time, so **closing the app cannot buy a student extra minutes**. The
+phone turns that number into a deadline once and measures against the wall
+clock; it never decrements a counter, which would drift whenever the process
+is frozen.
+
+## Progress and grading
+
+`action: "progress"` takes `{ attemptId, answers, checked, flags, idx }` and
+answers `{ ok }`. It is best effort by design: a failed autosave must never
+interrupt a student mid-question.
+
+`action: "submit"` takes `{ attemptId, answers }` and answers with `score`
+plus a `corrections` array, one entry per question:
+
+```json
+{ "id": "...", "question": "<html>", "options": ["..."],
+  "chosen": "A", "right": "B", "isRight": false,
+  "explanation": "<html>", "media": {} }
+```
+
+Corrections carry **no `letters` array** — the letter is the option's position
+(`ABCDEFGH`[i]), exactly as the server assembled it. `chosen` is empty when
+the question was left blank.
+
+## Continue Practice
+
+`GET /api/mobile/dashboard` returns `resume` only for an **untimed practice**
+sitting, in progress, started within seven days. A timed paper is deliberately
+never offered back, so the app tells a student leaving a CBT that the clock
+keeps running and offers to submit instead.
 
 ## Not yet built
 
