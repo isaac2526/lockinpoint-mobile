@@ -514,22 +514,81 @@ void main() {
       expect(Api.platformGate({'rows': [], 'total': 0}), isNull);
     });
 
-    test('a redirect is named and never silently followed', () async {
-      net.enqueue(308, '', location: 'https://www.lockinpoint.com/api/me');
-      await expectLater(
-        api.get('/api/me'),
-        throwsA(
-          isA<ApiFailure>()
-              .having((e) => e.message, 'message', contains('somewhere else'))
-              .having(
-                (e) => e.detail,
-                'detail',
-                allOf(contains('308'), contains('www.lockinpoint.com')),
-              ),
-        ),
-      );
-      // One request only: the body-dropping hop was never taken.
+    test(
+      'an apex-to-www hop is followed, with the login body intact',
+      () async {
+        /* The Belloxdydx app posts to www.belloxdydx.org and worked first time;
+         this app was pointed at the bare apex. If Vercel makes www primary,
+         every request meets a 308 — and Dart's own redirect following drops
+         the POST body, turning a login into an empty request. */
+        await store.save(access: 'tok', refresh: 'r');
+        net.enqueue(
+          308,
+          '',
+          location: 'https://www.lockinpoint.com/api/auth/login',
+        );
+        net.enqueue(200, {
+          'ok': true,
+          'access_token': 'a',
+          'refresh_token': 'b',
+        });
+
+        final out = await api.post(
+          '/api/auth/login',
+          body: {'identifier': 'ada@example.com', 'password': 'secret'},
+        );
+        expect(out['access_token'], 'a');
+
+        expect(net.requests, hasLength(2));
+        final retry = net.requests.last;
+        // The hop went to www, as a POST, carrying the SAME body and the key.
+        expect(
+          retry.uri.toString(),
+          'https://www.lockinpoint.com/api/auth/login',
+        );
+        expect(retry.method, 'POST');
+        expect((retry.data as Map)['identifier'], 'ada@example.com');
+        expect(retry.headers['Authorization'], 'Bearer tok');
+      },
+    );
+
+    test(
+      'a hop to ANOTHER domain is refused, and the key never goes',
+      () async {
+        /* A Location header must never be able to hand the bearer token to a
+         host of its choosing. */
+        await store.save(access: 'tok', refresh: 'r');
+        net.enqueue(302, '', location: 'https://evil.example.com/api/me');
+        await expectLater(
+          api.get('/api/me'),
+          throwsA(
+            isA<ApiFailure>()
+                .having((e) => e.message, 'message', contains('somewhere else'))
+                .having(
+                  (e) => e.detail,
+                  'detail',
+                  allOf(contains('302'), contains('evil.example.com')),
+                ),
+          ),
+        );
+        // One request only — the off-site hop was never taken.
+        expect(net.requests, hasLength(1));
+      },
+    );
+
+    test('a redirect that downgrades to http is refused', () async {
+      net.enqueue(308, '', location: 'http://lockinpoint.com/api/me');
+      await expectLater(api.get('/api/me'), throwsA(isA<ApiFailure>()));
       expect(net.requests, hasLength(1));
+    });
+
+    test('a redirect loop stops instead of spinning forever', () async {
+      for (var i = 0; i < 6; i++) {
+        net.enqueue(308, '', location: 'https://www.lockinpoint.com/api/me');
+      }
+      await expectLater(api.get('/api/me'), throwsA(isA<ApiFailure>()));
+      // The first request plus at most _maxHops re-issues.
+      expect(net.requests.length, lessThanOrEqualTo(4));
     });
   });
 

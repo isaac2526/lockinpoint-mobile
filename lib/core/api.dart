@@ -80,11 +80,11 @@ class Api {
     },
     // We read the status ourselves so a 401 is a typed failure, not a throw.
     validateStatus: (_) => true,
-    /* A 3xx is NEVER followed. Dart's HttpClient follows redirects on POST by
-       default and drops the request body on the way, so a domain-level hop
-       (an apex sending the app to www, say) would deliver a body-less login
-       to another origin and the failure would look like anything except what
-       it is. Seeing the hop beats silently taking it. */
+    /* Dio must NOT follow redirects itself. Dart's HttpClient follows a 3xx on
+       POST and DROPS the request body doing it, so an apex-to-www hop would
+       deliver a body-less login and the failure would look like anything
+       except what it is. _followSameSite below re-issues the whole request
+       instead — method, body and headers intact. */
     followRedirects: false,
   );
 
@@ -103,8 +103,8 @@ class Api {
   }) => _request(
     'GET',
     path,
-    (token) => _dio.get(
-      path,
+    (token, url) => _dio.get(
+      url,
       queryParameters: query,
       options: Options(headers: _authHeader(token)),
     ),
@@ -113,8 +113,8 @@ class Api {
   Future<Map<String, dynamic>> post(String path, {Object? body}) => _request(
     'POST',
     path,
-    (token) => _dio.post(
-      path,
+    (token, url) => _dio.post(
+      url,
       data: body,
       options: Options(headers: _authHeader(token)),
     ),
@@ -136,11 +136,13 @@ class Api {
   Future<Map<String, dynamic>> _request(
     String method,
     String path,
-    Future<Response<dynamic>> Function(String? token) run,
+    Future<Response<dynamic>> Function(String? token, String url) run,
   ) async {
     final where = '$method $path';
     final token = await _readToken();
-    var res = await _guard(where, () => run(token));
+    var url = path;
+    var res = await _guard(where, () => run(token, url));
+    (url, res) = await _followSameSite(where, url, res, (u) => run(token, u));
     _refuseGate(where, res);
 
     if (res.statusCode == 401) {
@@ -160,7 +162,13 @@ class Api {
          session lives. */
       switch (await _refresher.refresh()) {
         case RefreshedSession(:final access):
-          res = await _guard(where, () => run(access));
+          res = await _guard(where, () => run(access, url));
+          (url, res) = await _followSameSite(
+            where,
+            url,
+            res,
+            (u) => run(access, u),
+          );
           _refuseGate(where, res);
           if (res.statusCode == 401) {
             /* The refresh route honoured this session seconds ago, yet the
@@ -193,6 +201,69 @@ class Api {
     }
 
     return _read(where, res);
+  }
+
+  /* ==========================================================================
+     THE HOP BETWEEN lockinpoint.com AND www.lockinpoint.com
+
+     A host on Vercel is usually configured with one of the two names primary
+     and the other redirecting to it. A BROWSER follows that hop invisibly, so
+     the website looks perfectly healthy. A native app does not — and Dart
+     makes it worse, because its own redirect following DROPS the POST body,
+     turning a login into an empty request.
+
+     The Belloxdydx app, which worked first time, posts to
+     www.belloxdydx.org — the primary name, so it never meets a hop at all.
+     This app was pointed at the bare apex.
+
+     So the request is re-issued here in full: same method, same body, same
+     headers. Only to the SAME SITE, and only over https — the bearer token
+     must never be handed to another domain because a Location header said so,
+     which is exactly the hole a naive redirect follower opens.
+     ========================================================================== */
+
+  static const _maxHops = 3;
+
+  Future<(String, Response<dynamic>)> _followSameSite(
+    String where,
+    String url,
+    Response<dynamic> res,
+    Future<Response<dynamic>> Function(String url) again,
+  ) async {
+    var hops = 0;
+    while (_isRedirect(res.statusCode) && hops < _maxHops) {
+      final next = _sameSiteTarget(url, res);
+      if (next == null) break; // a hop we refuse to take; _read will name it.
+      url = next;
+      hops++;
+      res = await _guard(where, () => again(url));
+    }
+    return (url, res);
+  }
+
+  static bool _isRedirect(int? code) =>
+      code != null && code >= 300 && code < 400;
+
+  /// Where a redirect points, but only when it is the same site over https.
+  static String? _sameSiteTarget(String from, Response<dynamic> res) {
+    final location = res.headers.value('location');
+    if (location == null || location.trim().isEmpty) return null;
+    final here = Uri.parse(AppConfig.apiBase).resolve(from);
+    final target = here.resolve(location.trim());
+    if (target.scheme != 'https') return null; // never downgrade
+    if (!_sameSite(here.host, target.host)) return null;
+    return target.toString();
+  }
+
+  /// `lockinpoint.com` and `www.lockinpoint.com` are the same site. Anything
+  /// else is not, however similar it looks.
+  static bool _sameSite(String a, String b) {
+    String bare(String h) {
+      final l = h.toLowerCase();
+      return l.startsWith('www.') ? l.substring(4) : l;
+    }
+
+    return bare(a) == bare(b);
   }
 
   /// Runs one attempt, turning transport failures into sentences.

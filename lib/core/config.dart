@@ -8,14 +8,24 @@
 /// refresh, data — through these API routes. An address compiled into an APK
 /// cannot drift away from what the deployment actually uses.
 class AppConfig {
+  /// THE `www` MATTERS. A host on Vercel has one name primary and the other
+  /// redirecting to it. A browser follows that hop invisibly — which is why
+  /// the website looks perfectly healthy — but a native app meets it head on,
+  /// and Dart's own redirect following drops a POST body on the way, turning
+  /// a login into an empty request.
+  ///
+  /// The Belloxdydx app, which worked on its first build, posts to
+  /// `https://www.belloxdydx.org`. This app was pointed at the bare apex.
+  /// It now uses the same shape — and Api._followSameSite re-issues the whole
+  /// request if the hop turns out to run the other way, so either name works.
   static const apiBase = String.fromEnvironment(
     'LIP_API',
-    defaultValue: 'https://lockinpoint.com',
+    defaultValue: 'https://www.lockinpoint.com',
   );
 
   /// How the app names itself on every request. Kept in step with the
   /// pubspec version by `scripts/verify.sh`, which fails if the two drift.
-  static const appVersion = '1.0.12';
+  static const appVersion = '1.0.13';
 
   static const userAgent = 'LockInPoint/$appVersion (Android; Flutter)';
 
