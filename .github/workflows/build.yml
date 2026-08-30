@@ -39,15 +39,35 @@ jobs:
 
       - run: flutter pub get
 
+      # The version is read from pubspec so the downloaded file says which
+      # build it is. Three APKs in a downloads folder all called
+      # "app-debug.apk" are three APKs you cannot tell apart.
+      - name: Read the version
+        id: v
+        run: |
+          V=$(grep -m1 '^version:' pubspec.yaml | sed 's/version: *//' | tr '+' '-')
+          echo "name=lockinpoint-$V-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
       # Debug, deliberately: it installs on any phone without a signing key.
       # Release signing arrives with release.yml when there is something to
       # release, so no key material is needed to get a build into your hands.
       - name: Build debug APK
         run: flutter build apk --debug
 
+      - name: Name the APK after the build
+        run: |
+          mv build/app/outputs/flutter-apk/app-debug.apk \
+             "build/app/outputs/flutter-apk/${{ steps.v.outputs.name }}.apk"
+
       - uses: actions/upload-artifact@v4
         with:
-          name: lockinpoint-debug-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: ${{ steps.v.outputs.name }}
+          path: build/app/outputs/flutter-apk/${{ steps.v.outputs.name }}.apk
           retention-days: 14
           if-no-files-found: error
+
+      - name: Say where it is
+        run: |
+          echo "### APK ready" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**${{ steps.v.outputs.name }}.apk** is in the Artifacts section of this run." >> "$GITHUB_STEP_SUMMARY"
