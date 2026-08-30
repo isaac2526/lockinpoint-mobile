@@ -118,7 +118,7 @@ class LeaderboardScreen extends ConsumerWidget {
                     separatorBuilder: (_, _) => const SizedBox(height: Gap.sm),
                     itemBuilder: (context, i) => i == list.length
                         ? const _PointsLaw()
-                        : Entrance(
+                        : Entrance.inList(
                             index: i,
                             child: _Rung(row: list[i]),
                           ),

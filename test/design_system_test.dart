@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lockinpoint/design/components.dart';
 import 'package:lockinpoint/design/glass.dart';
+import 'package:lockinpoint/design/motion_widgets.dart';
 import 'package:lockinpoint/design/theme.dart';
 import 'package:lockinpoint/design/tokens.dart';
 
@@ -285,6 +286,32 @@ void main() {
 
       await pumpThemed(tester, const LipOfflineBar(), dark: false);
       expect(find.text('No connection'), findsOneWidget);
+    });
+  });
+
+  group('the entrance stagger does not follow a long list', () {
+    testWidgets('the opening screenful animates, the rest simply appear', (
+      tester,
+    ) async {
+      /* An item built while scrolling would otherwise start its stagger from
+         zero and fade in most of a second after arriving, which reads as lag.
+         Past the opening screenful the child is rendered directly. */
+      expect(
+        Entrance.inList(index: 0, child: const Text('a')),
+        isA<Entrance>(),
+      );
+      expect(
+        Entrance.inList(
+          index: Entrance.staggerLimit - 1,
+          child: const Text('a'),
+        ),
+        isA<Entrance>(),
+      );
+      expect(
+        Entrance.inList(index: Entrance.staggerLimit, child: const Text('a')),
+        isA<Text>(),
+      );
+      expect(Entrance.inList(index: 99, child: const Text('a')), isA<Text>());
     });
   });
 }

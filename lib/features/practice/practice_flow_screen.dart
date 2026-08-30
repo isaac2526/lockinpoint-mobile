@@ -250,7 +250,7 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
       separatorBuilder: (_, _) => const SizedBox(height: Gap.md),
       itemBuilder: (context, i) {
         final exam = exams[i];
-        return Entrance(
+        return Entrance.inList(
           index: i,
           child: LipChoiceCard(
             icon: Icons.workspace_premium_rounded,

@@ -236,7 +236,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       padding: const EdgeInsets.all(Gap.md),
       itemCount: res.rows.length,
       separatorBuilder: (_, _) => const SizedBox(height: Gap.md),
-      itemBuilder: (context, i) => Entrance(
+      itemBuilder: (context, i) => Entrance.inList(
         index: i,
         child: _HitCard(hit: res.rows[i]),
       ),

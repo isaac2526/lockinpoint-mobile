@@ -13,6 +13,19 @@ import 'tokens.dart';
 class Entrance extends StatefulWidget {
   const Entrance({super.key, required this.child, this.index = 0});
 
+  /// Wraps a list item, staggering only the first screenful.
+  ///
+  /// A long list builds its later items lazily, as the student scrolls to
+  /// them — and an item built at that moment would start its stagger from
+  /// zero, so row thirty would fade in most of a second after arriving,
+  /// which reads as lag rather than polish. Past the opening screenful the
+  /// item is simply rendered.
+  static Widget inList({required int index, required Widget child}) =>
+      index < staggerLimit ? Entrance(index: index, child: child) : child;
+
+  /// How many items take part in the opening stagger.
+  static const staggerLimit = 12;
+
   final Widget child;
 
   /// Position in the stagger. Each step delays 45ms.
