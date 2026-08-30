@@ -121,12 +121,41 @@ Corrections carry **no `letters` array** — the letter is the option's position
 (`ABCDEFGH`[i]), exactly as the server assembled it. `chosen` is empty when
 the question was left blank.
 
+## Search
+
+`GET /api/search?q=<phrase>&p=<page>` answers `{ rows, total }` — note there
+is **no `ok` field** on this route. Ten rows a page. A query under three
+characters is refused by the server and by the app before it is sent. Each row
+carries `id`, `question`, `answer`, `explanation`, `media`, `subject`, `exam`;
+the answer travels because search is a study tool for a signed in student, and
+the app keeps it behind a tap.
+
+## Leaderboard
+
+`GET /api/leaderboard` answers `{ ok, rows }`, each row
+`{ rank, name, points, streak }`, already ranked. The points law lives on the
+server: 10 a correct answer, 25 a finished sitting, 100 a live streak day, 5
+for opening the app. The app displays that law but never computes it.
+
 ## Continue Practice
 
 `GET /api/mobile/dashboard` returns `resume` only for an **untimed practice**
 sitting, in progress, started within seven days. A timed paper is deliberately
 never offered back, so the app tells a student leaving a CBT that the clock
 keeps running and offers to submit instead.
+
+## What the app uses today
+
+| Screen | Endpoint | State |
+|---|---|---|
+| Welcome, login, signup, forgot | `/api/auth/*` | live |
+| Dashboard | `/api/mobile/dashboard` | live |
+| Practice and CBT chooser | `/api/public/exam-tree` | live |
+| A sitting | `/api/attempts` (start, progress, submit, resume) | live |
+| Review | the `corrections` from submit | live |
+| Question search | `/api/search` | live |
+| Leaderboard | `/api/leaderboard` | live |
+| Classroom, games, analysis, Lumi, saved | `/api/notes`, `/api/games/*`, `/api/ai/ask`, `/api/qmark` | not built yet |
 
 ## Not yet built
 
