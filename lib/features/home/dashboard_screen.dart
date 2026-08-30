@@ -45,7 +45,16 @@ class DashboardController extends AsyncNotifier<Map<String, dynamic>> {
         // A corrupt snapshot is thrown away, not fought with.
       }
     }
-    return _fetch();
+    try {
+      return await _fetch();
+    } on ApiFailure catch (e) {
+      /* The FIRST load, with no snapshot to fall back on. A 401 here must
+         hand the student back to the front door exactly as refresh() does —
+         this was the path that used to strand a freshly logged-in student on
+         an error card when the phone lost its stored key. */
+      if (e.unauthorised) ref.invalidate(authControllerProvider);
+      rethrow;
+    }
   }
 
   /// Pull to refresh, and the silent refresh behind a cached paint.

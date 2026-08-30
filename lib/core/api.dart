@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -48,34 +49,56 @@ class Api {
   final SessionStore _store;
   late final Dio _dio;
 
-  Future<Map<String, String>> _authHeader() async {
-    final token = await _store.accessToken();
-    return token == null ? {} : {'Authorization': 'Bearer $token'};
-  }
+  /// Tests swap the transport under this Dio for a fake adapter; nothing else
+  /// should ever touch it.
+  @visibleForTesting
+  Dio get dio => _dio;
 
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
     bool retainSessionOn401 = false,
-  }) => _send(
-    () async => _dio.get(
-      path,
-      queryParameters: query,
-      options: Options(headers: await _authHeader()),
-    ),
-    retainSessionOn401: retainSessionOn401,
-  );
+  }) async {
+    final token = await _readToken();
+    return _send(
+      () => _dio.get(
+        path,
+        queryParameters: query,
+        options: Options(headers: _authHeader(token)),
+      ),
+      hadToken: token != null,
+      retainSessionOn401: retainSessionOn401,
+    );
+  }
 
-  Future<Map<String, dynamic>> post(String path, {Object? body}) => _send(
-    () async => _dio.post(
-      path,
-      data: body,
-      options: Options(headers: await _authHeader()),
-    ),
-  );
+  Future<Map<String, dynamic>> post(String path, {Object? body}) async {
+    final token = await _readToken();
+    return _send(
+      () => _dio.post(
+        path,
+        data: body,
+        options: Options(headers: _authHeader(token)),
+      ),
+      hadToken: token != null,
+    );
+  }
+
+  /// The token read itself must never sink a request: a phone whose secure
+  /// storage throws should send the request signed out, not crash the screen.
+  Future<String?> _readToken() async {
+    try {
+      return await _store.accessToken();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Map<String, String> _authHeader(String? token) =>
+      token == null ? {} : {'Authorization': 'Bearer $token'};
 
   Future<Map<String, dynamic>> _send(
     Future<Response> Function() run, {
+    required bool hadToken,
     bool retainSessionOn401 = false,
   }) async {
     Response res;
@@ -110,8 +133,16 @@ class Api {
          yet accept bearer tokens, not that the session is bad, so that caller
          asks us not to burn the tokens it is standing on. */
       if (!retainSessionOn401) await _store.clear();
+      /* Two very different failures land on 401, and naming the right one is
+         what makes a student's screenshot a diagnosis:
+           · no token was on the request — this phone lost the saved key
+             (secure storage failure), the server never saw a session at all;
+           · a token WAS sent and refused — the session genuinely ended or the
+             account was signed in on another device. */
       throw ApiFailure(
-        'Your session has ended. Please log in again.',
+        hadToken
+            ? 'Your session has ended. Please log in again.'
+            : 'This phone lost its saved login key. Please log in again.',
         unauthorised: true,
       );
     }

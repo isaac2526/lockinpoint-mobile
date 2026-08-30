@@ -52,8 +52,28 @@ class AuthController extends AsyncNotifier<AuthState> {
   SessionStore get _store => ref.read(sessionStoreProvider);
   sb.SupabaseClient get _supabase => ref.read(supabaseProvider);
 
+  static bool _syncingTokens = false;
+
+  /// Whenever the Supabase client refreshes the session on its own — the
+  /// startup revive, or its background auto-refresh near expiry — the rotated
+  /// pair must land back in OUR store immediately. Supabase invalidates a
+  /// refresh token once it is used, so letting the client rotate silently
+  /// would leave the store holding a dead token, and the next launch would
+  /// sign the student out for no reason they can see.
+  void _keepStoreInSync() {
+    if (_syncingTokens) return;
+    _syncingTokens = true;
+    _supabase.auth.onAuthStateChange.listen((event) {
+      final s = event.session;
+      if (s != null && s.refreshToken != null) {
+        _store.save(access: s.accessToken, refresh: s.refreshToken!);
+      }
+    });
+  }
+
   @override
   Future<AuthState> build() async {
+    _keepStoreInSync();
     final refresh = await _store.refreshToken();
     if (refresh == null) return const SignedOut();
 
@@ -177,22 +197,13 @@ class AuthController extends AsyncNotifier<AuthState> {
 
     await _store.save(access: access, refresh: refresh);
 
-    // Give the Supabase client the same session so profile reads work even
-    // when the tokens came from the API rather than a direct sign in.
-    try {
-      if (_supabase.auth.currentSession?.accessToken != access) {
-        await _supabase.auth.setSession(refresh);
-        final s = _supabase.auth.currentSession;
-        if (s != null) {
-          await _store.save(
-            access: s.accessToken,
-            refresh: s.refreshToken ?? refresh,
-          );
-        }
-      }
-    } catch (_) {
-      // The API tokens stand on their own; this only helps the fallbacks.
-    }
+    /* And that is ALL login does with them. An earlier build also handed the
+       refresh token to the Supabase client here (setSession) so profile reads
+       would work — but setSession CONSUMES the refresh token and issues a new
+       pair, which meant two stores each believing a different token was the
+       live one. The API tokens stand on their own; the Supabase client earns
+       a session at startup revive instead, where _keepStoreInSync records
+       every rotation. */
   }
 
   /// The auth server is asked directly whether a refresh token still lives.
