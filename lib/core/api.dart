@@ -69,6 +69,12 @@ class Api {
     headers: {'Accept': 'application/json'},
     // We read the status ourselves so a 401 is a typed failure, not a throw.
     validateStatus: (_) => true,
+    /* A 3xx is NEVER followed. Dart's HttpClient follows redirects on POST by
+       default and drops the request body on the way, so a domain-level hop
+       (an apex sending the app to www, say) would deliver a body-less login
+       to another origin and the failure would look like anything except what
+       it is. Seeing the hop beats silently taking it. */
+    followRedirects: false,
   );
 
   final SessionStore _store;
@@ -206,53 +212,64 @@ class Api {
   }
 
   /* ==========================================================================
-     THE GATE IN FRONT OF THE SERVER
+     SOMETHING IN FRONT OF THE SERVER
 
-     A hosting platform can answer a request before LockInPoint's own code ever
-     runs. Vercel's Deployment Protection does exactly that: to anything that
-     is not a signed-in browser it returns
+     WHAT WAS OBSERVED, exactly: a login POST to production came back as JSON
+     whose keys were precisely `redirect` and `status` — no `ok`, no tokens.
+     Two things follow with certainty. No version of the LockInPoint backend
+     has ever emitted that body, so it was written by something standing in
+     FRONT of the app's code. And the reply was not a 401: at a login screen
+     no token is stored, and a 401 without a token takes an earlier branch
+     that never reaches the message the key list was printed by.
 
-         {"redirect": "https://vercel.com/sso-api?url=…", "status": "401"}
+     WHAT IS SUSPECTED, honestly: a hosting gate — Vercel's Deployment
+     Protection is the obvious candidate, since a browser carrying its cookie
+     passes while an app carrying nothing cannot. But Vercel's own documented
+     JSON refusal is shaped {error, protection}, not this, so the attribution
+     is a strong hypothesis and NOT a proven fact. The code must therefore
+     describe the shape it sees and name whoever actually answered, rather
+     than assert a culprit — an earlier version of this comment asserted one,
+     and a guess written down as fact is how three builds were spent hunting
+     a session bug that was never in the app.
 
-     — a JSON object with no `ok` and no tokens. A browser sails through
-     because the person is signed in to Vercel and carries its cookie; a
-     native app carries nothing, so EVERY route answers this way, login
-     included. No student can log their way past it and no retry will help;
-     it is a switch in the hosting dashboard.
-
-     Naming it is the whole point. Left unnamed it looks like a broken login,
-     and the last three builds were spent hunting a session bug that was never
-     there.
+     So: the gatekeeper's own redirect target is carried into the failure,
+     because that single string names the real culprit whatever it turns out
+     to be, and one screenshot then closes the question for good.
      ========================================================================== */
 
-  /// The gatekeeper's host if this body came from a platform gate rather than
-  /// from LockInPoint, else null.
+  /// The gatekeeper, if this body was written by something other than
+  /// LockInPoint: its host and the raw address it points at. Null otherwise.
   @visibleForTesting
-  static String? platformGate(dynamic data) {
+  static ({String host, String target})? platformGate(dynamic data) {
     if (data is! Map) return null;
-    // Every LockInPoint route answers with `ok`. This one did not, and it
-    // carries the two keys a gate redirect carries.
+    /* Every LockInPoint route that could be mistaken for this answers with
+       `ok`. (/api/search answers {rows,total} with no `ok` — hence the two
+       keys below are required, never `ok`'s absence alone.) */
     if (data.containsKey('ok')) return null;
     if (!data.containsKey('redirect') || !data.containsKey('status')) {
       return null;
     }
     final target = data['redirect'];
-    if (target is String) {
+    if (target is String && target.isNotEmpty) {
       final host = Uri.tryParse(target)?.host;
-      if (host != null && host.isNotEmpty) return host;
+      if (host != null && host.isNotEmpty) {
+        return (host: host, target: target);
+      }
+      return (host: 'an unnamed gate', target: target);
     }
-    return 'the hosting platform';
+    return (host: 'an unnamed gate', target: '$target');
   }
 
   static void _refuseGate(String where, Response<dynamic> res) {
     final gate = platformGate(res.data);
     if (gate == null) return;
     throw ApiFailure(
-      'LockInPoint is not letting the app in. The website\'s hosting has a '
-      'protection gate switched on that only a signed-in browser can pass.',
+      'LockInPoint is not letting the app in. Something in front of the '
+      'website is answering the app instead of LockInPoint, and only a '
+      'signed-in browser can pass it.',
       detail:
-          '$where → ${res.statusCode ?? 0} · answered by $gate, '
-          'never reached LockInPoint',
+          '$where → ${res.statusCode ?? 0} · answered by ${gate.host}, '
+          'which points at ${gate.target}',
     );
   }
 
@@ -268,6 +285,16 @@ class Api {
   Map<String, dynamic> _read(String where, Response<dynamic> res) {
     final code = res.statusCode ?? 0;
     final data = res.data;
+
+    // Nothing follows a redirect for us, so name it — including where it led.
+    if (code >= 300 && code < 400) {
+      throw ApiFailure(
+        'LockInPoint sent the app somewhere else instead of answering.',
+        detail:
+            '$where → $code · redirected to '
+            '${res.headers.value('location') ?? 'an address it did not name'}',
+      );
+    }
     if (data is Map<String, dynamic>) {
       // The website answers every route as { ok, message?, ...payload }.
       if (data['ok'] == false) {
@@ -334,7 +361,7 @@ RefreshExchange backendRefreshExchange(Dio dio) => (refreshToken) async {
   final gate = Api.platformGate(data);
   if (gate != null) {
     return RefreshUnreachable(
-      'POST /api/auth/refresh → $code, answered by $gate '
+      'POST /api/auth/refresh → $code, answered by ${gate.host} '
       'before it reached LockInPoint',
     );
   }
