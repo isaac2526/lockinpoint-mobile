@@ -179,18 +179,73 @@ class Sitting {
   bool get timed => duration > 0;
 }
 
+/// One graded question, as the server marked it. This is the whole point of
+/// sitting a paper: not the score, but seeing which one went wrong and why.
+class Correction {
+  const Correction({
+    required this.id,
+    required this.question,
+    required this.options,
+    required this.chosen,
+    required this.right,
+    required this.isRight,
+    required this.explanation,
+    this.media,
+  });
+
+  final String id;
+  final String question;
+  final List<String> options;
+
+  /// The letter the student picked. Empty when they left it blank.
+  final String chosen;
+  final String right;
+  final bool isRight;
+  final String explanation;
+  final Map<String, dynamic>? media;
+
+  bool get skipped => chosen.isEmpty;
+
+  /// Corrections carry options without their letters, so the letter is the
+  /// position, exactly as the server assembled it.
+  String letterAt(int i) => 'ABCDEFGH'[i];
+
+  String? mediaUrl(String slot) {
+    final m = media?[slot];
+    if (m is Map && m['type'] == 'image' && m['url'] is String) {
+      return m['url'] as String;
+    }
+    return null;
+  }
+
+  static Correction fromJson(Map<String, dynamic> j) => Correction(
+    id: j['id'] as String? ?? '',
+    question: j['question'] as String? ?? '',
+    options: ((j['options'] as List?) ?? const []).cast<String>(),
+    chosen: (j['chosen'] as String? ?? '').toUpperCase(),
+    right: (j['right'] as String? ?? '').toUpperCase(),
+    isRight: j['isRight'] == true,
+    explanation: j['explanation'] as String? ?? '',
+    media: j['media'] as Map<String, dynamic>?,
+  );
+}
+
 class SubmitResult {
   const SubmitResult({
     required this.correct,
     required this.total,
     required this.overall,
     required this.perSubject,
+    this.corrections = const [],
   });
 
   final int correct;
   final int total;
   final int overall;
   final List<({String name, int correct, int total})> perSubject;
+  final List<Correction> corrections;
+
+  List<Correction> get missed => corrections.where((c) => !c.isRight).toList();
 }
 
 class PracticeRepository {
@@ -387,6 +442,10 @@ class PracticeRepository {
               total: (p['total'] as num?)?.toInt() ?? 0,
             ),
           )
+          .toList(),
+      corrections: ((res['corrections'] as List?) ?? const [])
+          .cast<Map<String, dynamic>>()
+          .map(Correction.fromJson)
           .toList(),
     );
   }

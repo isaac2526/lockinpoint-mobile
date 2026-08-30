@@ -40,6 +40,26 @@ class _FakeRepo extends Fake implements PracticeRepository {
       total: 2,
       overall: 50,
       perSubject: const [(name: 'Mathematics', correct: 1, total: 2)],
+      corrections: const [
+        Correction(
+          id: 'q1',
+          question: '<p>What is 2 + 2?</p>',
+          options: ['3', '4', '5', '22'],
+          chosen: 'B',
+          right: 'B',
+          isRight: true,
+          explanation: '<p>Two and two make four.</p>',
+        ),
+        Correction(
+          id: 'q2',
+          question: '<p>What is 3 times 3?</p>',
+          options: ['6', '9'],
+          chosen: 'A',
+          right: 'B',
+          isRight: false,
+          explanation: '<p>Three threes are nine.</p>',
+        ),
+      ],
     );
   }
 }
@@ -179,6 +199,32 @@ void main() {
       expect(find.text('50%'), findsOneWidget);
       expect(find.textContaining('1 of 2 correct'), findsOneWidget);
       expect(find.text('Back to the dashboard'), findsOneWidget);
+    });
+
+    testWidgets('the result leads into the review, missed questions first', (
+      tester,
+    ) async {
+      await _pumpSession(tester);
+      await tester.tap(find.text('Submit'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Submit'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('See what you missed'));
+      await tester.pumpAndSettle();
+
+      // Opens filtered to the one that went wrong, not the whole paper.
+      expect(find.text('Review'), findsOneWidget);
+      expect(find.textContaining('What is 3 times 3?'), findsOneWidget);
+      expect(find.textContaining('What is 2 + 2?'), findsNothing);
+      expect(find.textContaining('Three threes are nine'), findsOneWidget);
+
+      // And the whole paper is one tap away.
+      await tester.tap(find.textContaining('All 2'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('What is 2 + 2?'), findsOneWidget);
+      expect(find.text('Correct'), findsOneWidget);
+      expect(find.text('Wrong'), findsOneWidget);
     });
 
     testWidgets('leaving warns and keeps the sitting alive', (tester) async {

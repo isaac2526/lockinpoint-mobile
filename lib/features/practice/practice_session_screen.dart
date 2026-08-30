@@ -13,6 +13,7 @@ import '../../design/typography.dart';
 import '../home/dashboard_screen.dart';
 import 'practice_repository.dart';
 import 'question_html.dart';
+import 'review_screen.dart';
 
 /// ===========================================================================
 /// A PRACTICE SITTING
@@ -909,6 +910,24 @@ class _ResultView extends StatelessWidget {
               const SizedBox(height: Gap.sm),
             ],
             const SizedBox(height: Gap.lg),
+            // The review comes FIRST, and in gold. The score is the least
+            // useful thing on this screen; going back through the ones you
+            // missed is the whole reason the paper was worth sitting.
+            if (result.corrections.isNotEmpty) ...[
+              LipButton(
+                label: result.missed.isEmpty
+                    ? 'Go through the paper'
+                    : 'See what you missed',
+                icon: Icons.fact_check_rounded,
+                gold: true,
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ReviewScreen(result: result, label: label),
+                  ),
+                ),
+              ),
+              const SizedBox(height: Gap.sm),
+            ],
             LipButton(
               label: 'Back to the dashboard',
               icon: Icons.home_rounded,
