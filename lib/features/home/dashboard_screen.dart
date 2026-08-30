@@ -6,6 +6,7 @@ import '../../core/api.dart';
 import '../../core/config.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
+import '../../design/motion_widgets.dart';
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
@@ -94,24 +95,26 @@ class _Content extends ConsumerWidget {
       padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.lg, Gap.lg, Gap.huge),
       children: [
         // ---- greeting and streak -------------------------------------
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const LipWordmark(size: 26),
-                  const SizedBox(height: Gap.md),
-                  Text(
-                    'Welcome back, $name',
-                    style: LipType.title.copyWith(color: c.text1),
-                  ),
-                ],
+        Entrance(
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const LipWordmark(size: 26),
+                    const SizedBox(height: Gap.md),
+                    Text(
+                      'Welcome back, $name',
+                      style: LipType.title.copyWith(color: c.text1),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: Gap.md),
-            _StreakBadge(days: streak),
-          ],
+              const SizedBox(width: Gap.md),
+              _StreakBadge(days: streak),
+            ],
+          ),
         ),
         const SizedBox(height: Gap.lg),
 
@@ -159,10 +162,13 @@ class _Content extends ConsumerWidget {
         // ---- the cards, matching the website's dashboard -------------
         const LipLabel('What are you doing today?'),
         const SizedBox(height: Gap.md),
-        for (final card in _cards)
-          Padding(
-            padding: const EdgeInsets.only(bottom: Gap.sm),
-            child: _DashCard(card: card),
+        for (final (i, card) in _cards.indexed)
+          Entrance(
+            index: i + 2,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: Gap.sm),
+              child: _DashCard(card: card),
+            ),
           ),
 
         const SizedBox(height: Gap.lg),

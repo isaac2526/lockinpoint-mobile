@@ -1,0 +1,78 @@
+# =============================================================================
+# RELEASE ARTIFACTS · run by hand from the Actions tab.
+#
+# android-bundle · the .aab Google Play ingests. Until a Play upload keystore
+#   is created and stored as repository secrets, the bundle is signed with the
+#   debug key: fine for inspection, refused by the Play Console. Creating the
+#   real key is a one time step done together deliberately, because losing it
+#   or changing it strands every installed copy.
+#
+# ios-unsigned · Runner.app zipped into an .ipa with no code signature.
+#   Enough to inspect and to sideload through tools that re-sign; distributing
+#   through TestFlight or the App Store requires an Apple Developer account,
+#   which is a paid, human step no workflow can conjure.
+# =============================================================================
+name: release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  android-bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.2"
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Build app bundle
+        run: flutter build appbundle --release
+      - name: Build release APK
+        run: flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lockinpoint-aab
+          path: build/app/outputs/bundle/release/app-release.aab
+          retention-days: 30
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lockinpoint-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
+          if-no-files-found: error
+
+  ios-unsigned:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.2"
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Build iOS without signing
+        run: flutter build ios --release --no-codesign
+      - name: Package unsigned ipa
+        run: |
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          zip -qry lockinpoint-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lockinpoint-unsigned-ipa
+          path: lockinpoint-unsigned.ipa
+          retention-days: 30
+          if-no-files-found: error

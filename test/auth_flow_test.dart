@@ -31,22 +31,27 @@ Future<void> pump(WidgetTester tester, Widget home) async {
 /// shorter than a real phone, so a button below the fold is off-screen here
 /// while being perfectly reachable on a device.
 Future<void> tapScrolled(WidgetTester tester, Finder target) async {
+  /* Fixed pumps, never pumpAndSettle: the live username check shows a spinner
+     while it waits, and a spinner animates for ever, so pumpAndSettle would
+     wait for ever with it. Advancing fake time fires the debounce and lets
+     its result land before the tap. */
+  await tester.pump(const Duration(milliseconds: 600));
+  await tester.pump();
   await tester.ensureVisible(target);
-  await tester.pumpAndSettle();
+  await tester.pump();
   await tester.tap(target);
-  await tester.pumpAndSettle();
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 450));
 }
 
 void main() {
   group('the welcome screen introduces LockInPoint', () {
     testWidgets('opens on the product, not a form', (tester) async {
       await pump(tester, const WelcomeScreen());
-      expect(
-        find.textContaining('sat in a real exam hall first'),
-        findsOneWidget,
-      );
-      expect(find.text('Create a free account'), findsOneWidget);
-      expect(find.text('I already have an account'), findsOneWidget);
+      expect(find.text('Pass JAMB, WAEC, NECO and more'), findsOneWidget);
+      expect(find.textContaining('Noesis Innovations'), findsOneWidget);
+      expect(find.text('Create account'), findsOneWidget);
+      expect(find.text('Log in'), findsOneWidget);
     });
 
     testWidgets('carries a notice when a session ended on its own', (
@@ -62,14 +67,14 @@ void main() {
     testWidgets('both doors open', (tester) async {
       await pump(tester, const WelcomeScreen());
 
-      await tester.tap(find.text('Create a free account'));
+      await tester.tap(find.text('Create account'));
       await tester.pumpAndSettle();
       expect(find.byType(SignupScreen), findsOneWidget);
 
       await tester.pageBack();
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('I already have an account'));
+      await tester.tap(find.text('Log in'));
       await tester.pumpAndSettle();
       expect(find.byType(LoginScreen), findsOneWidget);
     });
@@ -185,6 +190,10 @@ void main() {
         find.widgetWithText(TextFormField, 'At least 8 characters'),
         'longenough',
       );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Type it once more'),
+        'longenough',
+      );
 
       await tapScrolled(tester, find.text('Continue'));
 
@@ -193,6 +202,68 @@ void main() {
       expect(find.textContaining('Nigeria'), findsOneWidget);
       expect(find.textContaining('The Gambia'), findsOneWidget);
       expect(find.text('Create my account'), findsOneWidget);
+    });
+  });
+
+  group('the copy stays professional', () {
+    testWidgets('no dashes anywhere on the welcome screen', (tester) async {
+      await pump(tester, const WelcomeScreen());
+      for (final el in find.byType(Text).evaluate()) {
+        final t = (el.widget as Text).data ?? '';
+        expect(t.contains('—'), isFalse, reason: 'em dash in: "$t"');
+        expect(t.contains(' - '), isFalse, reason: 'spaced hyphen in: "$t"');
+      }
+    });
+  });
+
+  group('signup guards the password properly', () {
+    testWidgets('a mismatched confirmation is refused on the phone', (
+      tester,
+    ) async {
+      await pump(tester, const SignupScreen());
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Kweku'),
+        'Kweku',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Adeola'),
+        'Adeola',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'e.g. sharpshooter01'),
+        'sharp01',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'you@example.com'),
+        'me@example.com',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'At least 8 characters'),
+        'longenough',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Type it once more'),
+        'different1',
+      );
+      await tapScrolled(tester, find.text('Continue'));
+      expect(find.text('The two passwords do not match.'), findsOneWidget);
+      expect(find.text('Step 1 of 2'), findsOneWidget);
+    });
+
+    testWidgets('typing a password shows its strength', (tester) async {
+      await pump(tester, const SignupScreen());
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'At least 8 characters'),
+        'longenough',
+      );
+      await tester.pump();
+      expect(find.text('Weak'), findsOneWidget);
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'At least 8 characters'),
+        'MuchStronger#2024!',
+      );
+      await tester.pump();
+      expect(find.text('Strong'), findsOneWidget);
     });
   });
 }

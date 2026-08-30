@@ -18,7 +18,11 @@ class ThemeController extends AsyncNotifier<ThemeMode> {
     return switch (prefs.getString(_key)) {
       'light' => ThemeMode.light,
       'dark' => ThemeMode.dark,
-      _ => ThemeMode.system,
+      'system' => ThemeMode.system,
+      /* First launch opens in LIGHT, deliberately: the clean white face with
+         the blue and gold is the brand's first impression. The student can
+         switch after signing in and the choice is remembered. */
+      _ => ThemeMode.light,
     };
   }
 

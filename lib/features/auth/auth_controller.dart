@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
 import '../../core/api.dart';
 import '../../core/session_store.dart';
@@ -17,8 +18,8 @@ class AuthUnknown extends AuthState {
 class SignedOut extends AuthState {
   const SignedOut({this.message});
 
-  /// Set when a session ended on its own — expired, or taken by another
-  /// device — so the welcome screen can say why rather than looking like a bug.
+  /// Set when a session ended on its own, so the welcome screen can say why
+  /// rather than looking like a bug.
   final String? message;
 }
 
@@ -30,37 +31,51 @@ class SignedIn extends AuthState {
 /// ===========================================================================
 /// IDENTITY
 ///
-/// Login and signup go through the WEBSITE's routes, not straight to Supabase,
-/// because those routes do more than check a password: they heal a missing
-/// profile row, record the device, keep the one-account-per-device slot, and
-/// write the activity log. Signing in directly against Supabase would skip all
-/// of it and quietly produce a student the website does not fully know about.
+/// Login and signup go through the WEBSITE's routes first, because those
+/// routes do more than check a password: they heal a missing profile row,
+/// record the device, hold the one account per device slot and write the
+/// activity log.
 ///
-/// The tokens come back in the JSON body — the website has always returned
-/// them — and go into the platform keystore.
+/// But the app must never be stranded by what one response happened to carry.
+/// So the session is established through a chain, and any link is enough:
+///
+///   1. tokens in the route's JSON body (login and signup both send them)
+///   2. a direct sign in against the auth server with the email in hand
+///
+/// And the name on the dashboard resolves the same way: the API if it answers,
+/// the student's own profile row straight from the database if not. The
+/// profile read works because Row Level Security explicitly allows a student
+/// to read their own row.
 /// ===========================================================================
 class AuthController extends AsyncNotifier<AuthState> {
   Api get _api => ref.read(apiProvider);
   SessionStore get _store => ref.read(sessionStoreProvider);
+  sb.SupabaseClient get _supabase => ref.read(supabaseProvider);
 
   @override
   Future<AuthState> build() async {
-    final token = await _store.accessToken();
-    if (token == null) return const SignedOut();
-    // A stored token is not a session — it may have expired, or another device
-    // may have taken the slot. Ask the server before showing the dashboard.
+    final refresh = await _store.refreshToken();
+    if (refresh == null) return const SignedOut();
+
+    // A stored token is not a session. Ask the server before showing home.
     try {
-      final me = await _api.get('/api/me');
+      final me = await _api.get('/api/me', retainSessionOn401: true);
       return SignedIn((me['name'] as String?) ?? 'Champion');
     } on ApiFailure catch (e) {
       if (e.unauthorised) {
+        /* The API said no. That is either a genuinely dead session, or a
+           server build that does not yet read bearer tokens. The auth server
+           itself is the referee: if it still honours the refresh token, the
+           session is real and the student stays in. */
+        final revived = await _reviveFromRefreshToken(refresh);
+        if (revived != null) return SignedIn(await _resolveName());
+        await _store.clear();
         return const SignedOut(
           message: 'Your session has ended. Please log in again.',
         );
       }
-      // Offline with a token we cannot verify: let them in and let the screens
-      // deal with it. Locking a student out because a bus went through a
-      // tunnel would be the wrong call.
+      // Offline with a token we cannot verify: let them in. A bus going
+      // through a tunnel is not a reason to lock a student out.
       if (e.offline) return const SignedIn('Champion');
       return const SignedOut();
     }
@@ -76,27 +91,32 @@ class AuthController extends AsyncNotifier<AuthState> {
         '/api/auth/login',
         body: {'identifier': identifier.trim(), 'password': password},
       );
-      await _persist(res);
-      final me = await _api.get('/api/me');
-      state = AsyncData(SignedIn((me['name'] as String?) ?? 'Champion'));
+      await _establishSession(
+        res,
+        email:
+            (res['email'] as String?) ??
+            (identifier.contains('@') ? identifier.trim() : null),
+        password: password,
+      );
+      state = AsyncData(
+        SignedIn(await _resolveName(hint: res['name'] as String?)),
+      );
     } on ApiFailure catch (e, st) {
       state = AsyncError(e, st);
     }
   }
 
-  /// Creates the account and then signs in with the same credentials.
-  ///
-  /// The signup route does not return tokens — it sets cookies, which a native
-  /// app has no jar for — so the app logs in immediately afterwards with the
-  /// details it already has. One extra round trip, no backend change, and no
-  /// half-created account left behind if the second call fails.
   Future<void> signUp(Map<String, dynamic> form) async {
     state = const AsyncLoading();
     try {
-      await _api.post('/api/auth/signup', body: form);
-      await logIn(
-        identifier: form['email'] as String,
-        password: form['password'] as String,
+      final res = await _api.post('/api/auth/signup', body: form);
+      await _establishSession(
+        res,
+        email: (res['email'] as String?) ?? form['email'] as String?,
+        password: form['password'] as String?,
+      );
+      state = AsyncData(
+        SignedIn(await _resolveName(hint: form['first_name'] as String?)),
       );
     } on ApiFailure catch (e, st) {
       state = AsyncError(e, st);
@@ -109,19 +129,110 @@ class AuthController extends AsyncNotifier<AuthState> {
     } on ApiFailure {
       // The server may be unreachable; the phone still forgets the session.
     }
+    try {
+      await _supabase.auth.signOut(scope: sb.SignOutScope.local);
+    } catch (_) {}
     await _store.clear();
     state = const AsyncData(SignedOut());
   }
 
-  Future<void> _persist(Map<String, dynamic> res) async {
-    final access = res['access_token'] as String?;
-    final refresh = res['refresh_token'] as String?;
+  // -------------------------------------------------------------------------
+
+  /// Turns a successful login or signup response into a stored session,
+  /// through whichever link of the chain works.
+  Future<void> _establishSession(
+    Map<String, dynamic> res, {
+    String? email,
+    String? password,
+  }) async {
+    var access = res['access_token'] as String?;
+    var refresh = res['refresh_token'] as String?;
+
+    // The route answered without tokens. Exchange the credentials directly
+    // with the auth server instead; it is the same session either way.
+    if ((access == null || refresh == null) &&
+        email != null &&
+        password != null) {
+      try {
+        final direct = await _supabase.auth.signInWithPassword(
+          email: email.trim(),
+          password: password,
+        );
+        access = direct.session?.accessToken;
+        refresh = direct.session?.refreshToken;
+      } on sb.AuthException catch (e) {
+        throw ApiFailure(e.message);
+      }
+    }
+
     if (access == null || refresh == null) {
+      // Name the missing pieces, so a screenshot of this message is a
+      // diagnosis rather than a mystery.
       throw ApiFailure(
-        'Signed in, but no session came back. Please try again.',
+        'Signed in, but no session was issued '
+        '(response carried: ${res.keys.join(', ')}). '
+        'Please try again, and report this if it repeats.',
       );
     }
+
     await _store.save(access: access, refresh: refresh);
+
+    // Give the Supabase client the same session so profile reads work even
+    // when the tokens came from the API rather than a direct sign in.
+    try {
+      if (_supabase.auth.currentSession?.accessToken != access) {
+        await _supabase.auth.setSession(refresh);
+        final s = _supabase.auth.currentSession;
+        if (s != null) {
+          await _store.save(
+            access: s.accessToken,
+            refresh: s.refreshToken ?? refresh,
+          );
+        }
+      }
+    } catch (_) {
+      // The API tokens stand on their own; this only helps the fallbacks.
+    }
+  }
+
+  /// The auth server is asked directly whether a refresh token still lives.
+  Future<sb.Session?> _reviveFromRefreshToken(String refresh) async {
+    try {
+      final res = await _supabase.auth.setSession(refresh);
+      final session = res.session;
+      if (session != null) {
+        await _store.save(
+          access: session.accessToken,
+          refresh: session.refreshToken ?? refresh,
+        );
+      }
+      return session;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The student's first name: API first, own profile row second, a warm
+  /// default third. Never a failure — a greeting is not worth an error screen.
+  Future<String> _resolveName({String? hint}) async {
+    try {
+      final me = await _api.get('/api/me', retainSessionOn401: true);
+      final n = me['name'] as String?;
+      if (n != null && n.isNotEmpty) return n;
+    } catch (_) {}
+    try {
+      final uid = _supabase.auth.currentUser?.id;
+      if (uid != null) {
+        final row = await _supabase
+            .from('profiles')
+            .select('first_name')
+            .eq('id', uid)
+            .maybeSingle();
+        final n = row?['first_name'] as String?;
+        if (n != null && n.isNotEmpty) return n;
+      }
+    } catch (_) {}
+    return (hint != null && hint.isNotEmpty) ? hint : 'Champion';
   }
 }
 

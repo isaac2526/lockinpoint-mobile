@@ -60,6 +60,18 @@ dev_dependencies:
   custom_lint: ^0.8.1
   riverpod_lint: ^3.0.2
   drift_dev: ^2.28.2
+  flutter_launcher_icons: ^0.14.4
+
+# The launcher icon is the real crowned mark, rendered from the website's own
+# logo geometry. The adaptive foreground keeps the art inside Android's safe
+# zone so no mask shape ever clips the cap.
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/icon/icon.png
+  adaptive_icon_background: "#0F2C86"
+  adaptive_icon_foreground: assets/icon/icon_foreground.png
+  remove_alpha_ios: true
 
 flutter:
   uses-material-design: true

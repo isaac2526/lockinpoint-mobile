@@ -56,12 +56,14 @@ class Api {
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
+    bool retainSessionOn401 = false,
   }) => _send(
     () async => _dio.get(
       path,
       queryParameters: query,
       options: Options(headers: await _authHeader()),
     ),
+    retainSessionOn401: retainSessionOn401,
   );
 
   Future<Map<String, dynamic>> post(String path, {Object? body}) => _send(
@@ -72,7 +74,10 @@ class Api {
     ),
   );
 
-  Future<Map<String, dynamic>> _send(Future<Response> Function() run) async {
+  Future<Map<String, dynamic>> _send(
+    Future<Response> Function() run, {
+    bool retainSessionOn401 = false,
+  }) async {
     Response res;
     try {
       res = await run();
@@ -100,7 +105,11 @@ class Api {
        the app fall back to the welcome screen rather than sitting on a screen
        that will never load. */
     if (code == 401) {
-      await _store.clear();
+      /* During a fresh login the caller probes /api/me while HOLDING tokens it
+         just received. A 401 there can mean the deployed server build does not
+         yet accept bearer tokens, not that the session is bad, so that caller
+         asks us not to burn the tokens it is standing on. */
+      if (!retainSessionOn401) await _store.clear();
       throw ApiFailure(
         'Your session has ended. Please log in again.',
         unauthorised: true,

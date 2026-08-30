@@ -9,6 +9,7 @@ import '../../../design/tokens.dart';
 import '../../../design/typography.dart';
 import '../../../design/wordmark.dart';
 import '../auth_controller.dart';
+import 'forgot_screen.dart';
 import 'signup_screen.dart';
 
 /// Log in with the same account as the website — the same email or username,
@@ -162,7 +163,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
             ),
 
-            const SizedBox(height: Gap.xl),
+            const SizedBox(height: Gap.sm),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: _busy
+                    ? null
+                    : () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ForgotScreen(
+                            prefillEmail: _identifier.text.contains('@')
+                                ? _identifier.text.trim()
+                                : null,
+                          ),
+                        ),
+                      ),
+                child: const Text('Forgot password?'),
+              ),
+            ),
+            const SizedBox(height: Gap.md),
             LipButton(label: 'Log in', busy: _busy, onPressed: _submit),
             const SizedBox(height: Gap.md),
 
@@ -179,9 +198,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
             const SizedBox(height: Gap.lg),
             Text(
-              'One account, one device at a time. Logging in here signs you out '
-              'of the browser — and a sitting already in progress is never '
-              'interrupted.',
+              'One account works on one device at a time. Logging in here '
+              'signs you out of your browser. A test you have already started '
+              'is never interrupted.',
               style: LipType.caption.copyWith(color: c.text3),
               textAlign: TextAlign.center,
             ),

@@ -6,6 +6,7 @@ import 'app/theme_controller.dart';
 import 'core/config.dart';
 import 'design/aura.dart';
 import 'design/theme.dart';
+import 'design/motion_widgets.dart';
 import 'design/tokens.dart';
 import 'design/typography.dart';
 import 'design/wordmark.dart';
@@ -80,23 +81,65 @@ class _Gate extends ConsumerWidget {
   }
 }
 
-class _Splash extends StatelessWidget {
+/// The first thing anyone sees: the crowned mark arriving with a spring, the
+/// name fading in beneath it, three dots breathing while the keystore is read.
+/// It usually lives for well under a second, and it should feel alive for all
+/// of it.
+class _Splash extends StatefulWidget {
   const _Splash({super.key});
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const LipLogoMark(size: 76),
-          const SizedBox(height: Gap.lg),
-          Text(
-            'LockInPoint',
-            style: LipType.title.copyWith(color: context.lip.text1),
-          ),
-        ],
+  State<_Splash> createState() => _SplashState();
+}
+
+class _SplashState extends State<_Splash> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 600),
+  )..forward();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lip = context.lip;
+    final pop = CurvedAnimation(parent: _c, curve: Motion.spring);
+    final fade = CurvedAnimation(
+      parent: _c,
+      curve: const Interval(0.35, 1, curve: Curves.easeOut),
+    );
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ScaleTransition(
+              scale: Tween(begin: 0.72, end: 1.0).animate(pop),
+              child: FadeTransition(
+                opacity: pop,
+                child: const LipLogoMark(size: 84),
+              ),
+            ),
+            const SizedBox(height: Gap.lg),
+            FadeTransition(
+              opacity: fade,
+              child: Text(
+                'LockInPoint',
+                style: LipType.title.copyWith(color: lip.text1),
+              ),
+            ),
+            const SizedBox(height: Gap.xl),
+            FadeTransition(
+              opacity: fade,
+              child: PulseDots(color: lip.brand),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
