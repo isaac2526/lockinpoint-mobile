@@ -151,9 +151,11 @@ class Sitting {
     required this.label,
     required this.questions,
     required this.passages,
+    this.duration = 0,
     this.initialIndex = 0,
     this.initialAnswers = const {},
     this.initialChecked = const {},
+    this.initialFlags = const {},
   });
 
   final String attemptId;
@@ -161,9 +163,20 @@ class Sitting {
   final String label;
   final List<ServedQuestion> questions;
   final Map<String, Passage> passages;
+
+  /// Seconds left on the clock. Zero means untimed practice.
+  ///
+  /// This number is computed BY THE SERVER from the attempt's creation time,
+  /// on a fresh start and on every resume alike, so closing the app cannot
+  /// buy a student extra minutes.
+  final int duration;
+
   final int initialIndex;
   final Map<String, String> initialAnswers;
   final Map<String, bool> initialChecked;
+  final Map<String, bool> initialFlags;
+
+  bool get timed => duration > 0;
 }
 
 class SubmitResult {
@@ -249,12 +262,17 @@ class PracticeRepository {
     String? topicId,
     String kind = 'past',
     int count = 20,
+
+    /// 'practice' is the untimed room with instant marking; 'cbt' is the timed
+    /// one, marked at the end exactly as the real hall does it.
+    String mode = 'practice',
+    int minutes = 30,
   }) async {
     final res = await _api.post(
       '/api/attempts',
       body: {
         'action': 'start',
-        'mode': 'practice',
+        'mode': mode,
         'examSlug': examSlug,
         'subjectIds': [subjectId],
         'count': '$count',
@@ -262,6 +280,7 @@ class PracticeRepository {
         'year': ?year,
         'topicId': ?topicId,
         'kind': kind,
+        if (mode == 'cbt') 'minutes': '$minutes',
       },
     );
     return _sitting(res, label);
@@ -284,6 +303,9 @@ class PracticeRepository {
       initialChecked: ((progress['checked'] as Map?) ?? const {}).map(
         (k, v) => MapEntry(k.toString(), v == true),
       ),
+      initialFlags: ((progress['flags'] as Map?) ?? const {}).map(
+        (k, v) => MapEntry(k.toString(), v == true),
+      ),
     );
   }
 
@@ -293,10 +315,12 @@ class PracticeRepository {
     int initialIndex = 0,
     Map<String, String> initialAnswers = const {},
     Map<String, bool> initialChecked = const {},
+    Map<String, bool> initialFlags = const {},
   }) => Sitting(
     attemptId: res['attemptId'] as String,
     mode: res['mode'] as String? ?? 'practice',
     label: label,
+    duration: (res['duration'] as num?)?.toInt() ?? 0,
     questions: ((res['questions'] as List?) ?? const [])
         .cast<Map<String, dynamic>>()
         .map(ServedQuestion.fromJson)
@@ -313,6 +337,7 @@ class PracticeRepository {
     initialIndex: initialIndex,
     initialAnswers: initialAnswers,
     initialChecked: initialChecked,
+    initialFlags: initialFlags,
   );
 
   /// Autosave. Best effort by design: a lost heartbeat must never interrupt
@@ -323,11 +348,13 @@ class PracticeRepository {
     required Map<String, String> answers,
     required Map<String, bool> checked,
     required int idx,
+    Map<String, bool> flags = const {},
   }) async {
     try {
       await _api.post(
         '/api/attempts',
         body: {
+          'flags': flags,
           'action': 'progress',
           'attemptId': attemptId,
           'answers': answers,

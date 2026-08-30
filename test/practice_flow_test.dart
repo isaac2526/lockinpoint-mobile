@@ -94,12 +94,30 @@ void main() {
     await tester.tap(find.text('By year'));
     await tester.pumpAndSettle();
 
+    // The step is a lazy ListView, so the action at its foot has to be
+    // scrolled into existence before it can be inspected at all.
     final startButton = find.widgetWithText(FilledButton, 'Start practising');
-    await tester.ensureVisible(startButton);
+    await tester.dragUntilVisible(
+      startButton,
+      find.byType(ListView),
+      const Offset(0, -220),
+    );
     await tester.pumpAndSettle();
     expect(tester.widget<FilledButton>(startButton).onPressed, isNull);
 
+    await tester.dragUntilVisible(
+      find.text('2021'),
+      find.byType(ListView),
+      const Offset(0, 220),
+    );
     await tester.tap(find.text('2021'));
+    await tester.pumpAndSettle();
+
+    await tester.dragUntilVisible(
+      startButton,
+      find.byType(ListView),
+      const Offset(0, -220),
+    );
     await tester.pumpAndSettle();
     expect(tester.widget<FilledButton>(startButton).onPressed, isNotNull);
     // The session label carries the whole choice.

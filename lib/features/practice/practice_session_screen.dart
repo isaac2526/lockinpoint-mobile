@@ -27,9 +27,20 @@ import 'question_html.dart';
 /// grades it for good and feeds the streak.
 /// ===========================================================================
 class PracticeSessionScreen extends ConsumerStatefulWidget {
-  const PracticeSessionScreen({super.key, required this.sitting});
+  const PracticeSessionScreen({
+    super.key,
+    required this.sitting,
+    this.clock = DateTime.now,
+  });
 
   final Sitting sitting;
+
+  /// Where "now" comes from. Production reads the wall clock, deliberately:
+  /// the deadline is a point in time, so a phone that sleeps or an isolate
+  /// that stalls cannot slow the exam down. Tests hand in their own clock
+  /// because a wall clock cannot be fast-forwarded.
+  @visibleForTesting
+  final DateTime Function() clock;
 
   @override
   ConsumerState<PracticeSessionScreen> createState() => _SessionState();
@@ -42,22 +53,60 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
   );
   late final Map<String, String> _answers = {...widget.sitting.initialAnswers};
   late final Map<String, bool> _checked = {...widget.sitting.initialChecked};
+  late final Map<String, bool> _flags = {...widget.sitting.initialFlags};
 
   Timer? _saveDebounce;
+  Timer? _tick;
+
+  /// The moment the clock runs out, fixed once from the server's own count of
+  /// seconds remaining. Everything after is measured against the wall clock,
+  /// so a phone that sleeps or an isolate that stalls cannot slow the exam
+  /// down — the deadline is a point in time, not a number being decremented.
+  DateTime? _deadline;
+
   bool _submitting = false;
   SubmitResult? _result;
 
   Sitting get sitting => widget.sitting;
   ServedQuestion get q => sitting.questions[_idx];
 
-  /// A resumed sitting arrives without the answer key — the server only sends
-  /// it on a fresh practice start. Marking then waits for submit, and the
-  /// screen says so instead of pretending.
-  bool get _canMark => q.answer != null && q.answer!.isNotEmpty;
+  /// A resumed sitting arrives without the answer key, and a timed CBT never
+  /// carries one at all — marking is the server's job at submit. The screen
+  /// says which room the student is in rather than pretending.
+  bool get _canMark =>
+      !sitting.timed && q.answer != null && q.answer!.isNotEmpty;
+
+  /// Whole seconds left, rounded UP: with 119.4 seconds to go the clock reads
+  /// 02:00, not 01:59, and it reaches 00:00 exactly when the time is gone.
+  int get _left {
+    final d = _deadline;
+    if (d == null) return 0;
+    final ms = d.difference(widget.clock()).inMilliseconds;
+    return ms <= 0 ? 0 : (ms / 1000).ceil();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (sitting.timed) {
+      _deadline = widget.clock().add(Duration(seconds: sitting.duration));
+      _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        if (_left == 0) {
+          _tick?.cancel();
+          // Time is up. The paper goes in exactly as it would in the hall.
+          _submit(force: true);
+        } else {
+          setState(() {});
+        }
+      });
+    }
+  }
 
   @override
   void dispose() {
     _saveDebounce?.cancel();
+    _tick?.cancel();
     super.dispose();
   }
 
@@ -70,6 +119,7 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
             attemptId: sitting.attemptId,
             answers: _answers,
             checked: _checked,
+            flags: _flags,
             idx: _idx,
           );
     });
@@ -90,9 +140,10 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
     _queueSave();
   }
 
-  Future<void> _submit() async {
+  Future<void> _submit({bool force = false}) async {
+    if (_submitting) return;
     final unanswered = sitting.questions.length - _answers.length;
-    if (unanswered > 0) {
+    if (unanswered > 0 && !force) {
       final sure = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -117,6 +168,7 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
       if (sure != true) return;
     }
     setState(() => _submitting = true);
+    _tick?.cancel();
     try {
       final result = await ref
           .read(practiceRepositoryProvider)
@@ -134,27 +186,106 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
     }
   }
 
+  /// Every question at a glance: answered, flagged, or still blank. This is
+  /// what makes a timed sitting navigable — a student who skipped question 14
+  /// must be able to get back to it without tapping through thirteen others.
+  Future<void> _openGrid() async {
+    final jump = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final c = context.lip;
+        return GlassSurface(
+          tier: GlassTier.modal,
+          blurred: true,
+          radius: Radii.lg,
+          padding: const EdgeInsets.all(Gap.lg),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const LipLabel('All questions'),
+                const SizedBox(height: Gap.md),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Wrap(
+                      spacing: Gap.sm,
+                      runSpacing: Gap.sm,
+                      children: [
+                        for (var i = 0; i < sitting.questions.length; i++)
+                          _GridPip(
+                            number: i + 1,
+                            answered: _answers.containsKey(
+                              sitting.questions[i].id,
+                            ),
+                            flagged: _flags[sitting.questions[i].id] == true,
+                            current: i == _idx,
+                            onTap: () => Navigator.pop(context, i),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: Gap.md),
+                Row(
+                  children: [
+                    Icon(Icons.flag_rounded, size: 14, color: c.warning),
+                    const SizedBox(width: Gap.sm),
+                    Text(
+                      'Flagged for another look',
+                      style: LipType.caption.copyWith(color: c.text3),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (jump != null && mounted) _go(jump);
+  }
+
   Future<void> _leave() async {
-    final leave = await showDialog<bool>(
+    /* Practice and CBT part ways here, and the difference is told plainly.
+       An untimed sitting waits on the dashboard. A timed one does not: the
+       clock runs on the server whether the app is open or not, and the
+       Continue card deliberately never offers a timed paper back. So the
+       student is offered the exit that keeps their work. */
+    final choice = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Leave this sitting?'),
-        content: const Text(
-          'Your progress is saved. You can continue from the dashboard.',
+        title: Text(sitting.timed ? 'Leave the exam?' : 'Leave this sitting?'),
+        content: Text(
+          sitting.timed
+              ? 'The clock keeps running, and a timed paper is not offered '
+                    'again from the dashboard. Submit now to keep your score.'
+              : 'Your progress is saved. You can continue from the dashboard.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(context, 'stay'),
             child: const Text('Stay'),
           ),
+          if (sitting.timed)
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'leave'),
+              child: const Text('Leave anyway'),
+            ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Leave'),
+            onPressed: () =>
+                Navigator.pop(context, sitting.timed ? 'submit' : 'leave'),
+            child: Text(sitting.timed ? 'Submit now' : 'Leave'),
           ),
         ],
       ),
     );
-    if (leave == true && mounted) {
+    if (!mounted) return;
+    if (choice == 'submit') {
+      await _submit(force: true);
+    } else if (choice == 'leave') {
       ref.invalidate(dashboardProvider);
       Navigator.of(context).pop();
     }
@@ -204,6 +335,12 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
                         ],
                       ),
                     ),
+                    if (sitting.timed) _Clock(left: _left),
+                    IconButton(
+                      onPressed: _openGrid,
+                      icon: const Icon(Icons.grid_view_rounded, size: 20),
+                      tooltip: 'All questions',
+                    ),
                     TextButton(
                       onPressed: _submitting ? null : _submit,
                       child: _submitting
@@ -245,17 +382,37 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
       key: ValueKey(q.id),
       padding: const EdgeInsets.all(Gap.md),
       children: [
-        if (q.year != null || (q.section ?? '').isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: Gap.sm),
-            child: Wrap(
-              spacing: Gap.sm,
-              children: [
-                if (q.year != null) LipChip('${q.year}'),
-                if ((q.section ?? '').isNotEmpty) LipChip(q.section!),
+        Padding(
+          padding: const EdgeInsets.only(bottom: Gap.sm),
+          child: Row(
+            children: [
+              if (q.year != null) ...[
+                LipChip('${q.year}'),
+                const SizedBox(width: Gap.sm),
               ],
-            ),
+              if ((q.section ?? '').isNotEmpty) LipChip(q.section!),
+              const Spacer(),
+              // Flagging is how a student says "come back to this" without
+              // losing their place, and it survives leaving and resuming.
+              LipChip(
+                _flags[q.id] == true ? 'Flagged' : 'Flag',
+                tone: _flags[q.id] == true
+                    ? ChipTone.warning
+                    : ChipTone.neutral,
+                onTap: () {
+                  setState(() {
+                    if (_flags[q.id] == true) {
+                      _flags.remove(q.id);
+                    } else {
+                      _flags[q.id] = true;
+                    }
+                  });
+                  _queueSave();
+                },
+              ),
+            ],
           ),
+        ),
         if (passage != null) ...[
           _PassageCard(passage: passage),
           const SizedBox(height: Gap.md),
@@ -359,6 +516,113 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// The exam clock. Monospaced with tabular figures so the digits do not jitter
+/// as they count down, and it turns to danger inside the last minute — the one
+/// moment a student needs to be told without reading anything.
+class _Clock extends StatelessWidget {
+  const _Clock({required this.left});
+
+  /// Whole seconds remaining.
+  final int left;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.lip;
+    final urgent = left <= 60;
+    final low = left <= 300;
+    final mm = (left ~/ 60).toString().padLeft(2, '0');
+    final ss = (left % 60).toString().padLeft(2, '0');
+    return Semantics(
+      liveRegion: urgent,
+      label: urgent ? '$left seconds left' : '${left ~/ 60} minutes left',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: Gap.md, vertical: 5),
+        decoration: BoxDecoration(
+          color: urgent
+              ? c.dangerSoft
+              : low
+              ? c.warningSoft
+              : c.glassDeep,
+          borderRadius: BorderRadius.circular(Radii.pill),
+        ),
+        child: Text(
+          '$mm:$ss',
+          style: LipType.mono.copyWith(
+            color: urgent
+                ? c.danger
+                : low
+                ? c.warning
+                : c.text2,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One square in the question grid.
+class _GridPip extends StatelessWidget {
+  const _GridPip({
+    required this.number,
+    required this.answered,
+    required this.flagged,
+    required this.current,
+    required this.onTap,
+  });
+
+  final int number;
+  final bool answered;
+  final bool flagged;
+  final bool current;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.lip;
+    final bg = flagged
+        ? c.warningSoft
+        : answered
+        ? c.brandSoft
+        : c.glassDeep;
+    final fg = flagged
+        ? c.warning
+        : answered
+        ? c.brand
+        : c.text3;
+    return Semantics(
+      button: true,
+      label:
+          'Question $number, '
+          '${flagged
+              ? 'flagged'
+              : answered
+              ? 'answered'
+              : 'not answered'}',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(Radii.sm),
+        child: Container(
+          height: 40,
+          width: 40,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(Radii.sm),
+            border: Border.all(
+              color: current ? c.brand : c.glassBorder,
+              width: current ? 2 : 1,
+            ),
+          ),
+          child: Text(
+            '$number',
+            style: LipType.smallStrong.copyWith(color: fg),
+          ),
+        ),
       ),
     );
   }

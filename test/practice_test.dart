@@ -24,6 +24,7 @@ class _FakeRepo extends Fake implements PracticeRepository {
     required Map<String, String> answers,
     required Map<String, bool> checked,
     required int idx,
+    Map<String, bool> flags = const {},
   }) async {
     saves++;
   }
@@ -68,19 +69,40 @@ Sitting _sitting() => const Sitting(
   passages: {},
 );
 
-Future<_FakeRepo> _pumpSession(WidgetTester tester, {Sitting? sitting}) async {
+/// A clock the test owns, so a two minute exam can be lived through in a few
+/// milliseconds. Production reads the wall clock; see the widget for why.
+class _FakeClock {
+  DateTime now = DateTime.utc(2026, 1, 1, 9);
+  DateTime call() => now;
+}
+
+Future<_FakeRepo> _pumpSession(
+  WidgetTester tester, {
+  Sitting? sitting,
+  _FakeClock? clock,
+}) async {
   final repo = _FakeRepo();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [practiceRepositoryProvider.overrideWithValue(repo)],
       child: MaterialApp(
         theme: LipTheme.light(),
-        home: PracticeSessionScreen(sitting: sitting ?? _sitting()),
+        home: PracticeSessionScreen(
+          sitting: sitting ?? _sitting(),
+          clock: (clock ?? _FakeClock()).call,
+        ),
       ),
     ),
   );
   await tester.pumpAndSettle();
   return repo;
+}
+
+/// Moves the test's clock and the widget's timers together, one second at a
+/// time, the way a real second passes for both.
+Future<void> _tickSecond(WidgetTester tester, _FakeClock clock) async {
+  clock.now = clock.now.add(const Duration(seconds: 1));
+  await tester.pump(const Duration(seconds: 1));
 }
 
 void main() {
@@ -169,6 +191,23 @@ void main() {
       expect(find.textContaining('What is 2 + 2?'), findsOneWidget);
     });
 
+    testWidgets('a question can be flagged and the grid shows it', (
+      tester,
+    ) async {
+      await _pumpSession(tester);
+      await tester.tap(find.text('Flag'));
+      await tester.pump();
+      expect(find.text('Flagged'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('All questions'));
+      await tester.pumpAndSettle();
+      expect(find.text('All questions'.toUpperCase()), findsOneWidget);
+      // Jumping from the grid lands on that question.
+      await tester.tap(find.text('2').last);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('What is 3 times 3?'), findsOneWidget);
+    });
+
     testWidgets('a resumed sitting without the key defers marking', (
       tester,
     ) async {
@@ -194,6 +233,69 @@ void main() {
         find.textContaining('Marking for this resumed sitting'),
         findsOneWidget,
       );
+    });
+  });
+
+  group('a CBT is the timed room, with the hall\'s rules', () {
+    Sitting timed({int seconds = 120}) => Sitting(
+      attemptId: 'attempt-cbt',
+      mode: 'cbt',
+      label: 'JAMB · Mathematics · CBT',
+      duration: seconds,
+      questions: _sitting().questions,
+      passages: const {},
+    );
+
+    testWidgets('the clock is shown and counts down', (tester) async {
+      final clock = _FakeClock();
+      await _pumpSession(tester, sitting: timed(), clock: clock);
+      expect(find.text('02:00'), findsOneWidget);
+      await _tickSecond(tester, clock);
+      expect(find.text('01:59'), findsOneWidget);
+      await _tickSecond(tester, clock);
+      expect(find.text('01:58'), findsOneWidget);
+    });
+
+    testWidgets('no answer is marked before submit, even with a key', (
+      tester,
+    ) async {
+      // The fixture carries answers, exactly as a practice payload would.
+      // A timed sitting must ignore them: marking is the server's at submit.
+      await _pumpSession(tester, sitting: timed());
+      await tester.tap(find.textContaining('4').first);
+      await tester.pump();
+      expect(find.textContaining('Two and two make four'), findsNothing);
+      expect(find.text('Question 1 of 2 · 1 answered'), findsOneWidget);
+    });
+
+    testWidgets('when time runs out the paper goes in by itself', (
+      tester,
+    ) async {
+      final clock = _FakeClock();
+      final repo = await _pumpSession(
+        tester,
+        sitting: timed(seconds: 2),
+        clock: clock,
+      );
+      await _tickSecond(tester, clock);
+      expect(find.text('00:01'), findsOneWidget);
+      await _tickSecond(tester, clock);
+      await tester.pumpAndSettle();
+      // No dialog asked, no tap needed: the result is simply there.
+      expect(repo.submittedAnswers, isNotNull);
+      expect(find.text('50%'), findsOneWidget);
+    });
+
+    testWidgets('leaving a timed paper offers the exit that keeps the score', (
+      tester,
+    ) async {
+      await _pumpSession(tester, sitting: timed());
+      await tester.tap(find.byTooltip('Leave'));
+      await tester.pumpAndSettle();
+      expect(find.text('Leave the exam?'), findsOneWidget);
+      expect(find.textContaining('The clock keeps running'), findsOneWidget);
+      expect(find.text('Submit now'), findsOneWidget);
+      expect(find.text('Leave anyway'), findsOneWidget);
     });
   });
 }

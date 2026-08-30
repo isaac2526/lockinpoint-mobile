@@ -40,6 +40,12 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
   int? _year;
   TopicCount? _topic;
   int _count = 20;
+
+  /// Which room: the untimed one that marks as you go, or the timed one that
+  /// behaves like the real hall.
+  bool _timed = false;
+  int _minutes = 30;
+
   bool _busy = false;
   String? _error;
 
@@ -104,7 +110,12 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
       _Source.tutorial => 'Tutorial questions',
       _Source.random => 'Random mix',
     };
-    return [exam, subject, tail].where((s) => s.isNotEmpty).join(' · ');
+    return [
+      exam,
+      subject,
+      tail,
+      if (_timed) 'CBT',
+    ].where((s) => s.isNotEmpty).join(' · ');
   }
 
   Future<void> _start() => _guard(() async {
@@ -116,6 +127,8 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
       topicId: _source == _Source.topic ? _topic!.id : null,
       kind: _source == _Source.tutorial ? 'tutorial' : 'past',
       count: _count,
+      mode: _timed ? 'cbt' : 'practice',
+      minutes: _minutes,
     );
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
@@ -399,6 +412,43 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
           ],
         ),
         const SizedBox(height: Gap.lg),
+
+        // ---- the room: untimed practice, or a timed CBT ------------------
+        const LipLabel('How do you want to sit it'),
+        const SizedBox(height: Gap.sm),
+        LipChoiceCard(
+          icon: Icons.self_improvement_rounded,
+          title: 'Practice',
+          subtitle: 'No clock. See the answer and the why after each question',
+          selected: !_timed,
+          onTap: () => setState(() => _timed = false),
+        ),
+        const SizedBox(height: Gap.md),
+        LipChoiceCard(
+          icon: Icons.timer_rounded,
+          title: 'CBT',
+          subtitle:
+              'A clock, no answers until you submit, exactly like the hall',
+          selected: _timed,
+          onTap: () => setState(() => _timed = true),
+        ),
+        if (_timed) ...[
+          const SizedBox(height: Gap.md),
+          const LipLabel('How long'),
+          const SizedBox(height: Gap.sm),
+          Wrap(
+            spacing: Gap.sm,
+            children: [
+              for (final m in const [10, 20, 30, 45])
+                LipChip(
+                  '$m min',
+                  selected: _minutes == m,
+                  onTap: () => setState(() => _minutes = m),
+                ),
+            ],
+          ),
+        ],
+        const SizedBox(height: Gap.lg),
         GlassSurface(
           tier: GlassTier.deep,
           padding: const EdgeInsets.all(Gap.md),
@@ -409,8 +459,10 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
         ),
         const SizedBox(height: Gap.md),
         LipButton(
-          label: 'Start practising',
-          icon: Icons.play_arrow_rounded,
+          label: _timed ? 'Start the clock' : 'Start practising',
+          icon: _timed ? Icons.timer_rounded : Icons.play_arrow_rounded,
+          // Gold marks the serious action, as it does on the website.
+          gold: _timed,
           busy: _busy,
           onPressed: ready ? _start : null,
         ),
