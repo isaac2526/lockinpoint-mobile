@@ -17,6 +17,7 @@ import '../../design/wordmark.dart';
 import '../../app/theme_controller.dart';
 import '../auth/auth_controller.dart';
 import '../practice/practice_flow_screen.dart';
+import '../profile/profile_screen.dart';
 import '../practice/practice_repository.dart';
 import '../practice/practice_session_screen.dart';
 import '../leaderboard/leaderboard_screen.dart';
@@ -195,6 +196,8 @@ class _Content extends ConsumerWidget {
               ),
               const SizedBox(width: Gap.md),
               _StreakBadge(days: streak),
+              const SizedBox(width: Gap.sm),
+              _ProfileButton(initial: name.isEmpty ? '?' : name[0]),
             ],
           ),
         ),
@@ -487,6 +490,46 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
 }
 
 /// The destinations, in the website's own order and wording.
+/// The door to the student's own page: their initial in a ring, top right of
+/// the home, where every app keeps it.
+class _ProfileButton extends StatelessWidget {
+  const _ProfileButton({required this.initial});
+  final String initial;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.lip;
+    return Semantics(
+      button: true,
+      // One clean node: a screen reader should say "Open your profile", not
+      // read out the single letter inside the ring.
+      container: true,
+      excludeSemantics: true,
+      label: 'Open your profile',
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute<void>(builder: (_) => const ProfileScreen())),
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: c.brandSoft,
+            shape: BoxShape.circle,
+            border: Border.all(color: c.brand, width: 1.3),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            initial.toUpperCase(),
+            style: LipType.smallStrong.copyWith(color: c.brand),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 const _cards = <({IconData icon, String title, String sub, bool ready})>[
   (
     icon: Icons.menu_book_rounded,
