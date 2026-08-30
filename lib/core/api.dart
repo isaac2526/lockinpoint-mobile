@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'config.dart';
+import 'session_refresher.dart';
 import 'session_store.dart';
 
 /// A failure the student can be shown. Never a stack trace, never a status
@@ -23,15 +24,25 @@ class ApiFailure implements Exception {
 /// THE ONE DOOR TO THE BACKEND
 ///
 /// Every request the app makes goes through here, so the bearer token, the
-/// timeouts, the retry and the turning of a failure into a sentence all live
-/// in one place instead of at forty call sites.
+/// timeouts, the refresh-and-retry and the turning of a failure into a
+/// sentence all live in one place instead of at forty call sites.
 ///
 /// The token is the SAME Supabase session the website issues. The website's
-/// getSession() now reads either a cookie or this Authorization header, so the
+/// getSession() reads either a cookie or this Authorization header, so the
 /// app and the browser are the same student to the same backend.
+///
+/// THE 401 LAW. A student is signed out for exactly one reason: the auth
+/// server itself refused their refresh token. An access token quietly expiring
+/// an hour after login, a backend deploy that is mid-rollout, an auth hiccup —
+/// none of those may cost a session. So a 401 here is never final on its own:
+/// the refresh token is presented to the auth server, and if it is honoured
+/// the request is retried once with the fresh key. Only a refusal from the
+/// auth server clears the store. That law is what stands between a student
+/// and the "Your session has ended" screen that used to appear seconds after
+/// a perfectly good login.
 /// ===========================================================================
 class Api {
-  Api(this._store) {
+  Api(this._store, this._refresher) {
     _dio = Dio(
       BaseOptions(
         baseUrl: AppConfig.apiBase,
@@ -47,6 +58,7 @@ class Api {
   }
 
   final SessionStore _store;
+  final SessionRefresher _refresher;
   late final Dio _dio;
 
   /// Tests swap the transport under this Dio for a fake adapter; nothing else
@@ -57,31 +69,21 @@ class Api {
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
-    bool retainSessionOn401 = false,
-  }) async {
-    final token = await _readToken();
-    return _send(
-      () => _dio.get(
-        path,
-        queryParameters: query,
-        options: Options(headers: _authHeader(token)),
-      ),
-      hadToken: token != null,
-      retainSessionOn401: retainSessionOn401,
-    );
-  }
+  }) => _request(
+    (token) => _dio.get(
+      path,
+      queryParameters: query,
+      options: Options(headers: _authHeader(token)),
+    ),
+  );
 
-  Future<Map<String, dynamic>> post(String path, {Object? body}) async {
-    final token = await _readToken();
-    return _send(
-      () => _dio.post(
-        path,
-        data: body,
-        options: Options(headers: _authHeader(token)),
-      ),
-      hadToken: token != null,
-    );
-  }
+  Future<Map<String, dynamic>> post(String path, {Object? body}) => _request(
+    (token) => _dio.post(
+      path,
+      data: body,
+      options: Options(headers: _authHeader(token)),
+    ),
+  );
 
   /// The token read itself must never sink a request: a phone whose secure
   /// storage throws should send the request signed out, not crash the screen.
@@ -96,14 +98,63 @@ class Api {
   Map<String, String> _authHeader(String? token) =>
       token == null ? {} : {'Authorization': 'Bearer $token'};
 
-  Future<Map<String, dynamic>> _send(
-    Future<Response> Function() run, {
-    required bool hadToken,
-    bool retainSessionOn401 = false,
-  }) async {
-    Response res;
+  Future<Map<String, dynamic>> _request(
+    Future<Response<dynamic>> Function(String? token) run,
+  ) async {
+    final token = await _readToken();
+    var res = await _guard(() => run(token));
+
+    if (res.statusCode == 401) {
+      if (token == null) {
+        /* The server never saw a session at all: this phone lost its saved
+           key (secure storage failure). Naming that is what makes a student's
+           screenshot a diagnosis rather than a mystery. */
+        throw ApiFailure(
+          'This phone lost its saved login key. Please log in again.',
+          unauthorised: true,
+        );
+      }
+
+      /* A token WAS sent and refused. The auth server is the referee: present
+         the refresh token and let IT say whether this session lives. */
+      switch (await _refresher.refresh()) {
+        case RefreshedSession(:final access):
+          res = await _guard(() => run(access));
+          if (res.statusCode == 401) {
+            /* The auth server honoured this session seconds ago, yet the API
+               still refuses the fresh key. That is a server-side problem —
+               most likely a backend build that cannot read bearer tokens —
+               and signing the student out would not fix it. Keep the session;
+               say what is actually wrong. */
+            throw ApiFailure(
+              'The server could not verify this login right now. '
+              'Please try again shortly.',
+            );
+          }
+        case RefreshRefused():
+          // The one genuine sign-out: the session is dead at the source.
+          await _store.clear();
+          throw ApiFailure(
+            'Your session has ended. Please log in again.',
+            unauthorised: true,
+          );
+        case RefreshUnreachable():
+          throw ApiFailure(
+            'Could not confirm your login. Check your connection and try again.',
+            offline: true,
+          );
+      }
+    }
+
+    return _read(res);
+  }
+
+  /// Runs one attempt, turning transport failures into sentences.
+  Future<Response<dynamic>> _guard(
+    Future<Response<dynamic>> Function() run,
+  ) async {
     try {
-      res = await run();
+      return await run();
     } on DioException catch (e) {
       final isTimeout =
           e.type == DioExceptionType.connectionTimeout ||
@@ -120,33 +171,10 @@ class Api {
         offline: true,
       );
     }
+  }
 
+  Map<String, dynamic> _read(Response<dynamic> res) {
     final code = res.statusCode ?? 0;
-
-    /* A 401 means this session is finished — expired, or claimed by another
-       device under the one-account-per-device rule. Clearing here is what makes
-       the app fall back to the welcome screen rather than sitting on a screen
-       that will never load. */
-    if (code == 401) {
-      /* During a fresh login the caller probes /api/me while HOLDING tokens it
-         just received. A 401 there can mean the deployed server build does not
-         yet accept bearer tokens, not that the session is bad, so that caller
-         asks us not to burn the tokens it is standing on. */
-      if (!retainSessionOn401) await _store.clear();
-      /* Two very different failures land on 401, and naming the right one is
-         what makes a student's screenshot a diagnosis:
-           · no token was on the request — this phone lost the saved key
-             (secure storage failure), the server never saw a session at all;
-           · a token WAS sent and refused — the session genuinely ended or the
-             account was signed in on another device. */
-      throw ApiFailure(
-        hadToken
-            ? 'Your session has ended. Please log in again.'
-            : 'This phone lost its saved login key. Please log in again.',
-        unauthorised: true,
-      );
-    }
-
     final data = res.data;
     if (data is Map<String, dynamic>) {
       // The website answers every route as { ok, message?, ...payload }.
@@ -176,7 +204,33 @@ class Api {
 }
 
 final sessionStoreProvider = Provider((ref) => SessionStore());
-final apiProvider = Provider((ref) => Api(ref.watch(sessionStoreProvider)));
+
+/// The real exchange: supabase's setSession presents the refresh token to the
+/// auth server and, on success, leaves the client holding a live session —
+/// which also switches its background auto-refresh on for the rest of the run.
+final sessionRefresherProvider = Provider(
+  (ref) => SessionRefresher(ref.watch(sessionStoreProvider), (refresh) async {
+    try {
+      final res = await Supabase.instance.client.auth.setSession(refresh);
+      final s = res.session;
+      if (s == null || s.refreshToken == null) return const RefreshRefused();
+      return RefreshedSession(access: s.accessToken, refresh: s.refreshToken!);
+    } on AuthRetryableFetchException {
+      // The auth server never answered; nothing was proven either way.
+      return const RefreshUnreachable();
+    } on AuthException {
+      // The auth server answered, and the answer was no.
+      return const RefreshRefused();
+    } catch (_) {
+      return const RefreshUnreachable();
+    }
+  }),
+);
+
+final apiProvider = Provider(
+  (ref) =>
+      Api(ref.watch(sessionStoreProvider), ref.watch(sessionRefresherProvider)),
+);
 
 /// Supabase is initialised for auth only. Every read of real data goes through
 /// the website's API, because RLS deliberately grants no anonymous access to
