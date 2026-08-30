@@ -11,7 +11,7 @@ publish_to: "none"
 # signing key are fixed for the life of the product: change either and every
 # existing installation loses the ability to update, which is the one mistake
 # that cannot be undone from the server side.
-version: 1.0.2+3
+version: 1.0.3+4
 
 environment:
   sdk: ^3.13.2
@@ -43,6 +43,11 @@ dependencies:
   # A stem is sanitised HTML with KaTeX inside it on the website. These two
   # together are the mobile half of that pipeline.
   flutter_html: ^3.0.0
+  # flutter_html 3.0.0 reaches into html's internals (query_selector.matches),
+  # and html 0.15.7 removed that function — the combination fails to compile.
+  # Pinned to the last version that still carries it; drop this pin when
+  # flutter_html ships a release built against the newer html.
+  html: 0.15.6
   flutter_math_fork: ^0.7.4
   cached_network_image: ^3.4.1
 

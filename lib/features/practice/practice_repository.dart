@@ -1,0 +1,370 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/api.dart';
+
+/// ===========================================================================
+/// THE PRACTICE CONTRACT, TYPED
+///
+/// Every shape here mirrors a response the website's own screens already
+/// consume, from the same routes — /api/public/exam-tree for the chooser and
+/// /api/attempts for the sitting itself. Nothing is invented on the phone:
+/// if the two products ever disagree about what is available, one of them is
+/// reading a different backend.
+/// ===========================================================================
+
+class ExamOption {
+  const ExamOption({
+    required this.id,
+    required this.slug,
+    required this.shortName,
+    required this.fullName,
+  });
+
+  final String id;
+  final String slug;
+  final String shortName;
+  final String fullName;
+
+  static ExamOption fromJson(Map<String, dynamic> j) => ExamOption(
+    id: j['id'] as String,
+    slug: j['slug'] as String? ?? '',
+    shortName: j['short_name'] as String? ?? '',
+    fullName: j['full_name'] as String? ?? '',
+  );
+}
+
+class SubjectOption {
+  const SubjectOption({
+    required this.id,
+    required this.name,
+    required this.compulsory,
+  });
+
+  final String id;
+  final String name;
+  final bool compulsory;
+
+  static SubjectOption fromJson(Map<String, dynamic> j) => SubjectOption(
+    id: j['id'] as String,
+    name: j['name'] as String? ?? '',
+    compulsory: j['compulsory'] == true,
+  );
+}
+
+class YearCount {
+  const YearCount(this.year, this.n);
+  final int year;
+  final int n;
+}
+
+class TopicCount {
+  const TopicCount(this.id, this.name, this.n, this.nTutorial);
+  final String id;
+  final String name;
+  final int n;
+  final int nTutorial;
+}
+
+/// Everything the year/topic/random step needs for one subject.
+class ChooserData {
+  const ChooserData({
+    required this.subjectName,
+    required this.examSlug,
+    required this.examShort,
+    required this.years,
+    required this.topics,
+    required this.past,
+    required this.tutorial,
+  });
+
+  final String subjectName;
+  final String examSlug;
+  final String examShort;
+  final List<YearCount> years;
+  final List<TopicCount> topics;
+  final int past;
+  final int tutorial;
+}
+
+/// One question as the server serves it. In practice mode the answer and
+/// explanation ride along so the phone can mark instantly; in every other
+/// mode (and on resume) they are deliberately absent and marking happens
+/// server side at submit.
+class ServedQuestion {
+  const ServedQuestion({
+    required this.id,
+    required this.question,
+    required this.options,
+    required this.letters,
+    this.passageId,
+    this.section,
+    this.year,
+    this.answer,
+    this.explanation,
+    this.media,
+  });
+
+  final String id;
+  final String question;
+  final List<String> options;
+  final List<String> letters;
+  final String? passageId;
+  final String? section;
+  final int? year;
+  final String? answer;
+  final String? explanation;
+  final Map<String, dynamic>? media;
+
+  String? mediaUrl(String slot) {
+    final m = media?[slot];
+    if (m is Map && m['type'] == 'image' && m['url'] is String) {
+      return m['url'] as String;
+    }
+    return null;
+  }
+
+  static ServedQuestion fromJson(Map<String, dynamic> j) => ServedQuestion(
+    id: j['id'] as String,
+    question: j['question'] as String? ?? '',
+    options: ((j['options'] as List?) ?? const []).cast<String>(),
+    letters: ((j['letters'] as List?) ?? const []).cast<String>(),
+    passageId: j['passage_id'] as String?,
+    section: j['section'] as String?,
+    year: (j['year'] as num?)?.toInt(),
+    answer: (j['answer'] as String?)?.toUpperCase(),
+    explanation: j['explanation'] as String?,
+    media: j['media'] as Map<String, dynamic>?,
+  );
+}
+
+class Passage {
+  const Passage({required this.title, required this.body});
+  final String title;
+  final String body;
+}
+
+/// A live sitting, fresh or resumed.
+class Sitting {
+  const Sitting({
+    required this.attemptId,
+    required this.mode,
+    required this.label,
+    required this.questions,
+    required this.passages,
+    this.initialIndex = 0,
+    this.initialAnswers = const {},
+    this.initialChecked = const {},
+  });
+
+  final String attemptId;
+  final String mode;
+  final String label;
+  final List<ServedQuestion> questions;
+  final Map<String, Passage> passages;
+  final int initialIndex;
+  final Map<String, String> initialAnswers;
+  final Map<String, bool> initialChecked;
+}
+
+class SubmitResult {
+  const SubmitResult({
+    required this.correct,
+    required this.total,
+    required this.overall,
+    required this.perSubject,
+  });
+
+  final int correct;
+  final int total;
+  final int overall;
+  final List<({String name, int correct, int total})> perSubject;
+}
+
+class PracticeRepository {
+  PracticeRepository(this._api);
+  final Api _api;
+
+  Future<List<ExamOption>> exams() async {
+    final res = await _api.get('/api/public/exam-tree');
+    return ((res['exams'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>()
+        .map(ExamOption.fromJson)
+        .toList();
+  }
+
+  Future<List<SubjectOption>> subjects(String examSlug) async {
+    final res = await _api.get(
+      '/api/public/exam-tree',
+      query: {'subjects': examSlug},
+    );
+    return ((res['subjects'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>()
+        .map(SubjectOption.fromJson)
+        .toList();
+  }
+
+  Future<ChooserData> chooser(String subjectId) async {
+    final res = await _api.get(
+      '/api/public/exam-tree',
+      query: {'chooser': subjectId},
+    );
+    final exam = (res['exam'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final subject =
+        (res['subject'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return ChooserData(
+      subjectName: subject['name'] as String? ?? '',
+      examSlug: exam['slug'] as String? ?? '',
+      examShort: exam['short_name'] as String? ?? '',
+      years: ((res['years'] as List?) ?? const [])
+          .cast<Map<String, dynamic>>()
+          .map(
+            (y) => YearCount(
+              (y['year'] as num).toInt(),
+              (y['n'] as num?)?.toInt() ?? 0,
+            ),
+          )
+          .toList(),
+      topics: ((res['topics'] as List?) ?? const [])
+          .cast<Map<String, dynamic>>()
+          .map(
+            (t) => TopicCount(
+              t['topic_id'] as String,
+              t['name'] as String? ?? '',
+              (t['n'] as num?)?.toInt() ?? 0,
+              (t['n_tutorial'] as num?)?.toInt() ?? 0,
+            ),
+          )
+          .where((t) => t.n > 0 || t.nTutorial > 0)
+          .toList(),
+      past: (res['past'] as num?)?.toInt() ?? 0,
+      tutorial: (res['tutorial'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  Future<Sitting> start({
+    required String examSlug,
+    required String subjectId,
+    required String label,
+    int? year,
+    String? topicId,
+    String kind = 'past',
+    int count = 20,
+  }) async {
+    final res = await _api.post(
+      '/api/attempts',
+      body: {
+        'action': 'start',
+        'mode': 'practice',
+        'examSlug': examSlug,
+        'subjectIds': [subjectId],
+        'count': '$count',
+        'label': label,
+        'year': ?year,
+        'topicId': ?topicId,
+        'kind': kind,
+      },
+    );
+    return _sitting(res, label);
+  }
+
+  Future<Sitting> resume(String attemptId) async {
+    final res = await _api.post(
+      '/api/attempts',
+      body: {'action': 'resume', 'attemptId': attemptId},
+    );
+    final progress =
+        (res['progress'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return _sitting(
+      res,
+      res['label'] as String? ?? 'Practice',
+      initialIndex: (progress['idx'] as num?)?.toInt() ?? 0,
+      initialAnswers: ((progress['answers'] as Map?) ?? const {}).map(
+        (k, v) => MapEntry(k.toString(), v.toString()),
+      ),
+      initialChecked: ((progress['checked'] as Map?) ?? const {}).map(
+        (k, v) => MapEntry(k.toString(), v == true),
+      ),
+    );
+  }
+
+  Sitting _sitting(
+    Map<String, dynamic> res,
+    String label, {
+    int initialIndex = 0,
+    Map<String, String> initialAnswers = const {},
+    Map<String, bool> initialChecked = const {},
+  }) => Sitting(
+    attemptId: res['attemptId'] as String,
+    mode: res['mode'] as String? ?? 'practice',
+    label: label,
+    questions: ((res['questions'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>()
+        .map(ServedQuestion.fromJson)
+        .toList(),
+    passages: ((res['passages'] as Map?) ?? const {}).map(
+      (k, v) => MapEntry(
+        k.toString(),
+        Passage(
+          title: (v as Map)['title'] as String? ?? '',
+          body: v['body'] as String? ?? '',
+        ),
+      ),
+    ),
+    initialIndex: initialIndex,
+    initialAnswers: initialAnswers,
+    initialChecked: initialChecked,
+  );
+
+  /// Autosave. Best effort by design: a lost heartbeat must never interrupt
+  /// a student mid-question, so failures are swallowed here and the next
+  /// answer tries again.
+  Future<void> saveProgress({
+    required String attemptId,
+    required Map<String, String> answers,
+    required Map<String, bool> checked,
+    required int idx,
+  }) async {
+    try {
+      await _api.post(
+        '/api/attempts',
+        body: {
+          'action': 'progress',
+          'attemptId': attemptId,
+          'answers': answers,
+          'checked': checked,
+          'idx': idx,
+        },
+      );
+    } catch (_) {}
+  }
+
+  Future<SubmitResult> submit({
+    required String attemptId,
+    required Map<String, String> answers,
+  }) async {
+    final res = await _api.post(
+      '/api/attempts',
+      body: {'action': 'submit', 'attemptId': attemptId, 'answers': answers},
+    );
+    final score = (res['score'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return SubmitResult(
+      correct: (score['correct'] as num?)?.toInt() ?? 0,
+      total: (score['total'] as num?)?.toInt() ?? 0,
+      overall: (score['overall'] as num?)?.toInt() ?? 0,
+      perSubject: ((score['perSubject'] as List?) ?? const [])
+          .cast<Map<String, dynamic>>()
+          .map(
+            (p) => (
+              name: p['name'] as String? ?? 'Questions',
+              correct: (p['correct'] as num?)?.toInt() ?? 0,
+              total: (p['total'] as num?)?.toInt() ?? 0,
+            ),
+          )
+          .toList(),
+    );
+  }
+}
+
+final practiceRepositoryProvider = Provider(
+  (ref) => PracticeRepository(ref.watch(apiProvider)),
+);

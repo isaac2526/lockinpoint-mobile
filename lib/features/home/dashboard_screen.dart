@@ -16,6 +16,9 @@ import '../../design/typography.dart';
 import '../../design/wordmark.dart';
 import '../../app/theme_controller.dart';
 import '../auth/auth_controller.dart';
+import '../practice/practice_flow_screen.dart';
+import '../practice/practice_repository.dart';
+import '../practice/practice_session_screen.dart';
 
 /// ===========================================================================
 /// THE HOME'S DATA · cached first, fresh behind.
@@ -380,9 +383,43 @@ class _ActivationNotice extends StatelessWidget {
   }
 }
 
-class _ResumeCard extends StatelessWidget {
+class _ResumeCard extends ConsumerStatefulWidget {
   const _ResumeCard({required this.resume});
   final Map<String, dynamic> resume;
+
+  @override
+  ConsumerState<_ResumeCard> createState() => _ResumeCardState();
+}
+
+class _ResumeCardState extends ConsumerState<_ResumeCard> {
+  bool _busy = false;
+
+  Map<String, dynamic> get resume => widget.resume;
+
+  Future<void> _continue() async {
+    final attemptId = resume['id'] as String?;
+    if (attemptId == null || _busy) return;
+    setState(() => _busy = true);
+    try {
+      final sitting = await ref
+          .read(practiceRepositoryProvider)
+          .resume(attemptId);
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PracticeSessionScreen(sitting: sitting),
+        ),
+      );
+    } on ApiFailure catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
+      // A finished or vanished sitting should stop being offered.
+      ref.read(dashboardProvider.notifier).refresh();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -396,12 +433,24 @@ class _ResumeCard extends StatelessWidget {
       tier: GlassTier.raised,
       seam: true,
       elevated: true,
+      onTap: _continue,
+      semanticLabel: 'Continue where you stopped. $label',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.play_circle_fill_rounded, size: 19, color: c.brand),
+              if (_busy)
+                SizedBox(
+                  height: 19,
+                  width: 19,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    color: c.brand,
+                  ),
+                )
+              else
+                Icon(Icons.play_circle_fill_rounded, size: 19, color: c.brand),
               const SizedBox(width: Gap.sm),
               Expanded(
                 child: Text(
@@ -440,7 +489,7 @@ const _cards = <({IconData icon, String title, String sub, bool ready})>[
     icon: Icons.menu_book_rounded,
     title: 'Practice & CBT',
     sub: 'Your exam, your subject, by year, topic or random',
-    ready: false,
+    ready: true,
   ),
   (
     icon: Icons.school_rounded,
@@ -478,12 +527,21 @@ class _DashCard extends StatelessWidget {
   const _DashCard({required this.card});
   final ({IconData icon, String title, String sub, bool ready}) card;
 
+  /// Each ready card knows its own door. Practice opens the chooser; the rest
+  /// arrive build by build and say so honestly until they do.
+  void _open(BuildContext context) {
+    if (card.title == 'Practice & CBT') {
+      Navigator.of(context)
+          .push(MaterialPageRoute(builder: (_) => const PracticeFlowScreen()));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.lip;
     return GlassSurface(
       onTap: card.ready
-          ? () {}
+          ? () => _open(context)
           : () => ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('${card.title} lands in the next build.')),
             ),
