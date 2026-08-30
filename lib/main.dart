@@ -28,7 +28,17 @@ Future<void> main() async {
     ),
   );
 
-  runApp(const ProviderScope(child: LockInPointApp()));
+  runApp(
+    ProviderScope(
+      /* Riverpod 3 silently retries a failed provider with backoff. On a
+         phone that means a failing request is refetched again and again:
+         the screen sits on its skeleton while the student's data plan burns.
+         Exactly that was seen in testing. Retries here are always explicit:
+         a pull to refresh, or a Try again button. */
+      retry: (retryCount, error) => null,
+      child: const LockInPointApp(),
+    ),
+  );
 }
 
 class LockInPointApp extends ConsumerWidget {

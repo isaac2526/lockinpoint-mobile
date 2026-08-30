@@ -11,7 +11,7 @@ publish_to: "none"
 # signing key are fixed for the life of the product: change either and every
 # existing installation loses the ability to update, which is the one mistake
 # that cannot be undone from the server side.
-version: 1.0.0+1
+version: 1.0.1+2
 
 environment:
   sdk: ^3.13.2

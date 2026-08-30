@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api.dart';
@@ -14,10 +17,64 @@ import '../../design/wordmark.dart';
 import '../../app/theme_controller.dart';
 import '../auth/auth_controller.dart';
 
-/// Everything the home screen needs, fetched once.
-final dashboardProvider = FutureProvider.autoDispose((ref) async {
-  return ref.watch(apiProvider).get('/api/mobile/dashboard');
-});
+/// ===========================================================================
+/// THE HOME'S DATA · cached first, fresh behind.
+///
+/// Opening the app shows the LAST KNOWN home instantly from a local snapshot,
+/// then refreshes it quietly. A slow network delays the numbers updating, not
+/// the screen appearing. Refreshes happen exactly twice: once behind that
+/// instant paint, and whenever the student pulls down. Never in a loop.
+///
+/// A refresh that fails while a snapshot is showing changes NOTHING on
+/// screen; stale true numbers beat a fresh error. A 401 hands the student
+/// back to the welcome screen through the auth controller rather than
+/// stranding them on a home that will never load.
+/// ===========================================================================
+class DashboardController extends AsyncNotifier<Map<String, dynamic>> {
+  static const _cacheKey = 'lip.dashboard-snapshot';
+
+  @override
+  Future<Map<String, dynamic>> build() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getString(_cacheKey);
+    if (cached != null) {
+      Future.microtask(refresh);
+      try {
+        return jsonDecode(cached) as Map<String, dynamic>;
+      } catch (_) {
+        // A corrupt snapshot is thrown away, not fought with.
+      }
+    }
+    return _fetch();
+  }
+
+  /// Pull to refresh, and the silent refresh behind a cached paint.
+  Future<void> refresh() async {
+    try {
+      state = AsyncData(await _fetch());
+    } on ApiFailure catch (e, st) {
+      if (e.unauthorised) {
+        ref.invalidate(authControllerProvider);
+        return;
+      }
+      // Keep showing the snapshot we have; only surface an error when there
+      // is nothing better to show.
+      if (!state.hasValue) state = AsyncError(e, st);
+    }
+  }
+
+  Future<Map<String, dynamic>> _fetch() async {
+    final data = await ref.read(apiProvider).get('/api/mobile/dashboard');
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_cacheKey, jsonEncode(data));
+    return data;
+  }
+}
+
+final dashboardProvider =
+    AsyncNotifierProvider<DashboardController, Map<String, dynamic>>(
+      DashboardController.new,
+    );
 
 /// ===========================================================================
 /// THE STUDENT HOME
@@ -38,7 +95,7 @@ class DashboardScreen extends ConsumerWidget {
     return Scaffold(
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: () async => ref.invalidate(dashboardProvider),
+          onRefresh: () => ref.read(dashboardProvider.notifier).refresh(),
           color: c.brand,
           backgroundColor: c.glassModal,
           child: snapshot.when(
@@ -48,12 +105,22 @@ class DashboardScreen extends ConsumerWidget {
               // otherwise a student who lost signal for one second is stuck.
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
-                SizedBox(height: MediaQuery.sizeOf(context).height * 0.2),
+                SizedBox(height: MediaQuery.sizeOf(context).height * 0.18),
                 LipError(
                   message: e is ApiFailure
                       ? e.message
                       : 'Pull down to try again.',
-                  onRetry: () => ref.invalidate(dashboardProvider),
+                  onRetry: () => ref.read(dashboardProvider.notifier).refresh(),
+                ),
+                // The screen must never become a trap: whatever the server is
+                // doing, the student can always walk back to the front door.
+                Center(
+                  child: TextButton.icon(
+                    onPressed: () =>
+                        ref.read(authControllerProvider.notifier).logOut(),
+                    icon: const Icon(Icons.logout_rounded, size: 16),
+                    label: const Text('Log out'),
+                  ),
                 ),
               ],
             ),

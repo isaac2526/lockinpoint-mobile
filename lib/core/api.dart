@@ -129,6 +129,14 @@ class Api {
       return data;
     }
 
+    if (code == 404) {
+      /* Every path the app calls exists in the current backend, so a 404 can
+         only mean the server is still running an older build, typically for
+         the few minutes a deployment takes. */
+      throw ApiFailure(
+        'The server is still updating. Give it two minutes and pull down to refresh.',
+      );
+    }
     if (code >= 500) {
       throw ApiFailure('LockInPoint is having a moment. Try again shortly.');
     }
