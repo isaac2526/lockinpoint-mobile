@@ -94,12 +94,17 @@ void main() {
 
     test('both display forms become display tex elements', () {
       expect(LipHtml.prepare('\\[a+b\\]'), '<tex d="1">a+b</tex>');
-      expect(LipHtml.prepare(r'$$\frac{1}{2}$$'), r'<tex d="1">\frac{1}{2}</tex>');
+      expect(
+        LipHtml.prepare(r'$$\frac{1}{2}$$'),
+        r'<tex d="1">\frac{1}{2}</tex>',
+      );
     });
 
     test('angle brackets inside a formula survive the HTML parser', () {
-      expect(LipHtml.prepare('\\(x < y & y > z\\)'),
-          '<tex>x &lt; y &amp; y &gt; z</tex>');
+      expect(
+        LipHtml.prepare('\\(x < y & y > z\\)'),
+        '<tex>x &lt; y &amp; y &gt; z</tex>',
+      );
     });
 
     test('text without maths passes through untouched', () {
