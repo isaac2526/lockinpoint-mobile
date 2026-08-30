@@ -19,6 +19,7 @@ import '../auth/auth_controller.dart';
 import '../practice/practice_flow_screen.dart';
 import '../practice/practice_repository.dart';
 import '../practice/practice_session_screen.dart';
+import '../leaderboard/leaderboard_screen.dart';
 import '../search/search_screen.dart';
 
 /// ===========================================================================
@@ -519,8 +520,8 @@ const _cards = <({IconData icon, String title, String sub, bool ready})>[
   (
     icon: Icons.emoji_events_rounded,
     title: 'Leaderboard',
-    sub: 'Top 50 across the platform',
-    ready: false,
+    sub: 'The top of the ladder across the platform',
+    ready: true,
   ),
 ];
 
@@ -534,6 +535,7 @@ class _DashCard extends StatelessWidget {
     final destination = switch (card.title) {
       'Practice & CBT' => const PracticeFlowScreen(),
       'Question search' => const SearchScreen(),
+      'Leaderboard' => const LeaderboardScreen(),
       _ => null,
     };
     if (destination != null) {
