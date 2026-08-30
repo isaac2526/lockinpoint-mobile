@@ -416,6 +416,76 @@ void main() {
     });
   });
 
+  group('a gate in front of the server is named, not mistaken for a login', () {
+    /* Vercel's Deployment Protection answers anything that is not a
+       signed-in browser with {"redirect": "https://vercel.com/sso-api?…",
+       "status": "401"} — no ok, no tokens. Three builds were spent hunting a
+       session bug that was really this. */
+    const gateBody = {
+      'redirect':
+          'https://vercel.com/sso-api?url=https%3A%2F%2Flockinpoint.com',
+      'status': '401',
+    };
+
+    late SessionStore store;
+    late Api api;
+    late FakeAdapter net;
+    late FakeAuthServer auth;
+
+    setUp(() {
+      store = SessionStore(secure: FakeSecureStorage());
+      auth = FakeAuthServer(const RefreshRefused());
+      api = Api(store, SessionRefresher(store, auth.exchange));
+      net = FakeAdapter();
+      api.dio.httpClientAdapter = net;
+    });
+
+    test('login through a gate blames the gate, naming its host', () async {
+      net.enqueue(401, gateBody);
+      await expectLater(
+        api.post('/api/auth/login', body: {}),
+        throwsA(
+          isA<ApiFailure>()
+              .having((e) => e.message, 'message', contains('protection gate'))
+              .having(
+                (e) => e.detail,
+                'detail',
+                allOf(contains('POST /api/auth/login'), contains('vercel.com')),
+              ),
+        ),
+      );
+    });
+
+    test('a gate NEVER ends a session or burns the refresh token', () async {
+      await store.save(access: 'tok', refresh: 'r1');
+      net.enqueue(401, gateBody);
+      await expectLater(api.get('/api/me'), throwsA(isA<ApiFailure>()));
+      // The session stands, and the gate was never mistaken for a refusal.
+      expect(await store.accessToken(), 'tok');
+      expect(await store.refreshToken(), 'r1');
+      expect(auth.asks, 0);
+    });
+
+    test('the refresh route behind a gate is unreachable, not refused', () {
+      expect(
+        Api.platformGate(gateBody),
+        'vercel.com',
+        reason: 'the gatekeeper is named by its own redirect target',
+      );
+    });
+
+    test('an ordinary LockInPoint answer is never called a gate', () {
+      // Every real route carries `ok` — that alone rules a gate out.
+      expect(
+        Api.platformGate({'ok': true, 'redirect': '/x', 'status': 1}),
+        isNull,
+      );
+      expect(Api.platformGate({'ok': false, 'message': 'no'}), isNull);
+      expect(Api.platformGate('a plain string'), isNull);
+      expect(Api.platformGate({'redirect': '/somewhere'}), isNull);
+    });
+  });
+
   group('the backend refresh exchange reads the route honestly', () {
     late Dio dio;
     late FakeAdapter net;
@@ -463,6 +533,16 @@ void main() {
     test('a 500 proves nothing about the session', () async {
       net.enqueue(500, 'oops');
       expect(await exchange('r1'), isA<RefreshUnreachable>());
+    });
+
+    test('a gated 401 is unreachable, NOT a refusal that signs out', () async {
+      net.enqueue(401, {
+        'redirect': 'https://vercel.com/sso-api?url=x',
+        'status': '401',
+      });
+      final out = await exchange('r1');
+      expect(out, isA<RefreshUnreachable>());
+      expect((out as RefreshUnreachable).why, contains('vercel.com'));
     });
   });
 }

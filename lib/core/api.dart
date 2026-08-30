@@ -124,6 +124,7 @@ class Api {
     final where = '$method $path';
     final token = await _readToken();
     var res = await _guard(where, () => run(token));
+    _refuseGate(where, res);
 
     if (res.statusCode == 401) {
       if (token == null) {
@@ -143,6 +144,7 @@ class Api {
       switch (await _refresher.refresh()) {
         case RefreshedSession(:final access):
           res = await _guard(where, () => run(access));
+          _refuseGate(where, res);
           if (res.statusCode == 401) {
             /* The refresh route honoured this session seconds ago, yet the
                same server still refuses the fresh key. Signing the student
@@ -201,6 +203,57 @@ class Api {
         offline: true,
       );
     }
+  }
+
+  /* ==========================================================================
+     THE GATE IN FRONT OF THE SERVER
+
+     A hosting platform can answer a request before LockInPoint's own code ever
+     runs. Vercel's Deployment Protection does exactly that: to anything that
+     is not a signed-in browser it returns
+
+         {"redirect": "https://vercel.com/sso-api?url=…", "status": "401"}
+
+     — a JSON object with no `ok` and no tokens. A browser sails through
+     because the person is signed in to Vercel and carries its cookie; a
+     native app carries nothing, so EVERY route answers this way, login
+     included. No student can log their way past it and no retry will help;
+     it is a switch in the hosting dashboard.
+
+     Naming it is the whole point. Left unnamed it looks like a broken login,
+     and the last three builds were spent hunting a session bug that was never
+     there.
+     ========================================================================== */
+
+  /// The gatekeeper's host if this body came from a platform gate rather than
+  /// from LockInPoint, else null.
+  @visibleForTesting
+  static String? platformGate(dynamic data) {
+    if (data is! Map) return null;
+    // Every LockInPoint route answers with `ok`. This one did not, and it
+    // carries the two keys a gate redirect carries.
+    if (data.containsKey('ok')) return null;
+    if (!data.containsKey('redirect') || !data.containsKey('status')) {
+      return null;
+    }
+    final target = data['redirect'];
+    if (target is String) {
+      final host = Uri.tryParse(target)?.host;
+      if (host != null && host.isNotEmpty) return host;
+    }
+    return 'the hosting platform';
+  }
+
+  static void _refuseGate(String where, Response<dynamic> res) {
+    final gate = platformGate(res.data);
+    if (gate == null) return;
+    throw ApiFailure(
+      'LockInPoint is not letting the app in. The website\'s hosting has a '
+      'protection gate switched on that only a signed-in browser can pass.',
+      detail:
+          '$where → ${res.statusCode ?? 0} · answered by $gate, '
+          'never reached LockInPoint',
+    );
   }
 
   /// The server's own words out of a response body, for the small print.
@@ -274,6 +327,18 @@ RefreshExchange backendRefreshExchange(Dio dio) => (refreshToken) async {
 
   final code = res.statusCode ?? 0;
   final data = res.data;
+
+  /* A platform gate answers 401 to everything, this route included. Reading
+     that as a refusal would clear a perfectly good session and tell the
+     student it had ended — the exact lie this whole chain exists to stop. */
+  final gate = Api.platformGate(data);
+  if (gate != null) {
+    return RefreshUnreachable(
+      'POST /api/auth/refresh → $code, answered by $gate '
+      'before it reached LockInPoint',
+    );
+  }
+
   if (code == 200 && data is Map<String, dynamic>) {
     final access = data['access_token'] as String?;
     final refresh = data['refresh_token'] as String?;
