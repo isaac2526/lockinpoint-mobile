@@ -80,3 +80,14 @@ jobs:
       # A display, because the integration test runs the real windowed app.
       - name: Prove the vault works with no network
         run: xvfb-run -a ./scripts/offline-vault-check.sh linux
+
+      # ---------------------------------------------------------------------
+      # THE ACCEPTANCE DRIVE.
+      #
+      # Twelve student journeys, TAPPED on the real binary. The release that
+      # shipped with a menu that would not open passed a clean analyzer and
+      # 198 unit tests, because none of them tapped anything. This is the job
+      # that would have caught it, so it runs on every push.
+      # ---------------------------------------------------------------------
+      - name: Drive the app as a student
+        run: xvfb-run -a ./scripts/acceptance-drive.sh linux
