@@ -37,6 +37,8 @@ const _student = {
     'emailVerified': true,
     'streak': 3,
     'referralCode': 'AB2CD',
+    'productKey': 'LIP-7K4M-92QT',
+    'state': 'Ekiti',
   },
   'counts': {'questions': 100, 'attempts': 2, 'notes': 5},
   'resume': null,
@@ -124,8 +126,45 @@ void main() {
     await see('Light');
     await see('Dark');
     await see('Join the WhatsApp channel');
+    await see('Guardian Portal');
     await see('Email the tutors');
     await see('Log out');
+  });
+
+  testWidgets('the Product Key is shown, explained and copyable', (
+    tester,
+  ) async {
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      },
+    );
+
+    await _pump(tester);
+    expect(find.text('LIP-7K4M-92QT'), findsOneWidget);
+    // It must never be mistaken for a password or a licence.
+    expect(find.textContaining('not a password'), findsOneWidget);
+
+    await tester.tap(find.text('LIP-7K4M-92QT'));
+    await tester.pump();
+    expect(copied, 'LIP-7K4M-92QT');
+  });
+
+  testWidgets('a student with no Product Key yet sees no key card', (
+    tester,
+  ) async {
+    final p = Map<String, dynamic>.from(_student);
+    p['student'] = {
+      ...(_student['student']! as Map<String, dynamic>),
+      'productKey': null,
+    };
+    await _pump(tester, payload: p);
+    expect(find.text('YOUR PRODUCT KEY'), findsNothing);
   });
 
   testWidgets('a student with no referral code sees no banner', (tester) async {

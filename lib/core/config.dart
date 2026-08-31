@@ -33,4 +33,12 @@ class AppConfig {
       'https://whatsapp.com/channel/0029Vb7NwWk9hXFD6TSas40m';
 
   static const supportEmail = 'info@lockinpoint.com';
+
+  /// THE GUARDIAN PORTAL IS A WEBSITE, ON PURPOSE.
+  ///
+  /// A parent following a candidate is not a second app to install, keep
+  /// updated and sign into on a phone they may share. It is one page they
+  /// open, so the app simply points at it. The student app stays a student
+  /// app: nothing here can hold a guardian session.
+  static const guardianPortal = '$apiBase/guardian';
 }

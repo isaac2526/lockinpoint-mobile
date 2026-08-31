@@ -89,6 +89,8 @@ class _Content extends ConsumerWidget {
     final country = student['countryCode'] as String?;
     final activated = student['activated'] == true;
     final code = student['referralCode'] as String?;
+    final productKey = student['productKey'] as String?;
+    final state = student['state'] as String?;
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -194,9 +196,58 @@ class _Content extends ConsumerWidget {
           const SizedBox(height: Gap.md),
         ],
 
+        // ---- the product key -----------------------------------------
+        if (productKey != null && productKey.isNotEmpty) ...[
+          Entrance(
+            index: 2,
+            child: GlassSurface(
+              tier: GlassTier.raised,
+              hue: c.hues.indigo,
+              onTap: () => _copy(
+                context,
+                productKey,
+                'Product Key copied. Give it to your parent or teacher.',
+              ),
+              semanticLabel: 'Your Product Key is $productKey. Tap to copy it.',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'YOUR PRODUCT KEY',
+                        style: LipType.label.copyWith(color: c.hues.indigo.ink),
+                      ),
+                      const Spacer(),
+                      Icon(
+                        Icons.copy_rounded,
+                        size: 16,
+                        color: c.hues.indigo.ink,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: Gap.sm),
+                  Text(
+                    productKey,
+                    style: LipType.monoBig.copyWith(color: c.hues.indigo.ink),
+                  ),
+                  const SizedBox(height: Gap.xs),
+                  Text(
+                    'A parent, teacher or school uses this to follow your '
+                    'progress in the Guardian Portal. It is not a password '
+                    'and it unlocks nothing on its own.',
+                    style: LipType.caption.copyWith(color: c.text3),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: Gap.md),
+        ],
+
         // ---- the record ----------------------------------------------
         Entrance(
-          index: 2,
+          index: 3,
           child: GlassSurface(
             tier: GlassTier.card,
             child: Column(
@@ -209,6 +260,7 @@ class _Content extends ConsumerWidget {
                       : '$dial $phone'.trim(),
                 ),
                 _DetailRow(label: 'Country', value: country ?? '·'),
+                _DetailRow(label: 'State', value: state ?? '·'),
                 _DetailRow(
                   label: 'Account',
                   value: activated ? 'Activated' : 'Not activated yet',
@@ -229,14 +281,14 @@ class _Content extends ConsumerWidget {
         // ---- appearance ----------------------------------------------
         const LipLabel('Appearance'),
         const SizedBox(height: Gap.sm),
-        Entrance(index: 3, child: _ThemeChoice()),
+        Entrance(index: 4, child: _ThemeChoice()),
         const SizedBox(height: Gap.lg),
 
         // ---- reach us ------------------------------------------------
         const LipLabel('Stay connected'),
         const SizedBox(height: Gap.sm),
         Entrance(
-          index: 4,
+          index: 5,
           child: GlassSurface(
             tier: GlassTier.card,
             padding: EdgeInsets.zero,
@@ -249,6 +301,17 @@ class _Content extends ConsumerWidget {
                   subtitle: 'Announcements, tips and updates',
                   onTap: () => launchUrl(
                     Uri.parse(AppConfig.whatsappChannel),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                ),
+                Divider(height: 1, color: c.glassBorder),
+                _LinkRow(
+                  icon: Icons.supervisor_account_rounded,
+                  color: c.hues.indigo.ink,
+                  title: 'Guardian Portal',
+                  subtitle: 'For a parent, teacher or school following you',
+                  onTap: () => launchUrl(
+                    Uri.parse(AppConfig.guardianPortal),
                     mode: LaunchMode.externalApplication,
                   ),
                 ),
