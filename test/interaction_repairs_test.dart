@@ -4,6 +4,7 @@ import 'package:lockinpoint/core/open.dart';
 import 'package:lockinpoint/design/theme.dart';
 import 'package:lockinpoint/features/games/games_repository.dart';
 import 'package:lockinpoint/features/practice/practice_repository.dart';
+import 'package:lockinpoint/features/practice/practice_session_screen.dart';
 
 /// ===========================================================================
 /// THE DEAD CONTROLS, PINNED
@@ -67,6 +68,44 @@ void main() {
       );
       expect(p.headline, '70%');
       expect(p.outOf, isNull);
+    });
+
+    testWidgets('the scale is PAINTED, not merely computed', (tester) async {
+      /* THE BUG THIS CATCHES.
+         The two tests above passed for weeks while no student ever saw the
+         words. `outOf` was defined on the model and read by nothing: the
+         result circle showed a bare "265" and the line naming the scale was
+         on no screen. A value a widget never reads is not a feature, and a
+         test that only asks the model is not evidence. */
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: LipTheme.light(),
+          home: ResultView(result: jamb(265), label: 'JAMB mock'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('265'), findsOneWidget);
+      expect(find.text('out of 400'), findsOneWidget);
+    });
+
+    testWidgets('a percentage paper is not given a scale line', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: LipTheme.light(),
+          home: const ResultView(
+            result: SubmitResult(
+              correct: 7,
+              total: 10,
+              overall: 70,
+              perSubject: [],
+            ),
+            label: 'WAEC Mathematics',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('70%'), findsOneWidget);
+      expect(find.text('out of 400'), findsNothing);
     });
 
     test('colour thresholds mean the same thing on both scales', () {

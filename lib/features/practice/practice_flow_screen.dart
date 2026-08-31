@@ -195,7 +195,15 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
     setState(() {
       _subject = subject;
       _chooser = data;
-      _source = _Source.random;
+      /* START ON A SOURCE THAT HAS QUESTIONS IN IT.
+         This always opened on "Random mix", whose card is disabled when the
+         subject has no past questions. On a tutorial-only subject the student
+         therefore landed on a greyed-out choice that was nonetheless the
+         selected one, and Start asked the server for past questions that do
+         not exist. A disabled card must never be the one already chosen. */
+      _source = data.past > 0
+          ? _Source.random
+          : (data.tutorial > 0 ? _Source.tutorial : _Source.random);
       _year = null;
       _topic = null;
       _step = 2;
@@ -716,11 +724,16 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
             ),
         ];
 
+    /* Ready means "this sitting can actually be built", not "a card is
+       highlighted". A subject with nothing published in it offers no Start at
+       all, and says why below, rather than a button that fails on tap. */
     final ready = switch (_source) {
       _Source.year => _year != null,
       _Source.topic => _topic != null,
-      _ => true,
+      _Source.random => data.past > 0,
+      _Source.tutorial => data.tutorial > 0,
     };
+    final empty = data.past == 0 && data.tutorial == 0;
 
     return ListView(
       padding: const EdgeInsets.all(Gap.md),
@@ -882,14 +895,27 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
           ),
         ),
         const SizedBox(height: Gap.md),
-        LipButton(
-          label: _timed ? 'Start the clock' : 'Start practising',
-          icon: _timed ? Icons.timer_rounded : Icons.play_arrow_rounded,
-          // Gold marks the serious action, as it does on the website.
-          gold: _timed,
-          busy: _busy,
-          onPressed: ready ? _start : null,
-        ),
+        if (empty)
+          /* NO QUESTIONS MEANS NO BUTTON, AND A REASON. A dead Start with no
+             explanation is the single most common way this app felt broken:
+             the student taps, nothing happens, and nothing tells them why. */
+          LipEmpty(
+            icon: Icons.hourglass_empty_rounded,
+            title: 'Nothing published here yet',
+            message:
+                '${_subject?.name ?? 'This subject'} has no questions in the '
+                'bank yet. Pick another subject - or come back, because they '
+                'are added all the time.',
+          )
+        else
+          LipButton(
+            label: _timed ? 'Start the clock' : 'Start practising',
+            icon: _timed ? Icons.timer_rounded : Icons.play_arrow_rounded,
+            // Gold marks the serious action, as it does on the website.
+            gold: _timed,
+            busy: _busy,
+            onPressed: ready ? _start : null,
+          ),
         const SizedBox(height: Gap.xl),
       ],
     );

@@ -16,6 +16,7 @@ import '../../design/typography.dart';
 import '../../design/wordmark.dart';
 import '../../app/theme_controller.dart';
 import '../activation/activation_screen.dart';
+import '../auth/ui/verify_email_screen.dart';
 import '../auth/auth_controller.dart';
 import '../content/content_repository.dart';
 import '../profile/profile_screen.dart';
@@ -198,6 +199,8 @@ class _Content extends ConsumerWidget {
     final name = student['name'] as String? ?? 'Champion';
     final streak = (student['streak'] as num?)?.toInt() ?? 0;
     final activated = student['activated'] == true;
+    final verified = student['emailVerified'] == true;
+    final email = student['email'] as String? ?? '';
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -254,6 +257,15 @@ class _Content extends ConsumerWidget {
 
         // ---- what the team is saying, if anything --------------------
         const HomeCarousel(),
+
+        /* THE CODE HAS SOMEWHERE TO GO NOW. Signing up mails a six digit
+           code and tells the student to "enter it on the verify page" — a
+           page that existed only on the website, so a student who joined on
+           their phone was handed an instruction the app could not honour. */
+        if (!verified) ...[
+          _VerifyNotice(email: email),
+          const SizedBox(height: Gap.lg),
+        ],
 
         if (!activated) ...[
           _ActivationNotice(),
@@ -364,6 +376,48 @@ class _StreakBadge extends StatelessWidget {
   }
 }
 
+class _VerifyNotice extends StatelessWidget {
+  const _VerifyNotice({required this.email});
+  final String email;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.lip;
+    return GlassSurface(
+      tier: GlassTier.raised,
+      seam: true,
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => VerifyEmailScreen(email: email),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.mark_email_unread_rounded, size: 20, color: c.warning),
+          const SizedBox(width: Gap.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Confirm your email',
+                  style: LipType.subheading.copyWith(color: c.text1),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'We sent you a six digit code. Tap to enter it.',
+                  style: LipType.caption.copyWith(color: c.text3),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, size: 20, color: c.text3),
+        ],
+      ),
+    );
+  }
+}
+
 class _ActivationNotice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -430,6 +484,12 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
           builder: (_) => PracticeSessionScreen(sitting: sitting),
         ),
       );
+      /* COMING BACK REFRESHES THE CARD. The student submits the paper, walks
+         back to the home, and this card was still offering to continue the
+         sitting they just finished — with its old "12 of 40 answered" under
+         it. Tapping it then failed, which is the moment the app stopped
+         looking trustworthy. The card is only as true as its last refresh. */
+      if (mounted) ref.read(dashboardProvider.notifier).refresh();
     } on ApiFailure catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)

@@ -1,4 +1,5 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -45,18 +46,59 @@ Future<bool> _reachable() async {
   }
 }
 
+/// Where connectivity_plus can actually be trusted.
+///
+/// Its Linux implementation asks NetworkManager over D-Bus and its Windows
+/// and web ones are similarly indirect — which is why the installed desktop
+/// build wore a permanent "No connection" bar over a working network. Worse,
+/// on a machine with no D-Bus socket the plugin's signal listener throws
+/// ASYNCHRONOUSLY, escaping every try/catch around the call, so it cannot
+/// even be guarded — a fault this drive caught by running the real binary.
+///
+/// On a phone the plugin is exactly right: it knows about aeroplane mode and
+/// a dropped mast the instant they happen, without a request. Everywhere else
+/// the only honest answer comes from asking our own server.
+bool get _trustPlugin =>
+    !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS);
+
 final connectivityProvider = StreamProvider<bool>((ref) async* {
+  if (!_trustPlugin) {
+    /* DESKTOP AND WEB: ask the server, rarely. This flag drives a
+       reassurance bar and a sync nudge — nothing is ever GATED on it, so a
+       thirty-second granularity costs nothing and a wrong answer costs
+       nothing either. */
+    yield await _reachable();
+    while (true) {
+      await Future<void>.delayed(const Duration(seconds: 30));
+      yield await _reachable();
+    }
+  }
+
   final c = Connectivity();
 
   bool up(List<ConnectivityResult> r) =>
       r.any((x) => x != ConnectivityResult.none);
 
+  /// The plugin's word is a HINT, verified before it is believed. A false
+  /// positive (hotel wifi with no route) costs nothing here; a false negative
+  /// would tell a student they are offline while their requests succeed, so
+  /// only a failed ping to our own server confirms it.
   Future<bool> verdict(List<ConnectivityResult> r) async =>
       up(r) ? true : _reachable();
 
-  yield await verdict(await c.checkConnectivity());
-  await for (final r in c.onConnectivityChanged) {
-    yield await verdict(r);
+  try {
+    yield await verdict(await c.checkConnectivity());
+    await for (final r in c.onConnectivityChanged) {
+      yield await verdict(r);
+    }
+  } catch (_) {
+    // Even on a phone, a plugin that dies must not take the flag with it.
+    while (true) {
+      yield await _reachable();
+      await Future<void>.delayed(const Duration(seconds: 30));
+    }
   }
 });
 

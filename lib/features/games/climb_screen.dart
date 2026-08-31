@@ -241,11 +241,23 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
     super.dispose();
   }
 
-  void _armClock() {
+  /// Start, or resume, the rung clock.
+  ///
+  /// `restart: false` PICKS THE CLOCK BACK UP WHERE IT WAS. This was always an
+  /// unconditional reset, so spending a lifeline handed the student a fresh
+  /// full allocation of seconds — a way to buy time three times a game, in a
+  /// mode whose entire point is that time is scarce. A new question deserves a
+  /// new clock; reading a fifty-fifty does not.
+  void _armClock({bool restart = true}) {
     _clock?.cancel();
+    _clock = null;
     final secs = _s.seconds;
     if (secs == null || !_s.playing) return;
-    setState(() => _left = secs);
+    if (restart) {
+      setState(() => _left = secs);
+    } else if (_left <= 0) {
+      return;
+    }
     _clock = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return t.cancel();
       setState(() => _left--);
@@ -348,6 +360,13 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
        state. The app was hunting a hint key that is never sent, so the
        lifeline vanished and showed nothing at all. It now spends the lifeline
        and OPENS Lumi on this very question. */
+    /* THE CLOCK STOPS WHILE A LIFELINE IS BEING SPENT — and, above all, while
+       Lumi is open on top of this screen. It used to keep ticking behind the
+       tutor, so a student who paid a lifeline for a hint could be timed out
+       and lose the climb while reading the hint they had just bought. */
+    final wasOnQuestion = _currentQuestionId;
+    _clock?.cancel();
+    _clock = null;
     setState(() => _busy = true);
     try {
       final vote = await ClimbApi(api).lifeline(_s.id, which);
@@ -384,19 +403,27 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
           ),
         );
       }
-      _armClock();
+      // Switching the question earns a fresh clock. Everything else resumes.
+      _armClock(restart: _currentQuestionId != wasOnQuestion);
     } on ApiFailure catch (e) {
       if (!mounted) return;
       setState(() {
         _message = e.message;
         _busy = false;
       });
-      _armClock();
+      // A failed lifeline must not be worth a clock either.
+      _armClock(restart: false);
     }
   }
 
   Future<void> _placeNet() async {
     final api = ref.read(apiProvider);
+    /* A SHEET THAT BLOCKS ANSWERING MUST NOT BURN THE CLOCK. Placing a net is
+       a deliberate wager taken with a sheet covering the question; the clock
+       kept running underneath it, so thinking about the net could time the
+       student out of a rung they never got to answer. */
+    _clock?.cancel();
+    _clock = null;
     final chosen = await showModalBottomSheet<int>(
       context: context,
       builder: (ctx) {
@@ -433,7 +460,11 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
         );
       },
     );
-    if (chosen == null || !mounted) return;
+    if (!mounted) return;
+    if (chosen == null) {
+      _armClock(restart: false);
+      return;
+    }
     try {
       final st = await ClimbApi(api).setNet(_s.id, chosen);
       if (!mounted) return;
@@ -442,10 +473,15 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
       if (!mounted) return;
       setState(() => _message = e.message);
     }
+    _armClock(restart: false);
   }
 
   Future<void> _walk() async {
     final api = ref.read(apiProvider);
+    // Same rule: a confirmation the student cannot answer through does not
+    // get to spend their seconds.
+    _clock?.cancel();
+    _clock = null;
     final sure = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -463,7 +499,11 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
         ],
       ),
     );
-    if (sure != true || !mounted) return;
+    if (!mounted) return;
+    if (sure != true) {
+      _armClock(restart: false);
+      return;
+    }
     _clock?.cancel();
     try {
       final st = await ClimbApi(api).walk(_s.id);

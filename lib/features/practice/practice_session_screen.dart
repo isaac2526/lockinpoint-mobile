@@ -112,17 +112,27 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
     }
     if (sitting.timed) {
       _deadline = widget.clock().add(Duration(seconds: sitting.duration));
-      _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (!mounted) return;
-        if (_left == 0) {
-          _tick?.cancel();
-          // Time is up. The paper goes in exactly as it would in the hall.
-          _submit(force: true);
-        } else {
-          setState(() {});
-        }
-      });
+      _startTicker();
     }
+  }
+
+  /// Repaint the clock once a second, and put the paper in when time is up.
+  ///
+  /// The deadline is a wall-clock instant, so stopping and starting this
+  /// costs the student nothing — which is what makes it safe to stop it while
+  /// a submit is in flight and start it again if that submit fails.
+  void _startTicker() {
+    _tick?.cancel();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (_left == 0) {
+        _tick?.cancel();
+        // Time is up. The paper goes in exactly as it would in the hall.
+        _submit(force: true);
+      } else {
+        setState(() {});
+      }
+    });
   }
 
   @override
@@ -228,8 +238,25 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
       ref.invalidate(dashboardProvider);
     } on ApiFailure catch (e) {
       if (!mounted) return;
+      /* A FAILED SUBMIT MUST NOT COST THE PAPER.
+         Every answer is still held here, and the deadline is a wall-clock
+         instant that has not moved — so the clock starts again (the student
+         loses no time, and a timed paper still goes in by itself when the
+         time is up) and the snackbar carries a retry rather than vanishing
+         after four seconds and leaving a finished paper with nowhere to go. */
+      if (sitting.timed && _left > 0) _startTicker();
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.message)));
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text('${e.message} Your answers are still here.'),
+            duration: const Duration(seconds: 10),
+            action: SnackBarAction(
+              label: 'Try again',
+              onPressed: () => _submit(force: true),
+            ),
+          ),
+        );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -1053,6 +1080,21 @@ class ResultView extends StatelessWidget {
                 ),
               ),
             ),
+            /* "265" IS NOT A SCORE UNTIL YOU SAY OUT OF WHAT.
+               A UTME mock scores on the 400 scale, and the repository has
+               carried that line since the day the scale was added — it was
+               simply never put on a screen. So the circle read as a bare
+               number, and a student had to know the scale to read their own
+               result. Nothing but a percentage says "out of 400". */
+            if (result.outOf != null) ...[
+              const SizedBox(height: Gap.sm),
+              Center(
+                child: Text(
+                  result.outOf!,
+                  style: LipType.smallStrong.copyWith(color: c.text2),
+                ),
+              ),
+            ],
             const SizedBox(height: Gap.lg),
             Center(
               child: Text(

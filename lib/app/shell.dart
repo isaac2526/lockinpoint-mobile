@@ -284,13 +284,6 @@ class _LipDrawer extends ConsumerWidget {
                   onTap: () => go(const ResultsScreen()),
                 ),
                 _Row(
-                  icon: Icons.vpn_key_rounded,
-                  hue: FeatureHue.amber,
-                  title: 'Activate',
-                  subtitle: 'Card, transfer or a key',
-                  onTap: () => go(const ActivationScreen()),
-                ),
-                _Row(
                   icon: Icons.insights_rounded,
                   hue: FeatureHue.indigo,
                   title: 'Performance analysis',

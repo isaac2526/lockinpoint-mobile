@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme_controller.dart';
+import '../../core/countries.dart';
 import '../../core/open.dart';
 import '../../core/api.dart';
 import '../../core/config.dart';
@@ -266,8 +267,18 @@ class _Content extends ConsumerWidget {
                       ? '·'
                       : '$dial $phone'.trim(),
                 ),
-                _DetailRow(label: 'Country', value: country ?? '·'),
-                _DetailRow(label: 'State', value: state ?? '·'),
+                _DetailRow(label: 'Country', value: countryLabel(country)),
+                /* THE STATE IS EDITABLE HERE NOW. It was collected once, on
+                   the website, and shown in the app as a read-only fact — so
+                   a student who moved, or who picked the wrong one in a
+                   hurry, had no way to correct the field the leaderboard
+                   ranks them by. */
+                _DetailRow(
+                  label: 'State',
+                  value: state ?? 'Not set - tap to choose',
+                  icon: Icons.edit_rounded,
+                  onTap: () => _editState(context, ref, state),
+                ),
                 _DetailRow(
                   label: 'Account',
                   value: activated ? 'Activated' : 'Not activated yet',
@@ -422,18 +433,107 @@ class _ContactCard extends ConsumerWidget {
 }
 
 /// One fact about the account: its name on the left, its value on the right.
+/// Change the state on the student's profile.
+///
+/// THE LIST IS THE SERVER'S. /api/profile/complete answers with exactly the
+/// divisions of THIS student's country and refuses anything else on the way
+/// back in, so the app never carries a copy of Nigeria's 37 to go stale, and
+/// a student in Accra is never shown Nigerian states.
+Future<void> _editState(
+  BuildContext context,
+  WidgetRef ref,
+  String? current,
+) async {
+  final api = ref.read(apiProvider);
+  final messenger = ScaffoldMessenger.of(context);
+  List<String> states;
+  try {
+    final res = await api.get('/api/profile/complete');
+    states = ((res['states'] as List?) ?? const []).map((e) => '$e').toList();
+  } on ApiFailure catch (e) {
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(e.message)));
+    return;
+  }
+  if (!context.mounted) return;
+  if (states.isEmpty) {
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Your country does not use states on LockInPoint.'),
+        ),
+      );
+    return;
+  }
+
+  final picked = await showModalBottomSheet<String>(
+    context: context,
+    isScrollControlled: true,
+    builder: (sheet) => SafeArea(
+      child: SizedBox(
+        height: MediaQuery.of(sheet).size.height * 0.7,
+        child: ListView.builder(
+          itemCount: states.length + 1,
+          itemBuilder: (_, i) {
+            if (i == 0) {
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.lg, Gap.lg, 0),
+                child: Text(
+                  'Where you sit your exams',
+                  style: LipType.title.copyWith(color: sheet.lip.text1),
+                ),
+              );
+            }
+            final name = states[i - 1];
+            return ListTile(
+              title: Text(name),
+              selected: name == current,
+              trailing: name == current
+                  ? const Icon(Icons.check_rounded, size: 18)
+                  : null,
+              onTap: () => Navigator.of(sheet).pop(name),
+            );
+          },
+        ),
+      ),
+    ),
+  );
+  if (picked == null || picked == current) return;
+
+  try {
+    await api.post('/api/profile/complete', body: {'state': picked});
+    ref.read(dashboardProvider.notifier).refresh();
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text('State set to $picked.')));
+  } on ApiFailure catch (e) {
+    // Say it failed. A silent no-op here is the exact bug class this build
+    // is curing.
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(e.message)));
+  }
+}
+
 class _DetailRow extends StatelessWidget {
   const _DetailRow({
     required this.label,
     required this.value,
     this.valueColor,
     this.onTap,
+    this.icon = Icons.copy_rounded,
   });
 
   final String label;
   final String value;
   final Color? valueColor;
   final VoidCallback? onTap;
+
+  /// Copy, by default. An editable row says so with a pencil instead — a row
+  /// that can be changed and shows a copy glyph teaches the wrong thing.
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -453,7 +553,7 @@ class _DetailRow extends StatelessWidget {
           ),
           if (onTap != null) ...[
             const SizedBox(width: Gap.sm),
-            Icon(Icons.copy_rounded, size: 14, color: c.text3),
+            Icon(icon, size: 14, color: c.text3),
           ],
         ],
       ),

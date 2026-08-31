@@ -18,6 +18,15 @@ cd "$(dirname "$0")/.."
 DEVICE="${1:-linux}"
 PORT="${LIP_TEST_PORT:-4599}"
 
+# A Linux Flutter binary needs somewhere to draw. On a headless container that
+# is Xvfb; without it the app never starts and the run reports a load failure
+# that has nothing to do with the vault.
+export DISPLAY="${DISPLAY:-:99}"
+if ! xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
+  Xvfb "$DISPLAY" -screen 0 1280x1024x24 >/dev/null 2>&1 &
+  sleep 2
+fi
+
 cleanup() { pkill -f fake_backend.js >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 cleanup
