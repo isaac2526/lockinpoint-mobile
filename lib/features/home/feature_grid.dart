@@ -7,11 +7,14 @@ import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
 import '../content/content_repository.dart';
+import '../classroom/classroom_screen.dart';
 import '../leaderboard/leaderboard_screen.dart';
 import '../practice/practice_flow_screen.dart';
 import '../progress/analysis_screen.dart';
 import '../progress/results_screen.dart';
+import '../saved/saved_screen.dart';
 import '../search/search_screen.dart';
+import '../tutor/tutor_screen.dart';
 import '../vault/vault_screen.dart';
 import 'feature_catalogue.dart';
 
@@ -78,6 +81,9 @@ class FeatureTile extends StatelessWidget {
       'history' => const ResultsScreen(),
       'analysis' => const AnalysisScreen(),
       'vault' => const VaultScreen(),
+      'classroom' => const ClassroomScreen(),
+      'bookmarks' => const SavedScreen(),
+      'tutor' => const TutorScreen(),
       _ => null,
     };
     if (destination != null) {

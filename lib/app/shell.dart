@@ -9,6 +9,7 @@ import '../design/tokens.dart';
 import '../design/typography.dart';
 import '../design/wordmark.dart';
 import '../features/activation/activation_screen.dart';
+import '../features/classroom/classroom_screen.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/content/content_repository.dart';
 import '../features/home/dashboard_screen.dart';
@@ -19,7 +20,9 @@ import '../features/practice/practice_flow_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/progress/analysis_screen.dart';
 import '../features/progress/results_screen.dart';
+import '../features/saved/saved_screen.dart';
 import '../features/search/search_screen.dart';
+import '../features/tutor/tutor_screen.dart';
 import '../features/vault/vault_screen.dart';
 import '../core/vault/connectivity.dart';
 import '../core/vault/vault_repository.dart';
@@ -216,6 +219,26 @@ class _LipDrawer extends ConsumerWidget {
                   hue: FeatureHue.pink,
                   title: 'Leaderboard',
                   onTap: () => go(const LeaderboardScreen()),
+                ),
+                _Row(
+                  icon: Icons.auto_stories_rounded,
+                  hue: FeatureHue.violet,
+                  title: 'Classroom',
+                  subtitle: 'Notes, videos and files',
+                  onTap: () => go(const ClassroomScreen()),
+                ),
+                _Row(
+                  icon: Icons.bookmark_rounded,
+                  hue: FeatureHue.lime,
+                  title: 'Saved questions',
+                  onTap: () => go(const SavedScreen()),
+                ),
+                _Row(
+                  icon: Icons.smart_toy_rounded,
+                  hue: FeatureHue.rose,
+                  title: 'Ask Lumi',
+                  subtitle: 'Your AI tutor',
+                  onTap: () => go(const TutorScreen()),
                 ),
                 _Row(
                   icon: Icons.receipt_long_rounded,

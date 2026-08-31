@@ -114,7 +114,6 @@ const kFeatures = <Feature>[
     subtitle: 'Notes, materials and video lessons',
     icon: Icons.auto_stories_rounded,
     hue: FeatureHue.violet,
-    ready: false,
   ),
   Feature(
     key: 'search',
@@ -166,7 +165,6 @@ const kFeatures = <Feature>[
     subtitle: 'Everything you kept',
     icon: Icons.bookmark_rounded,
     hue: FeatureHue.lime,
-    ready: false,
   ),
   Feature(
     key: 'vault',
@@ -189,7 +187,6 @@ const kFeatures = <Feature>[
     subtitle: 'Your AI tutor, any question',
     icon: Icons.smart_toy_rounded,
     hue: FeatureHue.rose,
-    ready: false,
   ),
 ];
 
