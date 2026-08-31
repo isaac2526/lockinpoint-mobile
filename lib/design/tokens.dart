@@ -3,15 +3,151 @@ import 'package:flutter/material.dart';
 /// ===========================================================================
 /// THE LOCKINPOINT PALETTE
 ///
-/// Every value here is lifted from the website's own `globals.css`, not
-/// invented. A student moving between the browser and the app should meet the
-/// same blue, the same gold, the same depth of black — that recognition is
-/// most of what makes two products feel like one product.
+/// LockInPoint is BLUE. It is not blue everywhere.
+///
+/// A student should be able to glance at the home screen and know, without
+/// reading a word, which tile is practice and which is the leaderboard —
+/// because each part of the app owns a colour. What keeps a dozen colours
+/// from becoming a mess is that every one of them is mixed to the SAME
+/// RECIPE: one fixed lightness and saturation band per theme, walked around
+/// the colour wheel. Many hues, one product.
+///
+/// FOUNDATIONS ARE SOLID, NOT GRADIENTS.
+/// Light mode stands on white. Dark mode stands on near-black NEUTRAL —
+/// #08090B, not a deep navy — with surfaces layered above it in real,
+/// opaque steps. Dark is designed here in its own right rather than being
+/// the light theme with the lights turned off: the blues brighten, the
+/// borders lift, the shadows deepen, and every pairing stays readable.
 ///
 /// Nothing in the app names a colour directly. Widgets read [LipColors] from
 /// the theme, so light and dark are two fillings of one shape and a screen
 /// cannot accidentally work in one theme and fail in the other.
 /// ===========================================================================
+
+/// One feature's colour identity: the surface it sits on, and the ink that
+/// sits on that surface. Always used as a pair, so contrast is decided once
+/// here rather than guessed at every call site.
+@immutable
+class LipHue {
+  const LipHue(this.tint, this.ink);
+
+  /// The card or tile fill.
+  final Color tint;
+
+  /// The icon and title drawn on [tint]. Also legible on the page background.
+  final Color ink;
+}
+
+/// THE TWELVE. Each one means something; none is decoration.
+@immutable
+class LipHues {
+  const LipHues({
+    required this.blue,
+    required this.indigo,
+    required this.violet,
+    required this.purple,
+    required this.pink,
+    required this.rose,
+    required this.orange,
+    required this.amber,
+    required this.lime,
+    required this.green,
+    required this.teal,
+    required this.slate,
+  });
+
+  /// blue — practice, and every primary action
+  final LipHue blue;
+
+  /// indigo — analysis and insight
+  final LipHue indigo;
+
+  /// violet — the classroom
+  final LipHue violet;
+
+  /// purple — games and challenges
+  final LipHue purple;
+
+  /// pink — the leaderboard and anything social
+  final LipHue pink;
+
+  /// rose — mistakes, danger, a wrong answer
+  final LipHue rose;
+
+  /// orange — submitting, and anything that cannot be undone
+  final LipHue orange;
+
+  /// amber — time pressure, streaks
+  final LipHue amber;
+
+  /// lime — bookmarks and saved things
+  final LipHue lime;
+
+  /// green — progress, a right answer, money earned
+  final LipHue green;
+
+  /// teal — notes and science
+  final LipHue teal;
+
+  /// slate — utilities that should not shout: search, settings
+  final LipHue slate;
+
+  /// Every hue in display order, for anything that needs to walk them.
+  List<LipHue> get all => [
+    blue,
+    indigo,
+    violet,
+    purple,
+    pink,
+    rose,
+    orange,
+    amber,
+    lime,
+    green,
+    teal,
+    slate,
+  ];
+
+  /* THE RECIPE, AND THE ONE PLACE IT BENDS.
+     Tints are one fixed lightness/saturation band walked around the wheel —
+     that is what makes twelve colours read as one product. The INKS are not
+     a fixed band, and could not be: green and yellow carry far more
+     luminance than blue at the same lightness, so a single L would leave
+     lime unreadable while blue was pitch dark. Each ink is instead solved to
+     clear the SAME contrast target (5.5:1) against its own tint. The
+     discipline is the ratio, not the number — and the test suite measures
+     it rather than trusting the eye. */
+  static const lightSet = LipHues(
+    blue: LipHue(Color(0xFFDFE9FB), Color(0xFF2759B0)),
+    indigo: LipHue(Color(0xFFE2DFFB), Color(0xFF3728B8)),
+    violet: LipHue(Color(0xFFECDFFB), Color(0xFF6B28B8)),
+    purple: LipHue(Color(0xFFF6DFFB), Color(0xFF9126AB)),
+    pink: LipHue(Color(0xFFFBDFED), Color(0xFFA52465)),
+    rose: LipHue(Color(0xFFFBE0DF), Color(0xFFA92A25)),
+    orange: LipHue(Color(0xFFFBEADF), Color(0xFF904D20)),
+    amber: LipHue(Color(0xFFFBF1DF), Color(0xFF7D5A1C)),
+    lime: LipHue(Color(0xFFEEFBDF), Color(0xFF466F18)),
+    green: LipHue(Color(0xFFDFFBED), Color(0xFF197145)),
+    teal: LipHue(Color(0xFFDFFAFB), Color(0xFF186C6F)),
+    slate: LipHue(Color(0xFFEEEFF1), Color(0xFF555F75)),
+  );
+
+  static const darkSet = LipHues(
+    blue: LipHue(Color(0xFF1A2332), Color(0xFF6A99E9)),
+    indigo: LipHue(Color(0xFF1C1A32), Color(0xFF9187ED)),
+    violet: LipHue(Color(0xFF251A32), Color(0xFFB17EEC)),
+    purple: LipHue(Color(0xFF2E1A32), Color(0xFFD271EA)),
+    pink: LipHue(Color(0xFF321A26), Color(0xFFE96FAC)),
+    rose: LipHue(Color(0xFF321B1A), Color(0xFFEA7571)),
+    orange: LipHue(Color(0xFF32241A), Color(0xFFE38647)),
+    amber: LipHue(Color(0xFF322A1A), Color(0xFFE1A337)),
+    lime: LipHue(Color(0xFF27321A), Color(0xFF92E137)),
+    green: LipHue(Color(0xFF1A3226), Color(0xFF37E18C)),
+    teal: LipHue(Color(0xFF1A3232), Color(0xFF37DCE1)),
+    slate: LipHue(Color(0xFF25272D), Color(0xFF979EAD)),
+  );
+}
+
 @immutable
 class LipColors extends ThemeExtension<LipColors> {
   const LipColors({
@@ -47,23 +183,29 @@ class LipColors extends ThemeExtension<LipColors> {
     required this.ring,
     required this.shadow,
     required this.shadowRaised,
+    required this.hues,
     required this.isDark,
   });
 
-  /// The canvas the glass bleeds.
+  /// The page. A solid colour, deliberately: white in light, near-black
+  /// neutral in dark. Nothing bleeds through it.
   final Color bgBase;
+
+  /// Kept so the four-stop background of older screens still compiles. Every
+  /// stop is now the SAME colour — the gradient era is over.
   final List<Color> bgGradient;
 
-  /// The three aura orbs. On the website these are blurred CSS circles behind
-  /// every page; without something behind it, frosted glass has nothing to
-  /// prove it is frosted.
+  /// Formerly the three aura orbs. Fully transparent now; a solid foundation
+  /// has nothing to refract.
   final Color glowA, glowB, glowC;
 
-  /// THE SIX TIERS OF GLASS · ultra < card < raised < deep < modal.
-  /// The same ladder the website uses, so a component ported from one to the
-  /// other keeps its depth rather than being re-guessed.
+  /// THE SURFACE LADDER · ultra < card < raised < deep < modal.
+  /// These are real opaque steps away from [bgBase], not translucency. The
+  /// names are inherited so no call site had to change; the values are not.
   final Color glassUltra, glassCard, glassRaised, glassDeep, glassModal;
   final Color glassBorder, glassBorderStrong, glassEdge;
+
+  /// Retained at zero alpha: surfaces no longer carry a highlight sheen.
   final Color glassHighlight;
 
   /// Text tiers. text1 is nearly black in light and nearly white in dark.
@@ -77,99 +219,107 @@ class LipColors extends ThemeExtension<LipColors> {
   final Color ring;
   final Color shadow, shadowRaised;
 
+  /// The twelve feature colours for this theme.
+  final LipHues hues;
+
   final bool isDark;
 
   // -------------------------------------------------------------- light ----
+  /// Foundation: white. Cards sit a step ABOVE the page rather than being cut
+  /// out of it, which is why the page is a hair off-white and the cards are
+  /// pure white.
   static const light = LipColors(
-    bgBase: Color(0xFFE9EEFB),
+    bgBase: Color(0xFFF6F7FB),
     bgGradient: [
-      Color(0xFFF3F7FF),
-      Color(0xFFE7EEFC),
-      Color(0xFFDDE7FA),
-      Color(0xFFE6ECFB),
+      Color(0xFFF6F7FB),
+      Color(0xFFF6F7FB),
+      Color(0xFFF6F7FB),
+      Color(0xFFF6F7FB),
     ],
-    glowA: Color(0x4D2450C7),
-    glowB: Color(0x4DE9B83C),
-    glowC: Color(0x384E84F5),
-    glassUltra: Color(0x4DFFFFFF),
-    glassCard: Color(0x85FFFFFF),
-    glassRaised: Color(0xA8FFFFFF),
-    glassDeep: Color(0x8CE1E9FA),
-    glassModal: Color(0xC7FFFFFF),
-    glassBorder: Color(0xB8FFFFFF),
-    glassBorderStrong: Color(0xF2FFFFFF),
-    glassEdge: Color(0x291436A6),
-    glassHighlight: Color(0xBFFFFFFF),
-    text1: Color(0xFF050A18),
-    text2: Color(0xFF2A3655),
-    text3: Color(0xFF43506F),
-    brand: Color(0xFF12296B),
-    brandStrong: Color(0xFF0C1D4D),
-    brandSoft: Color(0x1A2450C7),
-    gold: Color(0xFFE9B83C),
-    accent: Color(0xFF8F6400),
-    accentSoft: Color(0x24D4A017),
-    success: Color(0xFF157347),
-    successSoft: Color(0x1F157347),
+    glowA: Color(0x00000000),
+    glowB: Color(0x00000000),
+    glowC: Color(0x00000000),
+    glassUltra: Color(0xFFFFFFFF),
+    glassCard: Color(0xFFFFFFFF),
+    glassRaised: Color(0xFFFFFFFF),
+    glassDeep: Color(0xFFEFF2F8),
+    glassModal: Color(0xFFFFFFFF),
+    glassBorder: Color(0xFFE4E8F1),
+    glassBorderStrong: Color(0xFFCFD7E5),
+    glassEdge: Color(0x14101828),
+    glassHighlight: Color(0x00000000),
+    text1: Color(0xFF0B1020),
+    text2: Color(0xFF414B63),
+    text3: Color(0xFF6C7690),
+    brand: Color(0xFF1D4ED8),
+    brandStrong: Color(0xFF12296B),
+    brandSoft: Color(0x141D4ED8),
+    gold: Color(0xFFD9A213),
+    accent: Color(0xFF8A6100),
+    accentSoft: Color(0x1FD9A213),
+    success: Color(0xFF107A46),
+    successSoft: Color(0x1A107A46),
     danger: Color(0xFFB42318),
     dangerSoft: Color(0x1AB42318),
-    warning: Color(0xFFB54708),
-    warningSoft: Color(0x1FB54708),
-    ring: Color(0x732450C7),
-    shadow: Color(0x1F183278),
-    shadowRaised: Color(0x2E183278),
+    warning: Color(0xFFB25A09),
+    warningSoft: Color(0x1FB25A09),
+    ring: Color(0x5C1D4ED8),
+    shadow: Color(0x0F101828),
+    shadowRaised: Color(0x1A101828),
+    hues: LipHues.lightSet,
     isDark: false,
   );
 
   // --------------------------------------------------------------- dark ----
+  /// Foundation: NEUTRAL near-black. Not navy, not "dark blue" — #08090B, so
+  /// the blues and the twelve hues above it actually read as colours rather
+  /// than as shades of the background.
   static const dark = LipColors(
-    bgBase: Color(0xFF040B22),
+    bgBase: Color(0xFF08090B),
     bgGradient: [
-      Color(0xFF071233),
-      Color(0xFF050D26),
-      Color(0xFF0A1030),
-      Color(0xFF060F2C),
+      Color(0xFF08090B),
+      Color(0xFF08090B),
+      Color(0xFF08090B),
+      Color(0xFF08090B),
     ],
-    glowA: Color(0x573E6BE8),
-    glowB: Color(0x38E9B83C),
-    glowC: Color(0x3D7C4DE9),
-    glassUltra: Color(0x0F7898FF),
-    glassCard: Color(0x6B18285C),
-    glassRaised: Color(0x8C1E3068),
-    glassDeep: Color(0x9E09112C),
-    glassModal: Color(0xC7162556),
-    glassBorder: Color(0x4294B0FF),
-    glassBorderStrong: Color(0x70BED0FF),
-    glassEdge: Color(0x3894B0FF),
-    glassHighlight: Color(0x38A6BDF8),
-    text1: Color(0xFFF2F6FF),
-    text2: Color(0xFFC6D0E8),
-    text3: Color(0xFF9CAACC),
-    // In dark the deep navy becomes the ground, so the brand must lift OFF it
-    // rather than sink into it. This is the one place the app does not copy the
-    // website literally: #12296b on #040b22 is unreadable.
-    brand: Color(0xFF7FA0F5),
-    brandStrong: Color(0xFFA8BEFA),
-    brandSoft: Color(0x333E6BE8),
+    glowA: Color(0x00000000),
+    glowB: Color(0x00000000),
+    glowC: Color(0x00000000),
+    glassUltra: Color(0xFF121316),
+    glassCard: Color(0xFF141519),
+    glassRaised: Color(0xFF1B1D22),
+    glassDeep: Color(0xFF0F1013),
+    glassModal: Color(0xFF1B1D22),
+    glassBorder: Color(0xFF272A31),
+    glassBorderStrong: Color(0xFF3A3E48),
+    glassEdge: Color(0x14FFFFFF),
+    glassHighlight: Color(0x00000000),
+    text1: Color(0xFFF4F6F9),
+    text2: Color(0xFFB9C0CC),
+    text3: Color(0xFF8A92A1),
+    brand: Color(0xFF7BA0FF),
+    brandStrong: Color(0xFFA9C1FF),
+    brandSoft: Color(0x2E7BA0FF),
     gold: Color(0xFFE9B83C),
     accent: Color(0xFFFFCF57),
     accentSoft: Color(0x2EE9B83C),
-    success: Color(0xFF52D18B),
-    successSoft: Color(0x2E52D18B),
-    danger: Color(0xFFFF8595),
-    dangerSoft: Color(0x2EFF8595),
+    success: Color(0xFF4ED18B),
+    successSoft: Color(0x2E4ED18B),
+    danger: Color(0xFFFF8A93),
+    dangerSoft: Color(0x2EFF8A93),
     warning: Color(0xFFF0B44E),
     warningSoft: Color(0x2EF0B44E),
-    ring: Color(0x7F7FA0F5),
-    shadow: Color(0x80010514),
-    shadowRaised: Color(0x8C00020C),
+    ring: Color(0x807BA0FF),
+    shadow: Color(0x66000000),
+    shadowRaised: Color(0x80000000),
+    hues: LipHues.darkSet,
     isDark: true,
   );
 
   @override
   LipColors copyWith() => this;
 
-  /// Themes are switched, never blended — a half-interpolated glass tier reads
+  /// Themes are switched, never blended — a half-interpolated surface reads
   /// as a rendering bug rather than a transition.
   @override
   LipColors lerp(ThemeExtension<LipColors>? other, double t) =>

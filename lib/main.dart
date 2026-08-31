@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app/theme_controller.dart';
-import 'design/aura.dart';
 import 'design/theme.dart';
 import 'design/motion_widgets.dart';
 import 'design/tokens.dart';
@@ -45,10 +44,6 @@ class LockInPointApp extends ConsumerWidget {
       theme: LipTheme.light(),
       darkTheme: LipTheme.dark(),
       themeMode: mode,
-      // The aura sits under every route, so the glass always has the brand's
-      // light behind it to refract.
-      builder: (context, child) =>
-          BrandAura(child: child ?? const SizedBox.shrink()),
       home: const _Gate(),
     );
   }

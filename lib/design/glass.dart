@@ -5,28 +5,28 @@ import 'package:flutter/material.dart';
 import 'tokens.dart';
 import 'theme.dart';
 
-/// The six tiers of glass, matching the website's ladder exactly.
+/// The surface ladder: how far a thing sits above the page.
 enum GlassTier { ultra, card, raised, deep, modal }
 
 /// ===========================================================================
-/// GLASS, WITH A BUDGET
+/// A SURFACE
 ///
-/// `BackdropFilter` is the single most expensive thing this app can ask a
-/// cheap Android phone to do: it forces everything beneath into an offscreen
-/// buffer, every frame. Put one on each card in a scrolling list and a ₦45,000
-/// phone drops frames before the list has finished its first fling.
+/// Once frosted glass over a drifting aura; now a solid card on a solid page.
+/// The change is deliberate. Glass made every screen look like the same
+/// screen, and a student needs the classroom to look different from the
+/// leaderboard at a glance. Colour does that; translucency cannot.
 ///
-/// So [GlassSurface] takes [blurred] and it defaults to FALSE.
+/// A surface is therefore an opaque fill, a hairline border and — when it is
+/// meant to sit above the page rather than in it — a soft shadow. Give it a
+/// [hue] and it takes on a feature's identity: the tint becomes the fill and
+/// the ink becomes the border, so the pairing is decided in the palette
+/// rather than guessed here.
 ///
-///   blurred: true   · chrome only — the bottom bar, sheets, dialogs, the
-///                     overlay a calculator or Lumi arrives in. A handful on
-///                     screen at once, never in a scroller.
-///   blurred: false  · everything else. A translucent fill, a hairline border,
-///                     the same inner highlight. To the eye it belongs to the
-///                     same family; to the GPU it is an ordinary rectangle.
-///
-/// That is the whole discipline. It is enforced by the default, not by a note
-/// in a document nobody re-reads.
+/// [blurred] survives for chrome only — a sheet, a dialog, the overlay Lumi
+/// arrives in. It defaults to FALSE because `BackdropFilter` forces everything
+/// beneath it into an offscreen buffer every frame, and one per card in a
+/// scrolling list will drop frames on a ₦45,000 phone. The discipline is
+/// enforced by the default, not by a note nobody re-reads.
 /// ===========================================================================
 class GlassSurface extends StatelessWidget {
   const GlassSurface({
@@ -38,6 +38,7 @@ class GlassSurface extends StatelessWidget {
     this.padding = const EdgeInsets.all(Gap.lg),
     this.margin,
     this.onTap,
+    this.hue,
     this.selected = false,
     this.seam = false,
     this.elevated = false,
@@ -51,6 +52,11 @@ class GlassSurface extends StatelessWidget {
   final EdgeInsetsGeometry padding;
   final EdgeInsetsGeometry? margin;
   final VoidCallback? onTap;
+
+  /// The feature colour this surface belongs to. When set, the fill is the
+  /// hue's tint and the border is its ink — the pair the palette guarantees
+  /// is readable together.
+  final LipHue? hue;
 
   /// Draws the brand ring. Used for a chosen option, a picked year, a mode.
   final bool selected;
@@ -81,21 +87,18 @@ class GlassSurface extends StatelessWidget {
     final c = context.lip;
     final shape = BorderRadius.circular(radius);
 
+    final tinted = hue;
     Widget surface = DecoratedBox(
       decoration: BoxDecoration(
-        color: _fill(c),
+        color: tinted?.tint ?? _fill(c),
         borderRadius: shape,
         border: Border.all(
-          color: selected ? c.brand : c.glassBorder,
+          color: selected
+              ? c.brand
+              : (tinted == null
+                    ? c.glassBorder
+                    : tinted.ink.withValues(alpha: c.isDark ? 0.22 : 0.16)),
           width: selected ? 1.6 : 1,
-        ),
-        // The inner top highlight is what makes a flat rectangle read as a
-        // pane of glass catching light rather than a grey box.
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [c.glassHighlight, c.glassHighlight.withValues(alpha: 0)],
-          stops: const [0, 0.42],
         ),
       ),
       child: Padding(padding: padding, child: child),

@@ -116,12 +116,87 @@ void main() {
       expect(LipColors.light.text1, isNot(equals(LipColors.dark.text1)));
     });
 
-    test('the glass ladder gets denser as it rises', () {
-      // ultra < card < raised is the website's order; if the alphas ever cross,
-      // a "raised" pane would look lighter than the card beneath it.
+    test('surfaces are opaque — the page never bleeds through a card', () {
       for (final c in [LipColors.light, LipColors.dark]) {
-        expect(c.glassUltra.a, lessThan(c.glassCard.a));
-        expect(c.glassCard.a, lessThan(c.glassRaised.a));
+        for (final fill in [
+          c.glassUltra,
+          c.glassCard,
+          c.glassRaised,
+          c.glassDeep,
+          c.glassModal,
+        ]) {
+          expect(
+            fill.a,
+            1.0,
+            reason: 'a solid foundation means solid surfaces on top of it',
+          );
+        }
+      }
+    });
+
+    test('the surface ladder rises away from the page', () {
+      /* In dark, a card must be LIGHTER than the page — that is what reading
+         as "above" means on a black ground. In light it is the reverse: the
+         page is the tinted one and the cards are the white cut-outs. If the
+         order ever flips, a raised pane sinks into the page. */
+      final d = LipColors.dark;
+      expect(_lum(d.glassCard), greaterThan(_lum(d.bgBase)));
+      expect(_lum(d.glassRaised), greaterThan(_lum(d.glassCard)));
+
+      final l = LipColors.light;
+      expect(_lum(l.glassCard), greaterThan(_lum(l.bgBase)));
+    });
+
+    test('dark mode stands on NEUTRAL black, not on navy', () {
+      /* The whole point of the dark theme: a blue-black ground swallows the
+         blues drawn on it. Every foundation colour must be near-grey. */
+      for (final ground in [
+        LipColors.dark.bgBase,
+        LipColors.dark.glassCard,
+        LipColors.dark.glassRaised,
+      ]) {
+        final spread =
+            [ground.r, ground.g, ground.b].reduce((a, b) => a > b ? a : b) -
+            [ground.r, ground.g, ground.b].reduce((a, b) => a < b ? a : b);
+        expect(
+          spread,
+          lessThan(0.05),
+          reason: 'a foundation this colourful is a tint, not a neutral',
+        );
+      }
+    });
+
+    test('light mode stands on white', () {
+      expect(_lum(LipColors.light.bgBase), greaterThan(0.85));
+      expect(_lum(LipColors.light.glassCard), greaterThan(0.95));
+    });
+
+    test('every feature hue is readable on its own tint, in both themes', () {
+      for (final c in [LipColors.light, LipColors.dark]) {
+        for (final h in c.hues.all) {
+          expect(
+            _contrast(h.ink, h.tint),
+            greaterThanOrEqualTo(4.5),
+            reason:
+                'ink ${h.ink} on tint ${h.tint} fails WCAG AA — a title a '
+                'student cannot read is not a colour scheme',
+          );
+        }
+      }
+    });
+
+    test('feature hues are twelve DIFFERENT colours, not one repeated', () {
+      for (final c in [LipColors.light, LipColors.dark]) {
+        final inks = c.hues.all.map((h) => h.ink.toARGB32()).toSet();
+        expect(inks.length, c.hues.all.length);
+      }
+    });
+
+    test('the brand blue is legible on the page it sits on', () {
+      for (final c in [LipColors.light, LipColors.dark]) {
+        expect(_contrast(c.brand, c.bgBase), greaterThanOrEqualTo(4.5));
+        expect(_contrast(c.text1, c.bgBase), greaterThanOrEqualTo(7));
+        expect(_contrast(c.text3, c.glassCard), greaterThanOrEqualTo(4.5));
       }
     });
   });
@@ -314,4 +389,19 @@ void main() {
       expect(Entrance.inList(index: 99, child: const Text('a')), isA<Text>());
     });
   });
+}
+
+// ---------------------------------------------------------------------------
+// WCAG maths, so "readable" is measured rather than asserted by eye.
+
+double _channel(double v) =>
+    v <= 0.03928 ? v / 12.92 : math.pow((v + 0.055) / 1.055, 2.4).toDouble();
+
+double _lum(Color c) =>
+    0.2126 * _channel(c.r) + 0.7152 * _channel(c.g) + 0.0722 * _channel(c.b);
+
+double _contrast(Color a, Color b) {
+  final la = _lum(a), lb = _lum(b);
+  final hi = la > lb ? la : lb, lo = la > lb ? lb : la;
+  return (hi + 0.05) / (lo + 0.05);
 }
