@@ -29,10 +29,12 @@ class AppConfig {
 
   static const userAgent = 'LockInPoint/$appVersion (Android; Flutter)';
 
-  static const whatsappChannel =
-      'https://whatsapp.com/channel/0029Vb7NwWk9hXFD6TSas40m';
-
-  static const supportEmail = 'info@lockinpoint.com';
+  /* THE APP NO LONGER KNOWS A PHONE NUMBER OR AN ADDRESS.
+     A WhatsApp channel and a support email used to live here as constants,
+     which meant changing a support line meant shipping an APK. They are rows
+     in `support_contacts` now, read through content_repository.dart, and a
+     channel is a LIST — the team runs more than one number and the app shows
+     all of them. Nothing that Isaac may need to change belongs in this file. */
 
   /// THE GUARDIAN PORTAL IS A WEBSITE, ON PURPOSE.
   ///

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lockinpoint/design/theme.dart';
+import 'package:lockinpoint/features/content/content_repository.dart';
 import 'package:lockinpoint/features/home/dashboard_screen.dart';
 import 'package:lockinpoint/features/profile/profile_screen.dart';
 
@@ -44,14 +45,33 @@ const _student = {
   'resume': null,
 };
 
+/// Two support contacts, as the backend would send them. The app carries no
+/// phone numbers of its own any more, so a test that wants to see one has to
+/// supply it — which is exactly the point.
+const _contacts = [
+  SupportContact(
+    kind: 'whatsapp',
+    label: 'WhatsApp support',
+    value: '+2348012345678',
+    description: 'Fastest reply',
+  ),
+  SupportContact(
+    kind: 'email',
+    label: 'Email the tutors',
+    value: 'help@example.com',
+  ),
+];
+
 Future<void> _pump(
   WidgetTester tester, {
   Map<String, dynamic> payload = _student,
+  List<SupportContact> contacts = _contacts,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         dashboardProvider.overrideWith(() => _FakeDashboard(payload)),
+        supportContactsProvider.overrideWith((ref) async => contacts),
       ],
       child: MaterialApp(theme: LipTheme.light(), home: const ProfileScreen()),
     ),
@@ -105,30 +125,68 @@ void main() {
     expect(copied, contains('/signup?ref=AB2CD'));
   });
 
-  testWidgets('holds every door: WhatsApp, email, appearance, log out', (
+  /// The test surface is shorter than a phone, and a ListView only builds
+  /// what is on screen — so walk down to each door before asserting it.
+  Future<void> see(WidgetTester tester, String text) async {
+    await tester.dragUntilVisible(
+      find.text(text),
+      find.byType(ListView),
+      const Offset(0, -120),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text(text), findsOneWidget);
+  }
+
+  testWidgets('holds every door: appearance, guardian, contacts, log out', (
     tester,
   ) async {
     await _pump(tester);
+    await see(tester, 'System');
+    await see(tester, 'Light');
+    await see(tester, 'Dark');
+    await see(tester, 'Guardian Portal');
+    await see(tester, 'Log out');
+  });
 
-    // The test surface is shorter than a phone, and a ListView only builds
-    // what is on screen — so walk down to each door before asserting it.
-    Future<void> see(String text) async {
-      await tester.dragUntilVisible(
-        find.text(text),
-        find.byType(ListView),
-        const Offset(0, -120),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text(text), findsOneWidget);
-    }
+  testWidgets('support contacts are the BACKEND\'s, not the app\'s', (
+    tester,
+  ) async {
+    await _pump(tester);
+    // Both labels come from the fake backend rows above. Nothing in the app
+    // knows a phone number or an address of its own.
+    await see(tester, 'WhatsApp support');
+    await see(tester, 'Email the tutors');
+    await see(tester, 'Fastest reply');
+  });
 
-    await see('System');
-    await see('Light');
-    await see('Dark');
-    await see('Join the WhatsApp channel');
-    await see('Guardian Portal');
-    await see('Email the tutors');
-    await see('Log out');
+  testWidgets('a channel is a LIST: two numbers show as two rows', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      contacts: const [
+        SupportContact(
+          kind: 'phone',
+          label: 'Support line 1',
+          value: '+2348012345678',
+        ),
+        SupportContact(
+          kind: 'phone',
+          label: 'Support line 2',
+          value: '+2348077778195',
+        ),
+      ],
+    );
+    await see(tester, 'Support line 1');
+    await see(tester, 'Support line 2');
+  });
+
+  testWidgets('no contacts configured yet still leaves the portal reachable', (
+    tester,
+  ) async {
+    await _pump(tester, contacts: const []);
+    await see(tester, 'Guardian Portal');
+    await see(tester, 'Log out');
   });
 
   testWidgets('the Product Key is shown, explained and copyable', (

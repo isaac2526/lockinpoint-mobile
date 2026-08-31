@@ -13,6 +13,7 @@ import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
 import '../auth/auth_controller.dart';
+import '../content/content_repository.dart';
 import '../home/dashboard_screen.dart';
 
 /// ===========================================================================
@@ -285,49 +286,11 @@ class _Content extends ConsumerWidget {
         const SizedBox(height: Gap.lg),
 
         // ---- reach us ------------------------------------------------
+        // Every row below comes from the backend. A new support line is a row
+        // in the admin panel, not a release.
         const LipLabel('Stay connected'),
         const SizedBox(height: Gap.sm),
-        Entrance(
-          index: 5,
-          child: GlassSurface(
-            tier: GlassTier.card,
-            padding: EdgeInsets.zero,
-            child: Column(
-              children: [
-                _LinkRow(
-                  icon: Icons.chat_rounded,
-                  color: c.success,
-                  title: 'Join the WhatsApp channel',
-                  subtitle: 'Announcements, tips and updates',
-                  onTap: () => launchUrl(
-                    Uri.parse(AppConfig.whatsappChannel),
-                    mode: LaunchMode.externalApplication,
-                  ),
-                ),
-                Divider(height: 1, color: c.glassBorder),
-                _LinkRow(
-                  icon: Icons.supervisor_account_rounded,
-                  color: c.hues.indigo.ink,
-                  title: 'Guardian Portal',
-                  subtitle: 'For a parent, teacher or school following you',
-                  onTap: () => launchUrl(
-                    Uri.parse(AppConfig.guardianPortal),
-                    mode: LaunchMode.externalApplication,
-                  ),
-                ),
-                Divider(height: 1, color: c.glassBorder),
-                _LinkRow(
-                  icon: Icons.mail_rounded,
-                  color: c.brand,
-                  title: 'Email the tutors',
-                  subtitle: AppConfig.supportEmail,
-                  onTap: () =>
-                      launchUrl(Uri.parse('mailto:${AppConfig.supportEmail}')),
-                ),
-              ],
-            ),
-          ),
-        ),
+        Entrance(index: 5, child: _ContactCard()),
         const SizedBox(height: Gap.xl),
 
         // ---- the exit ------------------------------------------------
@@ -345,6 +308,111 @@ class _Content extends ConsumerWidget {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(toast)));
+  }
+}
+
+/// ===========================================================================
+/// HOW TO REACH LOCKINPOINT — from the backend, every time.
+///
+/// The WhatsApp channel and the support address used to be constants in
+/// `config.dart`, which meant changing a phone number meant shipping an APK.
+/// They are rows now, and a channel is a LIST: two support numbers show as
+/// two rows, exactly as the team runs them.
+///
+/// The Guardian Portal sits here too — a link out to a website, deliberately,
+/// because a parent following a candidate should not have to install a second
+/// app on a phone they may share.
+/// ===========================================================================
+class _ContactCard extends ConsumerWidget {
+  static const _order = [
+    'whatsapp',
+    'phone',
+    'email',
+    'channel',
+    'feedback',
+    'facebook',
+    'instagram',
+    'x',
+    'tiktok',
+    'youtube',
+    'telegram',
+    'rate',
+    'share',
+    'about',
+    'link',
+  ];
+
+  static const _icons = <String, IconData>{
+    'whatsapp': Icons.chat_rounded,
+    'phone': Icons.call_rounded,
+    'email': Icons.mail_rounded,
+    'channel': Icons.campaign_rounded,
+    'feedback': Icons.rate_review_rounded,
+    'facebook': Icons.public_rounded,
+    'instagram': Icons.camera_alt_rounded,
+    'x': Icons.public_rounded,
+    'tiktok': Icons.music_note_rounded,
+    'youtube': Icons.play_circle_rounded,
+    'telegram': Icons.send_rounded,
+    'rate': Icons.star_rounded,
+    'share': Icons.share_rounded,
+    'about': Icons.info_rounded,
+    'link': Icons.link_rounded,
+  };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
+    final contacts = ref.watch(supportContactsProvider).value ?? const [];
+
+    final sorted = [
+      ...contacts,
+    ]..sort((a, b) => _order.indexOf(a.kind).compareTo(_order.indexOf(b.kind)));
+
+    IconData iconFor(String kind) => _icons[kind] ?? Icons.link_rounded;
+    Color tintFor(String kind) => switch (kind) {
+      'whatsapp' || 'phone' => c.hues.green.ink,
+      'email' => c.hues.blue.ink,
+      'channel' => c.hues.violet.ink,
+      'feedback' || 'rate' => c.hues.amber.ink,
+      _ => c.hues.slate.ink,
+    };
+
+    final rows = <Widget>[
+      // The Guardian Portal is ours, not a support contact, so it is not in
+      // the table — but it belongs in the same list to a student's eye.
+      _LinkRow(
+        icon: Icons.supervisor_account_rounded,
+        color: c.hues.indigo.ink,
+        title: 'Guardian Portal',
+        subtitle: 'For a parent, teacher or school following you',
+        onTap: () => launchUrl(
+          Uri.parse(AppConfig.guardianPortal),
+          mode: LaunchMode.externalApplication,
+        ),
+      ),
+      for (final k in sorted)
+        _LinkRow(
+          icon: iconFor(k.kind),
+          color: tintFor(k.kind),
+          title: k.label.isEmpty ? k.kind : k.label,
+          subtitle: k.description.isNotEmpty ? k.description : k.value,
+          onTap: () => launchUrl(k.uri, mode: LaunchMode.externalApplication),
+        ),
+    ];
+
+    return GlassSurface(
+      tier: GlassTier.card,
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) Divider(height: 1, color: c.glassBorder),
+            rows[i],
+          ],
+        ],
+      ),
+    );
   }
 }
 

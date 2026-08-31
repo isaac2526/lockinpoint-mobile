@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api.dart';
-import '../../core/config.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
 import '../../design/motion_widgets.dart';
@@ -16,6 +15,7 @@ import '../../design/typography.dart';
 import '../../design/wordmark.dart';
 import '../../app/theme_controller.dart';
 import '../auth/auth_controller.dart';
+import '../content/content_repository.dart';
 import '../practice/practice_flow_screen.dart';
 import '../profile/profile_screen.dart';
 import '../practice/practice_repository.dart';
@@ -166,11 +166,20 @@ class _Content extends ConsumerWidget {
     final c = context.lip;
 
     if (data['frozen'] == true) {
+      /* The address comes from the backend, so a frozen student is never sent
+         to an inbox the team stopped reading two releases ago. */
+      final email = ref
+          .watch(supportContactsProvider)
+          .value
+          ?.where((k) => k.kind == 'email')
+          .firstOrNull
+          ?.value;
       return LipEmpty(
         icon: Icons.ac_unit_rounded,
         title: 'Your account is on hold',
-        message:
-            'Reach the tutors at ${AppConfig.supportEmail} and they will sort it out.',
+        message: email == null
+            ? 'Reach the tutors from your profile and they will sort it out.'
+            : 'Reach the tutors at $email and they will sort it out.',
       );
     }
 
@@ -267,47 +276,10 @@ class _Content extends ConsumerWidget {
 
         const SizedBox(height: Gap.lg),
 
-        // ---- the WhatsApp channel ------------------------------------
-        GlassSurface(
-          tier: GlassTier.raised,
-          seam: true,
-          onTap: () => launchUrl(
-            Uri.parse(AppConfig.whatsappChannel),
-            mode: LaunchMode.externalApplication,
-          ),
-          semanticLabel: 'Join the LockInPoint WhatsApp Channel',
-          child: Row(
-            children: [
-              Container(
-                height: 42,
-                width: 42,
-                decoration: BoxDecoration(
-                  color: c.successSoft,
-                  borderRadius: BorderRadius.circular(Radii.md),
-                ),
-                child: Icon(Icons.chat_rounded, size: 20, color: c.success),
-              ),
-              const SizedBox(width: Gap.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Join the WhatsApp Channel',
-                      style: LipType.subheading.copyWith(color: c.text1),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'New questions and exam alerts, straight to your phone.',
-                      style: LipType.caption.copyWith(color: c.text3),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right_rounded, color: c.text3),
-            ],
-          ),
-        ),
+        // ---- the channel, if the team runs one -----------------------
+        // Driven by a `channel` row in support_contacts. No row means no
+        // card, which is better than a card opening a link nobody keeps.
+        const _ChannelCard(),
 
         const SizedBox(height: Gap.xl),
         _Footer(email: student['email'] as String? ?? ''),
@@ -701,4 +673,77 @@ class _Skeleton extends StatelessWidget {
       LipSkeleton(height: 68, radius: Radii.lg),
     ],
   );
+}
+
+/// ===========================================================================
+/// THE CHANNEL CARD
+///
+/// The WhatsApp channel used to be a constant in `config.dart`, so moving the
+/// channel meant shipping an APK. It is a `channel` row in support_contacts
+/// now — and when the team runs no channel there is simply NO CARD, which is
+/// better than a card that opens a link nobody maintains.
+/// ===========================================================================
+class _ChannelCard extends ConsumerWidget {
+  const _ChannelCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
+    final channel = ref
+        .watch(supportContactsProvider)
+        .value
+        ?.where((k) => k.kind == 'channel')
+        .firstOrNull;
+    if (channel == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: Gap.lg),
+      child: GlassSurface(
+        tier: GlassTier.raised,
+        hue: c.hues.green,
+        onTap: () =>
+            launchUrl(channel.uri, mode: LaunchMode.externalApplication),
+        semanticLabel: channel.label.isEmpty
+            ? 'Join the LockInPoint channel'
+            : channel.label,
+        child: Row(
+          children: [
+            Container(
+              height: 42,
+              width: 42,
+              decoration: BoxDecoration(
+                color: c.hues.green.ink.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(Radii.md),
+              ),
+              child: Icon(
+                Icons.campaign_rounded,
+                size: 20,
+                color: c.hues.green.ink,
+              ),
+            ),
+            const SizedBox(width: Gap.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    channel.label.isEmpty ? 'Join the channel' : channel.label,
+                    style: LipType.subheading.copyWith(color: c.text1),
+                  ),
+                  if (channel.description.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      channel.description,
+                      style: LipType.caption.copyWith(color: c.text3),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: c.text3),
+          ],
+        ),
+      ),
+    );
+  }
 }
