@@ -5,7 +5,7 @@ import 'app/theme_controller.dart';
 import 'design/theme.dart';
 import 'design/tokens.dart';
 import 'features/auth/auth_controller.dart';
-import 'features/home/dashboard_screen.dart';
+import 'app/shell.dart';
 import 'features/onboarding/welcome_screen.dart';
 import 'features/splash/splash_screen.dart';
 
@@ -61,9 +61,7 @@ class _Gate extends ConsumerWidget {
       duration: Motion.slow,
       switchInCurve: Motion.glide,
       child: switch (auth) {
-        AsyncData(value: SignedIn()) => const DashboardScreen(
-          key: ValueKey('home'),
-        ),
+        AsyncData(value: SignedIn()) => const AppShell(key: ValueKey('home')),
         AsyncData(value: SignedOut(:final message)) => WelcomeScreen(
           key: const ValueKey('welcome'),
           notice: message,

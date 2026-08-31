@@ -46,9 +46,21 @@ class _EntranceState extends State<Entrance>
     curve: Motion.glide,
   );
 
+  bool _scheduled = false;
+
+  /* THE STAGGER IS SCHEDULED HERE, NOT IN initState.
+     initState cannot read MediaQuery, so scheduling there meant a delayed
+     timer was created for every item even when the platform has animations
+     turned off — wasted work for a student who asked for no motion, and a
+     pending timer that outlives the widget in a test. didChangeDependencies
+     runs once MediaQuery is available, so the timer is only ever created
+     when it will actually be used. */
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_scheduled) return;
+    _scheduled = true;
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) return;
     Future.delayed(Duration(milliseconds: 45 * widget.index.clamp(0, 14)), () {
       if (mounted) _c.forward();
     });

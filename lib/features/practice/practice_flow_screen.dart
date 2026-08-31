@@ -19,7 +19,13 @@ import 'practice_session_screen.dart';
 /// student is not funnelled through JAMB to reach their own past questions.
 /// ===========================================================================
 class PracticeFlowScreen extends ConsumerStatefulWidget {
-  const PracticeFlowScreen({super.key});
+  const PracticeFlowScreen({super.key, this.embedded = false});
+
+  /// True when this screen is a TAB inside the shell rather than a pushed
+  /// route. An embedded screen drops its own app bar and back button — two
+  /// headers stacked on one screen is the fastest way to make an app feel
+  /// like a collection of pages instead of one product.
+  final bool embedded;
 
   @override
   ConsumerState<PracticeFlowScreen> createState() => _PracticeFlowState();
@@ -140,6 +146,9 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
 
   void _back() {
     if (_step == 0) {
+      /* Embedded, step zero IS the top of a tab — there is nothing behind it
+         to pop, and popping would tear the shell out from under the student. */
+      if (widget.embedded) return;
       Navigator.of(context).pop();
     } else {
       setState(() {
@@ -161,11 +170,22 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
               padding: const EdgeInsets.fromLTRB(Gap.md, Gap.sm, Gap.md, 0),
               child: Row(
                 children: [
-                  IconButton(
-                    onPressed: _busy ? null : _back,
-                    icon: const Icon(Icons.arrow_back_rounded),
-                    tooltip: 'Back',
-                  ),
+                  // At the top of a tab the arrow would point nowhere, so it
+                  // becomes the way into the drawer instead.
+                  if (widget.embedded && _step == 0)
+                    Builder(
+                      builder: (context) => IconButton(
+                        onPressed: () => Scaffold.of(context).openDrawer(),
+                        icon: const Icon(Icons.menu_rounded),
+                        tooltip: 'Menu',
+                      ),
+                    )
+                  else
+                    IconButton(
+                      onPressed: _busy ? null : _back,
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      tooltip: 'Back',
+                    ),
                   const SizedBox(width: Gap.sm),
                   Expanded(
                     child: Column(

@@ -16,12 +16,12 @@ import '../../design/wordmark.dart';
 import '../../app/theme_controller.dart';
 import '../auth/auth_controller.dart';
 import '../content/content_repository.dart';
-import '../practice/practice_flow_screen.dart';
 import '../profile/profile_screen.dart';
 import '../practice/practice_repository.dart';
+import '../notifications/notifications_screen.dart';
 import '../practice/practice_session_screen.dart';
-import '../leaderboard/leaderboard_screen.dart';
-import '../search/search_screen.dart';
+import 'feature_grid.dart';
+import 'home_carousel.dart';
 
 /// ===========================================================================
 /// THE HOME'S DATA · cached first, fresh behind.
@@ -109,7 +109,13 @@ final dashboardProvider =
 /// dashboard runs, so the two can never disagree about a student's numbers.
 /// ===========================================================================
 class DashboardScreen extends ConsumerWidget {
-  const DashboardScreen({super.key});
+  const DashboardScreen({super.key, this.embedded = false});
+
+  /// True when this screen is a TAB inside the shell rather than a pushed
+  /// route. An embedded screen drops its own app bar and back button — two
+  /// headers stacked on one screen is the fastest way to make an app feel
+  /// like a collection of pages instead of one product.
+  final bool embedded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -195,31 +201,53 @@ class _Content extends ConsumerWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.lg, Gap.lg, Gap.huge),
       children: [
-        // ---- greeting and streak -------------------------------------
+        // ---- the bar: menu, mark, bell -------------------------------
         Entrance(
           child: Row(
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const LipWordmark(size: 26),
-                    const SizedBox(height: Gap.md),
-                    Text(
-                      'Welcome back, $name',
-                      style: LipType.title.copyWith(color: c.text1),
-                    ),
-                  ],
+              Builder(
+                builder: (context) => IconButton(
+                  onPressed: () => Scaffold.of(context).openDrawer(),
+                  icon: const Icon(Icons.menu_rounded),
+                  tooltip: 'Menu',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 40,
+                    minHeight: 40,
+                  ),
                 ),
               ),
-              const SizedBox(width: Gap.md),
-              _StreakBadge(days: streak),
               const SizedBox(width: Gap.sm),
+              const LipWordmark(size: 24),
+              const Spacer(),
+              const _BellButton(),
+              const SizedBox(width: Gap.xs),
               _ProfileButton(initial: name.isEmpty ? '?' : name[0]),
             ],
           ),
         ),
         const SizedBox(height: Gap.lg),
+
+        // ---- greeting and streak -------------------------------------
+        Entrance(
+          index: 1,
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Welcome back, $name',
+                  style: LipType.title.copyWith(color: c.text1),
+                ),
+              ),
+              const SizedBox(width: Gap.md),
+              _StreakBadge(days: streak),
+            ],
+          ),
+        ),
+        const SizedBox(height: Gap.lg),
+
+        // ---- what the team is saying, if anything --------------------
+        const HomeCarousel(),
 
         if (!activated) ...[
           _ActivationNotice(),
@@ -262,17 +290,10 @@ class _Content extends ConsumerWidget {
         ),
         const SizedBox(height: Gap.xl),
 
-        // ---- the cards, matching the website's dashboard -------------
+        // ---- everything LockInPoint does, in colour -------------------
         const LipLabel('What are you doing today?'),
         const SizedBox(height: Gap.md),
-        for (final (i, card) in _cards.indexed)
-          Entrance(
-            index: i + 2,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: Gap.sm),
-              child: _DashCard(card: card),
-            ),
-          ),
+        const FeatureGrid(),
 
         const SizedBox(height: Gap.lg),
 
@@ -511,109 +532,6 @@ class _ProfileButton extends StatelessWidget {
   }
 }
 
-const _cards = <({IconData icon, String title, String sub, bool ready})>[
-  (
-    icon: Icons.menu_book_rounded,
-    title: 'Practice & CBT',
-    sub: 'Your exam, your subject, by year, topic or random',
-    ready: true,
-  ),
-  (
-    icon: Icons.school_rounded,
-    title: 'Classroom',
-    sub: 'Notes, videos and files',
-    ready: false,
-  ),
-  (
-    icon: Icons.sports_esports_rounded,
-    title: 'Games arena',
-    sub: 'Blitz, Survival, Road to 400, Daily Ten, The Climb',
-    ready: false,
-  ),
-  (
-    icon: Icons.search_rounded,
-    title: 'Question search',
-    sub: 'Find any past question fast',
-    ready: true,
-  ),
-  (
-    icon: Icons.insights_rounded,
-    title: 'Performance analysis',
-    sub: 'Your scores, charted',
-    ready: false,
-  ),
-  (
-    icon: Icons.emoji_events_rounded,
-    title: 'Leaderboard',
-    sub: 'The top of the ladder across the platform',
-    ready: true,
-  ),
-];
-
-class _DashCard extends StatelessWidget {
-  const _DashCard({required this.card});
-  final ({IconData icon, String title, String sub, bool ready}) card;
-
-  /// Each ready card knows its own door. Practice opens the chooser; the rest
-  /// arrive build by build and say so honestly until they do.
-  void _open(BuildContext context) {
-    final destination = switch (card.title) {
-      'Practice & CBT' => const PracticeFlowScreen(),
-      'Question search' => const SearchScreen(),
-      'Leaderboard' => const LeaderboardScreen(),
-      _ => null,
-    };
-    if (destination != null) {
-      Navigator.of(context)
-          .push(MaterialPageRoute(builder: (_) => destination));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.lip;
-    return GlassSurface(
-      onTap: card.ready
-          ? () => _open(context)
-          : () => ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('${card.title} lands in the next build.')),
-            ),
-      semanticLabel: '${card.title}. ${card.sub}',
-      child: Row(
-        children: [
-          Container(
-            height: 42,
-            width: 42,
-            decoration: BoxDecoration(
-              color: c.brandSoft,
-              borderRadius: BorderRadius.circular(Radii.md),
-            ),
-            child: Icon(card.icon, size: 20, color: c.brand),
-          ),
-          const SizedBox(width: Gap.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  card.title,
-                  style: LipType.subheading.copyWith(color: c.text1),
-                ),
-                const SizedBox(height: 2),
-                Text(card.sub, style: LipType.caption.copyWith(color: c.text3)),
-              ],
-            ),
-          ),
-          if (!card.ready)
-            Text('soon', style: LipType.label.copyWith(color: c.text3))
-          else
-            Icon(Icons.chevron_right_rounded, color: c.text3),
-        ],
-      ),
-    );
-  }
-}
-
 class _Footer extends ConsumerWidget {
   const _Footer({required this.email});
   final String email;
@@ -741,6 +659,72 @@ class _ChannelCard extends ConsumerWidget {
               ),
             ),
             Icon(Icons.chevron_right_rounded, color: c.text3),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// ===========================================================================
+/// THE BELL
+///
+/// Unread count from the one notification system — the same route and the
+/// same acknowledgements the website's bell counts, so a notice read on a
+/// laptop is read here too.
+///
+/// It never shows a spinner and never blocks the home screen. Before the
+/// count has arrived it is simply a bell with no badge, which is what a bell
+/// with nothing in it looks like anyway.
+/// ===========================================================================
+class _BellButton extends ConsumerWidget {
+  const _BellButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
+    final unread = ref.watch(unreadCountProvider);
+
+    return Semantics(
+      button: true,
+      label: unread == 0 ? 'Notifications' : 'Notifications, $unread unread',
+      excludeSemantics: true,
+      child: IconButton(
+        tooltip: 'Notifications',
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+        onPressed: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+        icon: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Icon(Icons.notifications_none_rounded, color: c.text2),
+            if (unread > 0)
+              Positioned(
+                right: -3,
+                top: -3,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  constraints: const BoxConstraints(
+                    minWidth: 16,
+                    minHeight: 16,
+                  ),
+                  decoration: BoxDecoration(
+                    color: c.hues.rose.ink,
+                    borderRadius: BorderRadius.circular(Radii.pill),
+                    border: Border.all(color: c.bgBase, width: 1.5),
+                  ),
+                  child: Text(
+                    unread > 9 ? '9+' : '$unread',
+                    textAlign: TextAlign.center,
+                    style: LipType.label.copyWith(
+                      color: Colors.white,
+                      fontSize: 9.5,
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),

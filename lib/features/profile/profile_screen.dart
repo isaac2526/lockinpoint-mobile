@@ -28,14 +28,20 @@ import '../home/dashboard_screen.dart';
 /// trip, and pull-to-refresh here refreshes both screens at once.
 /// ===========================================================================
 class ProfileScreen extends ConsumerWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({super.key, this.embedded = false});
+
+  /// True when this screen is a TAB inside the shell rather than a pushed
+  /// route. An embedded screen drops its own app bar and back button — two
+  /// headers stacked on one screen is the fastest way to make an app feel
+  /// like a collection of pages instead of one product.
+  final bool embedded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final snapshot = ref.watch(dashboardProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
+      appBar: embedded ? null : AppBar(title: const Text('Profile')),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () => ref.read(dashboardProvider.notifier).refresh(),
