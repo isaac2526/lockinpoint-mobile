@@ -12,6 +12,7 @@ import '../features/activation/activation_screen.dart';
 import '../features/career/career_screen.dart';
 import '../features/classroom/classroom_screen.dart';
 import '../features/games/games_screen.dart';
+import '../features/plan/plan_screen.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/content/content_repository.dart';
 import '../features/home/dashboard_screen.dart';
@@ -274,6 +275,13 @@ class _LipDrawer extends ConsumerWidget {
                   hue: FeatureHue.indigo,
                   title: 'Performance analysis',
                   onTap: () => go(const AnalysisScreen()),
+                ),
+                _Row(
+                  icon: Icons.event_note_rounded,
+                  hue: FeatureHue.amber,
+                  title: 'Study plan',
+                  subtitle: 'Fourteen days, from your weakest topics',
+                  onTap: () => go(const PlanScreen()),
                 ),
                 // No device to store packs on means no row offering to.
                 if (!kIsWeb)

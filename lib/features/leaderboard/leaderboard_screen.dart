@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
+import 'leaderboard_repository.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
 import '../../design/motion_widgets.dart';
@@ -78,60 +79,72 @@ class LeaderboardScreen extends ConsumerWidget {
     return Scaffold(
       appBar: embedded ? null : AppBar(title: const Text('Leaderboard')),
       body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: () async => ref.invalidate(leaderboardProvider),
-          child: rows.when(
-            loading: () => ListView(
-              padding: const EdgeInsets.all(Gap.md),
-              children: const [
-                LipSkeleton(height: 64),
-                SizedBox(height: Gap.sm),
-                LipSkeleton(height: 64),
-                SizedBox(height: Gap.sm),
-                LipSkeleton(height: 64),
-              ],
-            ),
-            error: (e, _) => ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              children: [
-                SizedBox(height: MediaQuery.sizeOf(context).height * 0.15),
-                LipError(
-                  message: e is ApiFailure
-                      ? e.message
-                      : 'Pull down to try again.',
-                  detail: e is ApiFailure ? e.detail : null,
-                  onRetry: () => ref.invalidate(leaderboardProvider),
-                ),
-              ],
-            ),
-            data: (list) => list.isEmpty
-                ? ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    children: [
-                      SizedBox(
-                        height: MediaQuery.sizeOf(context).height * 0.15,
-                      ),
-                      const LipEmpty(
-                        icon: Icons.emoji_events_rounded,
-                        title: 'The ladder is empty',
-                        message: 'Nobody has sat a paper yet. Be the first name on it.',
-                      ),
-                    ],
-                  )
-                : ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(Gap.md),
-                    itemCount: list.length + 1,
-                    separatorBuilder: (_, _) => const SizedBox(height: Gap.sm),
-                    itemBuilder: (context, i) => i == list.length
-                        ? const _PointsLaw()
-                        : Entrance.inList(
-                            index: i,
-                            child: _Rung(row: list[i]),
-                          ),
-                  ),
-          ),
+        child: Column(
+          children: [
+            // The round, when one is open. Above the table on purpose: a
+            // competition nobody notices is a competition nobody enters.
+            const _RoundBanner(),
+            Expanded(child: _board(context, ref, rows)),
+          ],
         ),
+      ),
+    );
+  }
+
+  Widget _board(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<List<LadderRow>> rows,
+  ) {
+    return RefreshIndicator(
+      onRefresh: () async => ref.invalidate(leaderboardProvider),
+      child: rows.when(
+        loading: () => ListView(
+          padding: const EdgeInsets.all(Gap.md),
+          children: const [
+            LipSkeleton(height: 64),
+            SizedBox(height: Gap.sm),
+            LipSkeleton(height: 64),
+            SizedBox(height: Gap.sm),
+            LipSkeleton(height: 64),
+          ],
+        ),
+        error: (e, _) => ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(height: MediaQuery.sizeOf(context).height * 0.15),
+            LipError(
+              message: e is ApiFailure ? e.message : 'Pull down to try again.',
+              detail: e is ApiFailure ? e.detail : null,
+              onRetry: () => ref.invalidate(leaderboardProvider),
+            ),
+          ],
+        ),
+        data: (list) => list.isEmpty
+            ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  SizedBox(height: MediaQuery.sizeOf(context).height * 0.15),
+                  const LipEmpty(
+                    icon: Icons.emoji_events_rounded,
+                    title: 'The ladder is empty',
+                    message:
+                        'Nobody has sat a paper yet. Be the first name on it.',
+                  ),
+                ],
+              )
+            : ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(Gap.md),
+                itemCount: list.length + 1,
+                separatorBuilder: (_, _) => const SizedBox(height: Gap.sm),
+                itemBuilder: (context, i) => i == list.length
+                    ? const _PointsLaw()
+                    : Entrance.inList(
+                        index: i,
+                        child: _Rung(row: list[i]),
+                      ),
+              ),
       ),
     );
   }
@@ -240,6 +253,95 @@ class _PointsLaw extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// ===========================================================================
+/// THE OPEN ROUND
+///
+/// A leaderboard that ranks everyone since the beginning of time is a
+/// scoreboard: a student who joined in March can never catch one who joined
+/// in January, so after a few months the top ten stops moving and stops
+/// mattering. A ROUND is a window with a prize, and everybody starts level on
+/// the day it opens.
+///
+/// NO ROUND IS A NORMAL STATE. Most of the year there is no competition
+/// running, and this renders nothing rather than an empty trophy card that
+/// looks like something failed.
+/// ===========================================================================
+class _RoundBanner extends ConsumerWidget {
+  const _RoundBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
+    final rounds = ref.watch(roundsProvider);
+
+    return rounds.maybeWhen(
+      orElse: () => const SizedBox.shrink(),
+      data: (v) {
+        final round = v.round;
+        if (round == null) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(Gap.md, Gap.md, Gap.md, 0),
+          child: GlassSurface(
+            hue: c.hues.amber,
+            seam: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.emoji_events_rounded,
+                      size: 20,
+                      color: c.hues.amber.ink,
+                    ),
+                    const SizedBox(width: Gap.sm),
+                    Expanded(
+                      child: Text(
+                        round.name,
+                        style: LipType.subheading.copyWith(color: c.text1),
+                      ),
+                    ),
+                    LipChip(round.closing, tone: ChipTone.gold),
+                  ],
+                ),
+                if (round.description.isNotEmpty) ...[
+                  const SizedBox(height: Gap.xs),
+                  Text(
+                    round.description,
+                    style: LipType.small.copyWith(color: c.text2, height: 1.45),
+                  ),
+                ],
+                if (round.prizes.isNotEmpty) ...[
+                  const SizedBox(height: Gap.sm),
+                  // Positions in order, so first place reads first.
+                  ...(round.prizes.toList()
+                        ..sort((a, b) => a.position.compareTo(b.position)))
+                      .take(3)
+                      .map(
+                        (p) => Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            '${p.position}. ${p.prize}',
+                            style: LipType.small.copyWith(color: c.text1),
+                          ),
+                        ),
+                      ),
+                ],
+                const SizedBox(height: Gap.xs),
+                Text(
+                  'Only papers sat while this round is open count towards it.',
+                  style: LipType.caption.copyWith(color: c.text3),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
