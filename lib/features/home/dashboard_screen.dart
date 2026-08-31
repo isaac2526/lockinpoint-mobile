@@ -58,7 +58,14 @@ class DashboardController extends AsyncNotifier<Map<String, dynamic>> {
          hand the student back to the front door exactly as refresh() does —
          this was the path that used to strand a freshly logged-in student on
          an error card when the phone lost its stored key. */
-      if (e.unauthorised) ref.invalidate(authControllerProvider);
+      /* A refused session must be ENDED, not merely re-asked. The gate now
+         opens on a stored token alone, so invalidating would send the
+         student straight back to a home whose every request 401s. */
+      if (e.unauthorised) {
+        await ref
+            .read(authControllerProvider.notifier)
+            .signOutBecause(e.message);
+      }
       rethrow;
     }
   }
@@ -69,7 +76,9 @@ class DashboardController extends AsyncNotifier<Map<String, dynamic>> {
       state = AsyncData(await _fetch());
     } on ApiFailure catch (e, st) {
       if (e.unauthorised) {
-        ref.invalidate(authControllerProvider);
+        await ref
+            .read(authControllerProvider.notifier)
+            .signOutBecause(e.message);
         return;
       }
       // Keep showing the snapshot we have; only surface an error when there

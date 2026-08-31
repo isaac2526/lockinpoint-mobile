@@ -54,7 +54,10 @@ dependencies:
   cached_network_image: ^3.4.1
 
   # ---- polish -------------------------------------------------------------
-  google_fonts: ^6.3.3
+  # NOTE: google_fonts was removed deliberately. It fetched Space Grotesk,
+  # Inter and JetBrains Mono over the network on first launch — three round
+  # trips before the first word could be painted. The faces now ship as
+  # assets below.
   shared_preferences: ^2.5.4
   url_launcher: ^6.3.2
 
@@ -82,3 +85,34 @@ flutter_launcher_icons:
 
 flutter:
   uses-material-design: true
+
+  # THE FACES SHIP WITH THE APP.
+  # Bundled rather than fetched, so the first frame draws in the real brand
+  # typeface with no network at all. See lib/design/typography.dart.
+  fonts:
+    - family: SpaceGrotesk
+      fonts:
+        - asset: assets/fonts/SpaceGrotesk-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/SpaceGrotesk-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/SpaceGrotesk-Bold.ttf
+          weight: 700
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/JetBrainsMono-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/JetBrainsMono-Bold.ttf
+          weight: 700
