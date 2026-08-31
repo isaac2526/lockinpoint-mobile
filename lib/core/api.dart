@@ -16,6 +16,7 @@ class ApiFailure implements Exception {
     this.detail,
     this.offline = false,
     this.unauthorised = false,
+    this.data,
   });
 
   final String message;
@@ -26,6 +27,17 @@ class ApiFailure implements Exception {
 
   final bool offline;
   final bool unauthorised;
+
+  /// The server's own `{ ok: false, ... }` envelope, when there was one.
+  ///
+  /// Every route answers with `ok` and `message`, and _read turns a false
+  /// `ok` into this exception — which is right, because a caller that forgets
+  /// to check a flag ships a bug and a caller that forgets to catch does not.
+  /// But some routes say MORE than "no": Lumi's 403 carries `needActivation`
+  /// and her 429 carries how many seconds to wait. A screen that wants to
+  /// offer the activation button, or count the wait down, reads it here
+  /// rather than matching on the wording of a sentence.
+  final Map<String, dynamic>? data;
 
   @override
   String toString() => message;
@@ -385,6 +397,7 @@ class Api {
               ? data['message'] as String
               : 'That did not work. Please try again.',
           detail: '$where → $code',
+          data: data,
         );
       }
       return data;

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -7,6 +8,10 @@ import '../design/theme.dart';
 import '../design/tokens.dart';
 import '../design/typography.dart';
 import '../design/wordmark.dart';
+import '../features/activation/activation_screen.dart';
+import '../features/career/career_screen.dart';
+import '../features/classroom/classroom_screen.dart';
+import '../features/games/games_screen.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/content/content_repository.dart';
 import '../features/home/dashboard_screen.dart';
@@ -17,7 +22,9 @@ import '../features/practice/practice_flow_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/progress/analysis_screen.dart';
 import '../features/progress/results_screen.dart';
+import '../features/saved/saved_screen.dart';
 import '../features/search/search_screen.dart';
+import '../features/tutor/tutor_screen.dart';
 import '../features/vault/vault_screen.dart';
 import '../core/vault/connectivity.dart';
 import '../core/vault/vault_repository.dart';
@@ -216,10 +223,51 @@ class _LipDrawer extends ConsumerWidget {
                   onTap: () => go(const LeaderboardScreen()),
                 ),
                 _Row(
+                  icon: Icons.auto_stories_rounded,
+                  hue: FeatureHue.violet,
+                  title: 'Classroom',
+                  subtitle: 'Notes, videos and files',
+                  onTap: () => go(const ClassroomScreen()),
+                ),
+                _Row(
+                  icon: Icons.bookmark_rounded,
+                  hue: FeatureHue.lime,
+                  title: 'Saved questions',
+                  onTap: () => go(const SavedScreen()),
+                ),
+                _Row(
+                  icon: Icons.sports_esports_rounded,
+                  hue: FeatureHue.purple,
+                  title: 'Games arena',
+                  subtitle: 'Blitz, Survival, The Climb',
+                  onTap: () => go(const GamesScreen()),
+                ),
+                _Row(
+                  icon: Icons.school_rounded,
+                  hue: FeatureHue.orange,
+                  title: 'Career & institutions',
+                  subtitle: 'Who offers your course',
+                  onTap: () => go(const CareerScreen()),
+                ),
+                _Row(
+                  icon: Icons.smart_toy_rounded,
+                  hue: FeatureHue.rose,
+                  title: 'Ask Lumi',
+                  subtitle: 'Your AI tutor',
+                  onTap: () => go(const TutorScreen()),
+                ),
+                _Row(
                   icon: Icons.receipt_long_rounded,
                   hue: FeatureHue.green,
                   title: 'Result history',
                   onTap: () => go(const ResultsScreen()),
+                ),
+                _Row(
+                  icon: Icons.vpn_key_rounded,
+                  hue: FeatureHue.amber,
+                  title: 'Activate',
+                  subtitle: 'Card, transfer or a key',
+                  onTap: () => go(const ActivationScreen()),
                 ),
                 _Row(
                   icon: Icons.insights_rounded,
@@ -227,13 +275,15 @@ class _LipDrawer extends ConsumerWidget {
                   title: 'Performance analysis',
                   onTap: () => go(const AnalysisScreen()),
                 ),
-                _Row(
-                  icon: Icons.offline_bolt_rounded,
-                  hue: FeatureHue.teal,
-                  title: 'Offline vault',
-                  subtitle: 'Practise with no signal',
-                  onTap: () => go(const VaultScreen()),
-                ),
+                // No device to store packs on means no row offering to.
+                if (!kIsWeb)
+                  _Row(
+                    icon: Icons.offline_bolt_rounded,
+                    hue: FeatureHue.teal,
+                    title: 'Offline vault',
+                    subtitle: 'Practise with no signal',
+                    onTap: () => go(const VaultScreen()),
+                  ),
                 _Row(
                   icon: Icons.auto_stories_rounded,
                   hue: FeatureHue.violet,

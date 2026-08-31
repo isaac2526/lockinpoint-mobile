@@ -14,6 +14,7 @@ import '../../design/tokens.dart';
 import '../../design/typography.dart';
 import '../../design/wordmark.dart';
 import '../../app/theme_controller.dart';
+import '../activation/activation_screen.dart';
 import '../auth/auth_controller.dart';
 import '../content/content_repository.dart';
 import '../profile/profile_screen.dart';
@@ -365,6 +366,11 @@ class _ActivationNotice extends StatelessWidget {
     return GlassSurface(
       tier: GlassTier.raised,
       seam: true,
+      // The card said "one activation opens everything" and then did nothing
+      // when tapped. Now it leads to the place where that actually happens.
+      onTap: () => Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => const ActivationScreen())),
       child: Row(
         children: [
           Icon(Icons.vpn_key_rounded, size: 20, color: c.accent),
@@ -385,6 +391,7 @@ class _ActivationNotice extends StatelessWidget {
               ],
             ),
           ),
+          Icon(Icons.chevron_right_rounded, size: 20, color: c.text3),
         ],
       ),
     );

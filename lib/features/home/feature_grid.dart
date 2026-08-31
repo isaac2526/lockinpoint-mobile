@@ -7,11 +7,17 @@ import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
 import '../content/content_repository.dart';
+import '../career/career_screen.dart';
+import '../classroom/classroom_screen.dart';
+import '../games/climb_screen.dart';
+import '../games/games_screen.dart';
 import '../leaderboard/leaderboard_screen.dart';
 import '../practice/practice_flow_screen.dart';
 import '../progress/analysis_screen.dart';
 import '../progress/results_screen.dart';
+import '../saved/saved_screen.dart';
 import '../search/search_screen.dart';
+import '../tutor/tutor_screen.dart';
 import '../vault/vault_screen.dart';
 import 'feature_catalogue.dart';
 
@@ -78,6 +84,12 @@ class FeatureTile extends StatelessWidget {
       'history' => const ResultsScreen(),
       'analysis' => const AnalysisScreen(),
       'vault' => const VaultScreen(),
+      'classroom' => const ClassroomScreen(),
+      'bookmarks' => const SavedScreen(),
+      'tutor' => const TutorScreen(),
+      'games' => const GamesScreen(),
+      'challenge' => const ClimbSetupScreen(),
+      'career' => const CareerScreen(),
       _ => null,
     };
     if (destination != null) {
@@ -85,10 +97,15 @@ class FeatureTile extends StatelessWidget {
           .push(MaterialPageRoute(builder: (_) => destination));
       return;
     }
+    /* Every key in kFeatures now has a destination, and mergeFeatureTiles
+       drops rows whose key the app does not know — so nothing should reach
+       here. It stays as a net: if a future tile is added to the catalogue
+       and its route is forgotten, a student gets a sentence rather than a
+       tile that silently does nothing. */
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(content: Text('${feature.title} arrives in the next build.')),
+        SnackBar(content: Text('${feature.title} is not wired up yet.')),
       );
   }
 
