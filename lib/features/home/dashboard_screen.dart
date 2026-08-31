@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api.dart';
-import '../../core/config.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
 import '../../design/motion_widgets.dart';
@@ -16,11 +15,13 @@ import '../../design/typography.dart';
 import '../../design/wordmark.dart';
 import '../../app/theme_controller.dart';
 import '../auth/auth_controller.dart';
-import '../practice/practice_flow_screen.dart';
+import '../content/content_repository.dart';
+import '../profile/profile_screen.dart';
 import '../practice/practice_repository.dart';
+import '../notifications/notifications_screen.dart';
 import '../practice/practice_session_screen.dart';
-import '../leaderboard/leaderboard_screen.dart';
-import '../search/search_screen.dart';
+import 'feature_grid.dart';
+import 'home_carousel.dart';
 
 /// ===========================================================================
 /// THE HOME'S DATA · cached first, fresh behind.
@@ -57,7 +58,14 @@ class DashboardController extends AsyncNotifier<Map<String, dynamic>> {
          hand the student back to the front door exactly as refresh() does —
          this was the path that used to strand a freshly logged-in student on
          an error card when the phone lost its stored key. */
-      if (e.unauthorised) ref.invalidate(authControllerProvider);
+      /* A refused session must be ENDED, not merely re-asked. The gate now
+         opens on a stored token alone, so invalidating would send the
+         student straight back to a home whose every request 401s. */
+      if (e.unauthorised) {
+        await ref
+            .read(authControllerProvider.notifier)
+            .signOutBecause(e.message);
+      }
       rethrow;
     }
   }
@@ -68,7 +76,9 @@ class DashboardController extends AsyncNotifier<Map<String, dynamic>> {
       state = AsyncData(await _fetch());
     } on ApiFailure catch (e, st) {
       if (e.unauthorised) {
-        ref.invalidate(authControllerProvider);
+        await ref
+            .read(authControllerProvider.notifier)
+            .signOutBecause(e.message);
         return;
       }
       // Keep showing the snapshot we have; only surface an error when there
@@ -99,7 +109,13 @@ final dashboardProvider =
 /// dashboard runs, so the two can never disagree about a student's numbers.
 /// ===========================================================================
 class DashboardScreen extends ConsumerWidget {
-  const DashboardScreen({super.key});
+  const DashboardScreen({super.key, this.embedded = false});
+
+  /// True when this screen is a TAB inside the shell rather than a pushed
+  /// route. An embedded screen drops its own app bar and back button — two
+  /// headers stacked on one screen is the fastest way to make an app feel
+  /// like a collection of pages instead of one product.
+  final bool embedded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -124,6 +140,7 @@ class DashboardScreen extends ConsumerWidget {
                   message: e is ApiFailure
                       ? e.message
                       : 'Pull down to try again.',
+                  detail: e is ApiFailure ? e.detail : null,
                   onRetry: () => ref.read(dashboardProvider.notifier).refresh(),
                 ),
                 // The screen must never become a trap: whatever the server is
@@ -155,11 +172,20 @@ class _Content extends ConsumerWidget {
     final c = context.lip;
 
     if (data['frozen'] == true) {
+      /* The address comes from the backend, so a frozen student is never sent
+         to an inbox the team stopped reading two releases ago. */
+      final email = ref
+          .watch(supportContactsProvider)
+          .value
+          ?.where((k) => k.kind == 'email')
+          .firstOrNull
+          ?.value;
       return LipEmpty(
         icon: Icons.ac_unit_rounded,
         title: 'Your account is on hold',
-        message:
-            'Reach the tutors at ${AppConfig.supportEmail} and they will sort it out.',
+        message: email == null
+            ? 'Reach the tutors from your profile and they will sort it out.'
+            : 'Reach the tutors at $email and they will sort it out.',
       );
     }
 
@@ -175,21 +201,42 @@ class _Content extends ConsumerWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.lg, Gap.lg, Gap.huge),
       children: [
-        // ---- greeting and streak -------------------------------------
+        // ---- the bar: menu, mark, bell -------------------------------
         Entrance(
           child: Row(
             children: [
+              Builder(
+                builder: (context) => IconButton(
+                  onPressed: () => Scaffold.of(context).openDrawer(),
+                  icon: const Icon(Icons.menu_rounded),
+                  tooltip: 'Menu',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 40,
+                    minHeight: 40,
+                  ),
+                ),
+              ),
+              const SizedBox(width: Gap.sm),
+              const LipWordmark(size: 24),
+              const Spacer(),
+              const _BellButton(),
+              const SizedBox(width: Gap.xs),
+              _ProfileButton(initial: name.isEmpty ? '?' : name[0]),
+            ],
+          ),
+        ),
+        const SizedBox(height: Gap.lg),
+
+        // ---- greeting and streak -------------------------------------
+        Entrance(
+          index: 1,
+          child: Row(
+            children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const LipWordmark(size: 26),
-                    const SizedBox(height: Gap.md),
-                    Text(
-                      'Welcome back, $name',
-                      style: LipType.title.copyWith(color: c.text1),
-                    ),
-                  ],
+                child: Text(
+                  'Welcome back, $name',
+                  style: LipType.title.copyWith(color: c.text1),
                 ),
               ),
               const SizedBox(width: Gap.md),
@@ -198,6 +245,9 @@ class _Content extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: Gap.lg),
+
+        // ---- what the team is saying, if anything --------------------
+        const HomeCarousel(),
 
         if (!activated) ...[
           _ActivationNotice(),
@@ -240,61 +290,17 @@ class _Content extends ConsumerWidget {
         ),
         const SizedBox(height: Gap.xl),
 
-        // ---- the cards, matching the website's dashboard -------------
+        // ---- everything LockInPoint does, in colour -------------------
         const LipLabel('What are you doing today?'),
         const SizedBox(height: Gap.md),
-        for (final (i, card) in _cards.indexed)
-          Entrance(
-            index: i + 2,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: Gap.sm),
-              child: _DashCard(card: card),
-            ),
-          ),
+        const FeatureGrid(),
 
         const SizedBox(height: Gap.lg),
 
-        // ---- the WhatsApp channel ------------------------------------
-        GlassSurface(
-          tier: GlassTier.raised,
-          seam: true,
-          onTap: () => launchUrl(
-            Uri.parse(AppConfig.whatsappChannel),
-            mode: LaunchMode.externalApplication,
-          ),
-          semanticLabel: 'Join the LockInPoint WhatsApp Channel',
-          child: Row(
-            children: [
-              Container(
-                height: 42,
-                width: 42,
-                decoration: BoxDecoration(
-                  color: c.successSoft,
-                  borderRadius: BorderRadius.circular(Radii.md),
-                ),
-                child: Icon(Icons.chat_rounded, size: 20, color: c.success),
-              ),
-              const SizedBox(width: Gap.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Join the WhatsApp Channel',
-                      style: LipType.subheading.copyWith(color: c.text1),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'New questions and exam alerts, straight to your phone.',
-                      style: LipType.caption.copyWith(color: c.text3),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right_rounded, color: c.text3),
-            ],
-          ),
-        ),
+        // ---- the channel, if the team runs one -----------------------
+        // Driven by a `channel` row in support_contacts. No row means no
+        // card, which is better than a card opening a link nobody keeps.
+        const _ChannelCard(),
 
         const SizedBox(height: Gap.xl),
         _Footer(email: student['email'] as String? ?? ''),
@@ -486,104 +492,41 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
 }
 
 /// The destinations, in the website's own order and wording.
-const _cards = <({IconData icon, String title, String sub, bool ready})>[
-  (
-    icon: Icons.menu_book_rounded,
-    title: 'Practice & CBT',
-    sub: 'Your exam, your subject, by year, topic or random',
-    ready: true,
-  ),
-  (
-    icon: Icons.school_rounded,
-    title: 'Classroom',
-    sub: 'Notes, videos and files',
-    ready: false,
-  ),
-  (
-    icon: Icons.sports_esports_rounded,
-    title: 'Games arena',
-    sub: 'Blitz, Survival, Road to 400, Daily Ten, The Climb',
-    ready: false,
-  ),
-  (
-    icon: Icons.search_rounded,
-    title: 'Question search',
-    sub: 'Find any past question fast',
-    ready: true,
-  ),
-  (
-    icon: Icons.insights_rounded,
-    title: 'Performance analysis',
-    sub: 'Your scores, charted',
-    ready: false,
-  ),
-  (
-    icon: Icons.emoji_events_rounded,
-    title: 'Leaderboard',
-    sub: 'The top of the ladder across the platform',
-    ready: true,
-  ),
-];
-
-class _DashCard extends StatelessWidget {
-  const _DashCard({required this.card});
-  final ({IconData icon, String title, String sub, bool ready}) card;
-
-  /// Each ready card knows its own door. Practice opens the chooser; the rest
-  /// arrive build by build and say so honestly until they do.
-  void _open(BuildContext context) {
-    final destination = switch (card.title) {
-      'Practice & CBT' => const PracticeFlowScreen(),
-      'Question search' => const SearchScreen(),
-      'Leaderboard' => const LeaderboardScreen(),
-      _ => null,
-    };
-    if (destination != null) {
-      Navigator.of(context)
-          .push(MaterialPageRoute(builder: (_) => destination));
-    }
-  }
+/// The door to the student's own page: their initial in a ring, top right of
+/// the home, where every app keeps it.
+class _ProfileButton extends StatelessWidget {
+  const _ProfileButton({required this.initial});
+  final String initial;
 
   @override
   Widget build(BuildContext context) {
     final c = context.lip;
-    return GlassSurface(
-      onTap: card.ready
-          ? () => _open(context)
-          : () => ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('${card.title} lands in the next build.')),
-            ),
-      semanticLabel: '${card.title}. ${card.sub}',
-      child: Row(
-        children: [
-          Container(
-            height: 42,
-            width: 42,
-            decoration: BoxDecoration(
-              color: c.brandSoft,
-              borderRadius: BorderRadius.circular(Radii.md),
-            ),
-            child: Icon(card.icon, size: 20, color: c.brand),
+    return Semantics(
+      button: true,
+      // One clean node: a screen reader should say "Open your profile", not
+      // read out the single letter inside the ring.
+      container: true,
+      excludeSemantics: true,
+      label: 'Open your profile',
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute<void>(builder: (_) => const ProfileScreen())),
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: c.brandSoft,
+            shape: BoxShape.circle,
+            border: Border.all(color: c.brand, width: 1.3),
           ),
-          const SizedBox(width: Gap.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  card.title,
-                  style: LipType.subheading.copyWith(color: c.text1),
-                ),
-                const SizedBox(height: 2),
-                Text(card.sub, style: LipType.caption.copyWith(color: c.text3)),
-              ],
-            ),
+          alignment: Alignment.center,
+          child: Text(
+            initial.toUpperCase(),
+            style: LipType.smallStrong.copyWith(color: c.brand),
           ),
-          if (!card.ready)
-            Text('soon', style: LipType.label.copyWith(color: c.text3))
-          else
-            Icon(Icons.chevron_right_rounded, color: c.text3),
-        ],
+        ),
       ),
     );
   }
@@ -648,4 +591,143 @@ class _Skeleton extends StatelessWidget {
       LipSkeleton(height: 68, radius: Radii.lg),
     ],
   );
+}
+
+/// ===========================================================================
+/// THE CHANNEL CARD
+///
+/// The WhatsApp channel used to be a constant in `config.dart`, so moving the
+/// channel meant shipping an APK. It is a `channel` row in support_contacts
+/// now — and when the team runs no channel there is simply NO CARD, which is
+/// better than a card that opens a link nobody maintains.
+/// ===========================================================================
+class _ChannelCard extends ConsumerWidget {
+  const _ChannelCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
+    final channel = ref
+        .watch(supportContactsProvider)
+        .value
+        ?.where((k) => k.kind == 'channel')
+        .firstOrNull;
+    if (channel == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: Gap.lg),
+      child: GlassSurface(
+        tier: GlassTier.raised,
+        hue: c.hues.green,
+        onTap: () =>
+            launchUrl(channel.uri, mode: LaunchMode.externalApplication),
+        semanticLabel: channel.label.isEmpty
+            ? 'Join the LockInPoint channel'
+            : channel.label,
+        child: Row(
+          children: [
+            Container(
+              height: 42,
+              width: 42,
+              decoration: BoxDecoration(
+                color: c.hues.green.ink.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(Radii.md),
+              ),
+              child: Icon(
+                Icons.campaign_rounded,
+                size: 20,
+                color: c.hues.green.ink,
+              ),
+            ),
+            const SizedBox(width: Gap.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    channel.label.isEmpty ? 'Join the channel' : channel.label,
+                    style: LipType.subheading.copyWith(color: c.text1),
+                  ),
+                  if (channel.description.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      channel.description,
+                      style: LipType.caption.copyWith(color: c.text3),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: c.text3),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// ===========================================================================
+/// THE BELL
+///
+/// Unread count from the one notification system — the same route and the
+/// same acknowledgements the website's bell counts, so a notice read on a
+/// laptop is read here too.
+///
+/// It never shows a spinner and never blocks the home screen. Before the
+/// count has arrived it is simply a bell with no badge, which is what a bell
+/// with nothing in it looks like anyway.
+/// ===========================================================================
+class _BellButton extends ConsumerWidget {
+  const _BellButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
+    final unread = ref.watch(unreadCountProvider);
+
+    return Semantics(
+      button: true,
+      label: unread == 0 ? 'Notifications' : 'Notifications, $unread unread',
+      excludeSemantics: true,
+      child: IconButton(
+        tooltip: 'Notifications',
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+        onPressed: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+        icon: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Icon(Icons.notifications_none_rounded, color: c.text2),
+            if (unread > 0)
+              Positioned(
+                right: -3,
+                top: -3,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  constraints: const BoxConstraints(
+                    minWidth: 16,
+                    minHeight: 16,
+                  ),
+                  decoration: BoxDecoration(
+                    color: c.hues.rose.ink,
+                    borderRadius: BorderRadius.circular(Radii.pill),
+                    border: Border.all(color: c.bgBase, width: 1.5),
+                  ),
+                  child: Text(
+                    unread > 9 ? '9+' : '$unread',
+                    textAlign: TextAlign.center,
+                    style: LipType.label.copyWith(
+                      color: Colors.white,
+                      fontSize: 9.5,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }

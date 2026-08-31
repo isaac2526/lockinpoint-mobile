@@ -322,6 +322,7 @@ class LipEmpty extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.message,
+    this.detail,
     this.actionLabel,
     this.onAction,
   });
@@ -329,6 +330,12 @@ class LipEmpty extends StatelessWidget {
   final IconData icon;
   final String title;
   final String message;
+
+  /// The technical breadcrumb — which request, which status — in small print
+  /// under the human sentence, so a screenshot of this screen IS the bug
+  /// report instead of the start of a guessing game.
+  final String? detail;
+
   final String? actionLabel;
   final VoidCallback? onAction;
 
@@ -362,6 +369,16 @@ class LipEmpty extends StatelessWidget {
               style: LipType.small.copyWith(color: c.text3),
               textAlign: TextAlign.center,
             ),
+            if (detail != null) ...[
+              const SizedBox(height: Gap.md),
+              Text(
+                detail!,
+                style: LipType.label.copyWith(
+                  color: c.text3.withValues(alpha: 0.8),
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
             if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: Gap.xl),
               LipButton(
@@ -380,8 +397,13 @@ class LipEmpty extends StatelessWidget {
 /// Something went wrong — said in a way that tells the student what to do.
 /// No apology, no error code, always a way forward.
 class LipError extends StatelessWidget {
-  const LipError({super.key, required this.message, this.onRetry});
+  const LipError({super.key, required this.message, this.detail, this.onRetry});
   final String message;
+
+  /// The exact request that failed, for the small print. Pass
+  /// [ApiFailure.detail] wherever one is in hand.
+  final String? detail;
+
   final VoidCallback? onRetry;
 
   @override
@@ -389,9 +411,60 @@ class LipError extends StatelessWidget {
     icon: Icons.wifi_off_rounded,
     title: 'That did not load',
     message: message,
+    detail: detail,
     actionLabel: onRetry == null ? null : 'Try again',
     onAction: onRetry,
   );
+}
+
+/// The error card a FORM shows: one red sentence, and under it — in small
+/// print — the exact request that failed.
+///
+/// The small print exists because of a real week lost to its absence. The app
+/// knew precisely which request failed, at what status, and who answered it,
+/// and then showed the student a sentence and threw the evidence away. Every
+/// screen that can fail must be able to say what it saw.
+class LipFormError extends StatelessWidget {
+  const LipFormError({super.key, required this.message, this.detail});
+
+  final String message;
+
+  /// [ApiFailure.detail] — never a token, never a password.
+  final String? detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.lip;
+    return GlassSurface(
+      tier: GlassTier.deep,
+      radius: Radii.md,
+      padding: const EdgeInsets.symmetric(horizontal: Gap.md, vertical: Gap.md),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.error_outline_rounded, size: 17, color: c.danger),
+          const SizedBox(width: Gap.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(message, style: LipType.small.copyWith(color: c.danger)),
+                if (detail != null) ...[
+                  const SizedBox(height: Gap.sm),
+                  SelectableText(
+                    detail!,
+                    style: LipType.label.copyWith(
+                      color: c.text3.withValues(alpha: 0.9),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// The bar that appears when the phone loses signal. Not a dialog — a student

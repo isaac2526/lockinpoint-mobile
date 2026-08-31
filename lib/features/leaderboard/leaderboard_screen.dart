@@ -64,13 +64,19 @@ final leaderboardProvider = FutureProvider.autoDispose(
 /// positions.
 /// ===========================================================================
 class LeaderboardScreen extends ConsumerWidget {
-  const LeaderboardScreen({super.key});
+  const LeaderboardScreen({super.key, this.embedded = false});
+
+  /// True when this screen is a TAB inside the shell rather than a pushed
+  /// route. An embedded screen drops its own app bar and back button — two
+  /// headers stacked on one screen is the fastest way to make an app feel
+  /// like a collection of pages instead of one product.
+  final bool embedded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final rows = ref.watch(leaderboardProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Leaderboard')),
+      appBar: embedded ? null : AppBar(title: const Text('Leaderboard')),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () async => ref.invalidate(leaderboardProvider),
@@ -93,6 +99,7 @@ class LeaderboardScreen extends ConsumerWidget {
                   message: e is ApiFailure
                       ? e.message
                       : 'Pull down to try again.',
+                  detail: e is ApiFailure ? e.detail : null,
                   onRetry: () => ref.invalidate(leaderboardProvider),
                 ),
               ],

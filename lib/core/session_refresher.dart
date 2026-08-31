@@ -13,20 +13,23 @@ class RefreshedSession extends RefreshOutcome {
 }
 
 /// The auth server itself refused the refresh token. This is the ONE outcome
-/// that proves a session is genuinely dead.
+/// that proves a session is genuinely dead. [why] carries the server's words
+/// for the small print — never the token.
 class RefreshRefused extends RefreshOutcome {
-  const RefreshRefused();
+  const RefreshRefused([this.why = 'the session has ended']);
+  final String why;
 }
 
 /// The auth server could not be reached, so nothing was proven either way.
 /// A bus going through a tunnel must never be read as a dead session.
 class RefreshUnreachable extends RefreshOutcome {
-  const RefreshUnreachable();
+  const RefreshUnreachable([this.why = 'no answer']);
+  final String why;
 }
 
 /// Asks the auth server whether a refresh token still lives, returning the
-/// rotated pair when it does. The real one wraps supabase's setSession; tests
-/// hand in whatever server they need.
+/// rotated pair when it does. The real one POSTs the backend's own
+/// /api/auth/refresh; tests hand in whatever server they need.
 typedef RefreshExchange = Future<RefreshOutcome> Function(String refreshToken);
 
 /// ===========================================================================
@@ -56,7 +59,9 @@ class SessionRefresher {
     } catch (_) {
       refresh = null;
     }
-    if (refresh == null) return const RefreshRefused();
+    if (refresh == null) {
+      return const RefreshRefused('no refresh token is stored on this phone');
+    }
 
     final outcome = await _exchange(refresh);
     if (outcome is RefreshedSession) {

@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api.dart';
 import '../../../design/components.dart';
-import '../../../design/glass.dart';
 import '../../../design/motion_widgets.dart';
 import '../../../design/theme.dart';
 import '../../../design/tokens.dart';
@@ -64,6 +63,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   int _step = 0;
   bool _busy = false;
   String? _error;
+  String? _errorDetail;
 
   Timer? _nameDebounce;
   _NameCheck _nameCheck = _NameCheck.idle;
@@ -185,6 +185,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         _error = e is ApiFailure
             ? e.message
             : 'That did not work. Please try again.';
+        _errorDetail = e is ApiFailure ? e.detail : null;
       });
       return;
     }
@@ -231,30 +232,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             const SizedBox(height: Gap.xl),
 
             if (_error != null) ...[
-              GlassSurface(
-                tier: GlassTier.deep,
-                radius: Radii.md,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: Gap.md,
-                  vertical: Gap.md,
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.error_outline_rounded,
-                      size: 17,
-                      color: c.danger,
-                    ),
-                    const SizedBox(width: Gap.sm),
-                    Expanded(
-                      child: Text(
-                        _error!,
-                        style: LipType.small.copyWith(color: c.danger),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              LipFormError(message: _error!, detail: _errorDetail),
               const SizedBox(height: Gap.lg),
             ],
 

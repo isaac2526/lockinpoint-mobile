@@ -38,8 +38,9 @@ abstract final class LipTheme {
       colorScheme: scheme,
       extensions: [c],
 
-      // The aura paints the ground; the Scaffold must not paint over it.
-      scaffoldBackgroundColor: Colors.transparent,
+      // The page is a solid colour and the Scaffold paints it. There is no
+      // aura behind it any more: white in light, near-black in dark.
+      scaffoldBackgroundColor: c.bgBase,
       canvasColor: c.bgBase,
       splashColor: c.brandSoft,
       highlightColor: c.brandSoft,

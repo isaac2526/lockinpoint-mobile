@@ -89,7 +89,7 @@ class FakeAdapter implements HttpClientAdapter {
   final List<RequestOptions> requests = [];
   final List<ResponseBody> _queue = [];
 
-  void enqueue(int status, Object body) => _queue.add(
+  void enqueue(int status, Object body, {String? location}) => _queue.add(
     ResponseBody.fromString(
       body is String ? body : jsonEncode(body),
       status,
@@ -99,6 +99,7 @@ class FakeAdapter implements HttpClientAdapter {
         Headers.contentTypeHeader: [
           body is String ? 'text/plain' : 'application/json',
         ],
+        if (location != null) 'location': [location],
       },
     ),
   );
@@ -215,6 +216,18 @@ void main() {
       net.enqueue(200, {'ok': true});
       await api.get('/api/me');
       expect(net.requests.single.headers['Authorization'], 'Bearer tok-123');
+    });
+
+    test('every request names the app, never Dart\'s default agent', () async {
+      /* Unset, Dart sends `Dart/3.x (dart:io)` — the signature a bot filter
+         blocks while every browser passes, which is the exact shape of the
+         failure this app hit against production. */
+      net.enqueue(200, {'ok': true});
+      await api.get('/api/me');
+      final ua = net.requests.single.headers['User-Agent'] as String?;
+      expect(ua, isNotNull);
+      expect(ua, contains('LockInPoint'));
+      expect(ua, isNot(contains('Dart/')));
     });
 
     test('with no token, no Authorization header is sent at all', () async {
@@ -334,7 +347,7 @@ void main() {
     test(
       'two requests hitting 401 together share ONE refresh exchange',
       () async {
-        /* Supabase burns a refresh token on first use. If two 401s each
+        /* The auth server burns a refresh token on first use. If two 401s each
            presented it, the second would be refused and sign the student out
            — the race this law exists to prevent. */
         await store.save(access: 'stale', refresh: 'r1');
@@ -365,24 +378,21 @@ void main() {
       );
     });
 
-    test(
-      'a 404 is called a deployment in progress, not a dead session',
-      () async {
-        net.enqueue(404, 'page not found');
-        await expectLater(
-          api.get('/api/mobile/dashboard'),
-          throwsA(
-            isA<ApiFailure>()
-                .having((e) => e.unauthorised, 'unauthorised', isFalse)
-                .having(
-                  (e) => e.message,
-                  'message',
-                  contains('still updating'),
-                ),
-          ),
-        );
-      },
-    );
+    test('a 404 names the missing deployment, never a dead session', () async {
+      net.enqueue(404, 'page not found');
+      await expectLater(
+        api.get('/api/mobile/dashboard'),
+        throwsA(
+          isA<ApiFailure>()
+              .having((e) => e.unauthorised, 'unauthorised', isFalse)
+              .having(
+                (e) => e.message,
+                'message',
+                contains('needs its update deployed'),
+              ),
+        ),
+      );
+    });
 
     test('a 500 is the server\'s fault, said plainly', () async {
       net.enqueue(500, 'internal error');
@@ -397,5 +407,251 @@ void main() {
         ),
       );
     });
+
+    test('every failure names its exact request in the small print', () async {
+      await store.save(access: 'tok', refresh: 'r');
+      auth.outcome = const RefreshRefused('refresh token not found');
+      net.enqueue(401, {'ok': false, 'message': 'Not signed in.'});
+      await expectLater(
+        api.get('/api/mobile/dashboard'),
+        throwsA(
+          isA<ApiFailure>().having(
+            (e) => e.detail,
+            'detail',
+            allOf(
+              contains('GET /api/mobile/dashboard'),
+              contains('401'),
+              contains('refresh token not found'),
+            ),
+          ),
+        ),
+      );
+    });
+  });
+
+  group('a gate in front of the server is named, not mistaken for a login', () {
+    /* The body production actually sent: keys exactly `redirect` and
+       `status`, no ok, no tokens. The HTTP status here is 200 deliberately —
+       it could NOT have been a 401, because at a login screen no token is
+       stored and a 401 without a token takes an earlier branch that never
+       prints a key list, yet a key list is what the student's screen showed.
+       Whoever writes this body is unproven; the app names it from its own
+       redirect target rather than assuming. */
+    const gateBody = {
+      'redirect':
+          'https://vercel.com/sso-api?url=https%3A%2F%2Flockinpoint.com',
+      'status': '401',
+    };
+
+    late SessionStore store;
+    late Api api;
+    late FakeAdapter net;
+    late FakeAuthServer auth;
+
+    setUp(() {
+      store = SessionStore(secure: FakeSecureStorage());
+      auth = FakeAuthServer(const RefreshRefused());
+      api = Api(store, SessionRefresher(store, auth.exchange));
+      net = FakeAdapter();
+      api.dio.httpClientAdapter = net;
+    });
+
+    test('a gate at ANY status is caught, and carries its address', () async {
+      // 200 is the status the real observation implies — the catch must not
+      // depend on a 401 it never had.
+      net.enqueue(200, gateBody);
+      await expectLater(
+        api.post('/api/auth/login', body: {}),
+        throwsA(
+          isA<ApiFailure>()
+              .having(
+                (e) => e.message,
+                'message',
+                contains('in front of the website'),
+              )
+              .having(
+                (e) => e.detail,
+                'detail',
+                allOf(
+                  contains('POST /api/auth/login'),
+                  contains('vercel.com'),
+                  // The raw target: the one string that names the real culprit.
+                  contains('sso-api'),
+                ),
+              ),
+        ),
+      );
+    });
+
+    test('a gate NEVER ends a session or burns the refresh token', () async {
+      await store.save(access: 'tok', refresh: 'r1');
+      net.enqueue(401, gateBody);
+      await expectLater(api.get('/api/me'), throwsA(isA<ApiFailure>()));
+      // The session stands, and the gate was never mistaken for a refusal.
+      expect(await store.accessToken(), 'tok');
+      expect(await store.refreshToken(), 'r1');
+      expect(auth.asks, 0);
+    });
+
+    test('the gatekeeper is named by its own redirect target', () {
+      expect(Api.platformGate(gateBody)?.host, 'vercel.com');
+      expect(Api.platformGate(gateBody)?.target, contains('sso-api'));
+      // A gate that points somewhere unparseable is still caught and reported.
+      final odd = Api.platformGate({'redirect': '/relative', 'status': 401});
+      expect(odd?.host, 'an unnamed gate');
+      expect(odd?.target, '/relative');
+    });
+
+    test('an ordinary LockInPoint answer is never called a gate', () {
+      expect(
+        Api.platformGate({'ok': true, 'redirect': '/x', 'status': 1}),
+        isNull,
+      );
+      expect(Api.platformGate({'ok': false, 'message': 'no'}), isNull);
+      expect(Api.platformGate('a plain string'), isNull);
+      expect(Api.platformGate({'redirect': '/somewhere'}), isNull);
+      // /api/search answers {rows,total} with NO ok — never a gate.
+      expect(Api.platformGate({'rows': [], 'total': 0}), isNull);
+    });
+
+    test(
+      'an apex-to-www hop is followed, with the login body intact',
+      () async {
+        /* The Belloxdydx app posts to www.belloxdydx.org and worked first time;
+         this app was pointed at the bare apex. If Vercel makes www primary,
+         every request meets a 308 — and Dart's own redirect following drops
+         the POST body, turning a login into an empty request. */
+        await store.save(access: 'tok', refresh: 'r');
+        net.enqueue(
+          308,
+          '',
+          location: 'https://www.lockinpoint.com/api/auth/login',
+        );
+        net.enqueue(200, {
+          'ok': true,
+          'access_token': 'a',
+          'refresh_token': 'b',
+        });
+
+        final out = await api.post(
+          '/api/auth/login',
+          body: {'identifier': 'ada@example.com', 'password': 'secret'},
+        );
+        expect(out['access_token'], 'a');
+
+        expect(net.requests, hasLength(2));
+        final retry = net.requests.last;
+        // The hop went to www, as a POST, carrying the SAME body and the key.
+        expect(
+          retry.uri.toString(),
+          'https://www.lockinpoint.com/api/auth/login',
+        );
+        expect(retry.method, 'POST');
+        expect((retry.data as Map)['identifier'], 'ada@example.com');
+        expect(retry.headers['Authorization'], 'Bearer tok');
+      },
+    );
+
+    test(
+      'a hop to ANOTHER domain is refused, and the key never goes',
+      () async {
+        /* A Location header must never be able to hand the bearer token to a
+         host of its choosing. */
+        await store.save(access: 'tok', refresh: 'r');
+        net.enqueue(302, '', location: 'https://evil.example.com/api/me');
+        await expectLater(
+          api.get('/api/me'),
+          throwsA(
+            isA<ApiFailure>()
+                .having((e) => e.message, 'message', contains('somewhere else'))
+                .having(
+                  (e) => e.detail,
+                  'detail',
+                  allOf(contains('302'), contains('evil.example.com')),
+                ),
+          ),
+        );
+        // One request only — the off-site hop was never taken.
+        expect(net.requests, hasLength(1));
+      },
+    );
+
+    test('a redirect that downgrades to http is refused', () async {
+      net.enqueue(308, '', location: 'http://lockinpoint.com/api/me');
+      await expectLater(api.get('/api/me'), throwsA(isA<ApiFailure>()));
+      expect(net.requests, hasLength(1));
+    });
+
+    test('a redirect loop stops instead of spinning forever', () async {
+      for (var i = 0; i < 6; i++) {
+        net.enqueue(308, '', location: 'https://www.lockinpoint.com/api/me');
+      }
+      await expectLater(api.get('/api/me'), throwsA(isA<ApiFailure>()));
+      // The first request plus at most _maxHops re-issues.
+      expect(net.requests.length, lessThanOrEqualTo(4));
+    });
+  });
+
+  group('the backend refresh exchange reads the route honestly', () {
+    late Dio dio;
+    late FakeAdapter net;
+    late RefreshExchange exchange;
+
+    setUp(() {
+      dio = Dio(Api.baseOptions());
+      net = FakeAdapter();
+      dio.httpClientAdapter = net;
+      exchange = backendRefreshExchange(dio);
+    });
+
+    test('a 200 with the pair is a refreshed session', () async {
+      net.enqueue(200, {
+        'ok': true,
+        'access_token': 'a2',
+        'refresh_token': 'r2',
+      });
+      final out = await exchange('r1');
+      expect(out, isA<RefreshedSession>());
+      expect((out as RefreshedSession).access, 'a2');
+      expect(out.refresh, 'r2');
+      // The refresh token travelled in the body, never in a header or URL.
+      expect(net.requests.single.path, '/api/auth/refresh');
+      expect((net.requests.single.data as Map)['refresh_token'], 'r1');
+    });
+
+    test('a 401 is the one true refusal, with the server\'s words', () async {
+      net.enqueue(401, {'ok': false, 'message': 'This session has ended.'});
+      final out = await exchange('r1');
+      expect(out, isA<RefreshRefused>());
+      expect((out as RefreshRefused).why, 'This session has ended.');
+    });
+
+    test(
+      'a 404 means the server needs deploying, NOT a dead session',
+      () async {
+        net.enqueue(404, 'not found');
+        final out = await exchange('r1');
+        expect(out, isA<RefreshUnreachable>());
+        expect((out as RefreshUnreachable).why, contains('deployed'));
+      },
+    );
+
+    test('a 500 proves nothing about the session', () async {
+      net.enqueue(500, 'oops');
+      expect(await exchange('r1'), isA<RefreshUnreachable>());
+    });
+
+    test(
+      'a gated answer is unreachable, NOT a refusal that signs out',
+      () async {
+        net.enqueue(200, {
+          'redirect': 'https://vercel.com/sso-api?url=x',
+          'status': '401',
+        });
+        final out = await exchange('r1');
+        expect(out, isA<RefreshUnreachable>());
+        expect((out as RefreshUnreachable).why, contains('vercel.com'));
+      },
+    );
   });
 }

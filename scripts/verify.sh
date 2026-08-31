@@ -38,6 +38,20 @@ flutter analyze --fatal-infos || fail=1
 step "Test  ·  flutter test"
 flutter test || fail=1
 
+# The User-Agent every request carries is a const in config.dart, so it can
+# drift from the pubspec version silently. Then the server's logs name a build
+# that is not the one installed — which is worse than no version at all.
+step "Version  ·  pubspec and AppConfig.appVersion agree"
+PUBSPEC_V=$(grep -m1 '^version:' pubspec.yaml | sed 's/version: *//;s/+.*//')
+CONFIG_V=$(grep -m1 "appVersion = " lib/core/config.dart | sed "s/.*'\(.*\)'.*/\1/")
+if [ "$PUBSPEC_V" != "$CONFIG_V" ]; then
+  echo "VERSION DRIFT: pubspec says $PUBSPEC_V, AppConfig.appVersion says $CONFIG_V."
+  echo "Update lib/core/config.dart so the User-Agent names the real build."
+  fail=1
+else
+  echo "both say $PUBSPEC_V"
+fi
+
 if [ "$fail" -ne 0 ]; then
   printf '\n\033[31mVERIFY FAILED. Do not push.\033[0m\n'
   exit 1
