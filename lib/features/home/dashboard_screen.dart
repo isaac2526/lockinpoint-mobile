@@ -3,8 +3,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import '../../app/shell.dart';
+import '../../core/open.dart';
 import '../../core/api.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
@@ -208,7 +209,11 @@ class _Content extends ConsumerWidget {
             children: [
               Builder(
                 builder: (context) => IconButton(
-                  onPressed: () => Scaffold.of(context).openDrawer(),
+                  /* The drawer lives on the SHELL's scaffold; this screen's own
+                     inner Scaffold has none, so Scaffold.of() here found a
+                     drawerless scaffold and this tap did nothing at all in
+                     release builds. */
+                  onPressed: () => lipShellKey.currentState?.openDrawer(),
                   icon: const Icon(Icons.menu_rounded),
                   tooltip: 'Menu',
                   padding: EdgeInsets.zero,
@@ -626,8 +631,7 @@ class _ChannelCard extends ConsumerWidget {
       child: GlassSurface(
         tier: GlassTier.raised,
         hue: c.hues.green,
-        onTap: () =>
-            launchUrl(channel.uri, mode: LaunchMode.externalApplication),
+        onTap: () => openOutside(context, channel.uri),
         semanticLabel: channel.label.isEmpty
             ? 'Join the LockInPoint channel'
             : channel.label,

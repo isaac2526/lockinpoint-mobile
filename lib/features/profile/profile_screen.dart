@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/theme_controller.dart';
+import '../../core/open.dart';
 import '../../core/api.dart';
 import '../../core/config.dart';
 import '../../design/components.dart';
@@ -300,11 +300,13 @@ class _Content extends ConsumerWidget {
         const SizedBox(height: Gap.xl),
 
         // ---- the exit ------------------------------------------------
-        TextButton.icon(
-          onPressed: () => ref.read(authControllerProvider.notifier).logOut(),
-          icon: const Icon(Icons.logout_rounded, size: 17),
-          label: const Text('Log out'),
-        ),
+        /* THE EXIT THAT DID NOT EXIT. Profile is a PUSHED route, so signing
+           out rebuilt the gate UNDERNEATH while this screen stayed on top:
+           the student saw their own profile, still full of their data, and
+           tapping again did nothing visible. It now pops back to the root as
+           well, and says it is working - a logout on a dead connection took
+           up to 30 seconds in silence while the student hammered it. */
+        const _LogOutButton(),
       ],
     );
   }
@@ -392,10 +394,7 @@ class _ContactCard extends ConsumerWidget {
         color: c.hues.indigo.ink,
         title: 'Guardian Portal',
         subtitle: 'For a parent, teacher or school following you',
-        onTap: () => launchUrl(
-          Uri.parse(AppConfig.guardianPortal),
-          mode: LaunchMode.externalApplication,
-        ),
+        onTap: () => openOutside(context, Uri.parse(AppConfig.guardianPortal)),
       ),
       for (final k in sorted)
         _LinkRow(
@@ -403,7 +402,7 @@ class _ContactCard extends ConsumerWidget {
           color: tintFor(k.kind),
           title: k.label.isEmpty ? k.kind : k.label,
           subtitle: k.description.isNotEmpty ? k.description : k.value,
-          onTap: () => launchUrl(k.uri, mode: LaunchMode.externalApplication),
+          onTap: () => openOutside(context, k.uri),
         ),
     ];
 
@@ -561,6 +560,43 @@ class _LinkRow extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Log out, visibly.
+class _LogOutButton extends ConsumerStatefulWidget {
+  const _LogOutButton();
+
+  @override
+  ConsumerState<_LogOutButton> createState() => _LogOutButtonState();
+}
+
+class _LogOutButtonState extends ConsumerState<_LogOutButton> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      onPressed: _busy
+          ? null
+          : () async {
+              final navigator = Navigator.of(context);
+              setState(() => _busy = true);
+              await ref.read(authControllerProvider.notifier).logOut();
+              if (!mounted) return;
+              // The gate below has already swapped to the welcome screen;
+              // this pops the pile of pushed routes off the top of it.
+              navigator.popUntil((r) => r.isFirst);
+            },
+      icon: _busy
+          ? const SizedBox(
+              height: 15,
+              width: 15,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.logout_rounded, size: 17),
+      label: Text(_busy ? 'Signing out…' : 'Log out'),
     );
   }
 }

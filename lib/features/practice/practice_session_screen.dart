@@ -53,6 +53,10 @@ class PracticeSessionScreen extends ConsumerStatefulWidget {
 }
 
 class _SessionState extends ConsumerState<PracticeSessionScreen> {
+  /// Questions this student has kept. Loaded once when the sitting opens so
+  /// the bookmark shows its real state instead of starting hollow.
+  final Set<String> _saved = <String>{};
+
   late int _idx = widget.sitting.questions.isEmpty
       ? 0
       : widget.sitting.initialIndex.clamp(
@@ -96,6 +100,16 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
   @override
   void initState() {
     super.initState();
+    /* Fire and forget, and INSULATED. A sitting must never wait on a
+       bookmark list — and must never fail to open because fetching one
+       threw. The paper is the point; the stars are a convenience. */
+    try {
+      ref.read(practiceRepositoryProvider).savedIds().then((ids) {
+        if (mounted) setState(() => _saved.addAll(ids));
+      }, onError: (_) {});
+    } catch (_) {
+      // No repository available (a widget test, a torn-down container).
+    }
     if (sitting.timed) {
       _deadline = widget.clock().add(Duration(seconds: sitting.duration));
       _tick = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -147,6 +161,26 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
       if (_canMark) _checked[q.id] = true;
     });
     _queueSave();
+  }
+
+  Future<void> _toggleSaved() async {
+    final id = q.id;
+    final wasSaved = _saved.contains(id);
+    final repo = ref.read(practiceRepositoryProvider);
+    final messenger = ScaffoldMessenger.of(context);
+
+    // Optimistic: the star fills under the thumb, and rolls back if the
+    // server disagrees. A bookmark that waits on a round trip feels broken.
+    setState(() => wasSaved ? _saved.remove(id) : _saved.add(id));
+    try {
+      await repo.setSaved(id, !wasSaved);
+    } on ApiFailure catch (e) {
+      if (!mounted) return;
+      setState(() => wasSaved ? _saved.add(id) : _saved.remove(id));
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 
   void _go(int to) {
@@ -312,7 +346,7 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
   @override
   Widget build(BuildContext context) {
     if (_result != null) {
-      return _ResultView(result: _result!, label: sitting.label);
+      return ResultView(result: _result!, label: sitting.label);
     }
     /* The server refuses to open an empty paper, so this is only reachable by
        resuming a sitting whose questions have since gone. Say so and let the
@@ -503,6 +537,26 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
                      nothing, needs no key, and works with the network off —
                      which matters, because the offline vault is exactly where
                      a student practising on a bus will use it. */
+                  /* THE BOOKMARK THE SAVED SCREEN KEPT PROMISING. Its
+                     empty state told students to "tap the bookmark on a
+                     question while you practise" — a button that existed on
+                     no screen, so an app-only student could never save
+                     anything and Practise-my-saved was permanently empty. */
+                  IconButton(
+                    tooltip: _saved.contains(q.id)
+                        ? 'Remove from saved'
+                        : 'Save this question',
+                    onPressed: _toggleSaved,
+                    icon: Icon(
+                      _saved.contains(q.id)
+                          ? Icons.bookmark_rounded
+                          : Icons.bookmark_border_rounded,
+                      size: 21,
+                      color: _saved.contains(q.id)
+                          ? context.lip.hues.lime.ink
+                          : context.lip.text3,
+                    ),
+                  ),
                   if (speechSupported) _SpeakButton(question: q),
                   /* ASK LUMI ABOUT THIS ONE. The entry point existed as a
                      constructor parameter - TutorScreen(questionId) - and
@@ -919,8 +973,11 @@ class _MediaImage extends StatelessWidget {
 }
 
 /// The graded end of a sitting: the score, per subject lines, and the way out.
-class _ResultView extends StatelessWidget {
-  const _ResultView({required this.result, required this.label});
+/// The graded paper. Public because the Results history reopens the SAME
+/// sheet for a sitting from last week — two correction screens would
+/// eventually disagree about a student's own marks.
+class ResultView extends StatelessWidget {
+  const ResultView({super.key, required this.result, required this.label});
 
   final SubmitResult result;
   final String label;
@@ -928,8 +985,12 @@ class _ResultView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.lip;
-    final good = result.overall >= 70;
-    final mid = result.overall >= 50;
+    /* A JAMB MOCK IS OUT OF 400. Comparing a 265 against a 70 threshold
+       painted every mock green and printed "265%" in the circle. The
+       equivalent percentage keeps one meaning for the colour on both
+       scales. */
+    final good = result.percentEquivalent >= 70;
+    final mid = result.percentEquivalent >= 50;
     return Scaffold(
       body: SafeArea(
         child: ListView(
@@ -958,7 +1019,7 @@ class _ResultView extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  '${result.overall}%',
+                  result.headline,
                   style: LipType.monoBig.copyWith(
                     fontSize: 30,
                     color: good

@@ -92,6 +92,7 @@ class ClimbState {
     required this.seconds,
     required this.question,
     required this.options,
+    this.questionId,
   });
 
   final String id;
@@ -114,6 +115,10 @@ class ClimbState {
   final int? seconds;
 
   final String question;
+
+  /// The bank id of the question on screen — what Ask Lumi needs to talk
+  /// about THIS rung rather than the game in general.
+  final String? questionId;
 
   /// Letter → text. Options removed by Fifty-Fifty are simply absent, because
   /// the server sends what is left rather than telling the app what to hide.
@@ -141,6 +146,7 @@ class ClimbState {
       },
       seconds: (s['seconds'] as num?)?.toInt(),
       question: q is Map ? (q['question'] as String? ?? '') : '',
+      questionId: q is Map ? q['id'] as String? : null,
       options: q is Map
           ? ((q['options'] as List?) ?? const [])
                 .whereType<Map>()
@@ -174,6 +180,22 @@ class ClimbAnswer {
   final ClimbState? state;
   final bool unlockedDoubleDip;
   final bool dipRemaining;
+}
+
+/// What Ask the Class came back with: the new state, and — when the lifeline
+/// was Ask the Class — how students actually answered.
+class ClassVote {
+  const ClassVote({
+    required this.state,
+    required this.percentages,
+    required this.real,
+    required this.sample,
+  });
+
+  final ClimbState? state;
+  final Map<String, int>? percentages;
+  final bool real;
+  final int sample;
 }
 
 class ClimbApi {
@@ -210,9 +232,38 @@ class ClimbApi {
   }
 
   /// Spend a lifeline. The server decides what it reveals — Fifty-Fifty comes
-  /// back as a state with two options gone, Ask the Class as a distribution.
-  Future<Map<String, dynamic>> lifeline(String gameId, String which) =>
-      _post({'op': 'lifeline', 'gameId': gameId, 'which': which});
+  /// back as a state with two options gone, Ask the Class as a vote.
+  ///
+  /// THE KEY MATTERS. The route answers Ask the Class with `classVote`, and
+  /// the app was reading `distribution` — a key nothing sends. The lifeline
+  /// was consumed, the chip vanished, and no percentages ever appeared: a
+  /// student paid for nothing because two files disagreed about one word.
+  Future<ClassVote?> lifeline(String gameId, String which) async {
+    final res = await _post({
+      'op': 'lifeline',
+      'gameId': gameId,
+      'which': which,
+    });
+    final vote = res['classVote'];
+    final state = res['state'];
+    return ClassVote(
+      state: state is Map
+          ? ClimbState.from(state.cast<String, dynamic>())
+          : null,
+      percentages: vote is Map
+          ? {
+              for (final e in (vote['percentages'] as Map? ?? const {}).entries)
+                '${e.key}': (e.value as num).toInt(),
+            }
+          : null,
+
+      /// False when the bank has too few real answers and the server sent an
+      /// estimate. The screen says which, because a made-up crowd presented
+      /// as a real one is a lie a student would act on.
+      real: vote is Map ? vote['real'] == true : false,
+      sample: vote is Map ? (vote['sample'] as num?)?.toInt() ?? 0 : 0,
+    );
+  }
 
   Future<ClimbAnswer> answer(
     String gameId,

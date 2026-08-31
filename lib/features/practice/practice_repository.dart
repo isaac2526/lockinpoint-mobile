@@ -249,6 +249,8 @@ class SubmitResult {
     required this.overall,
     required this.perSubject,
     this.corrections = const [],
+    this.isJamb = false,
+    this.scaled = const [],
   });
 
   final int correct;
@@ -256,6 +258,22 @@ class SubmitResult {
   final int overall;
   final List<({String name, int correct, int total})> perSubject;
   final List<Correction> corrections;
+
+  /// A UTME mock is scored OUT OF 400, not as a percentage. The server has
+  /// always said which this is; the app dropped the flag and printed "265%"
+  /// in a circle whose thresholds painted every mock green.
+  final bool isJamb;
+
+  /// Per-subject scores on JAMB's own scale, as the server computed them.
+  final List<({String name, int score})> scaled;
+
+  /// What to show in the big circle, and what it is out of.
+  String get headline => isJamb ? '$overall' : '$overall%';
+  String? get outOf => isJamb ? 'out of 400' : null;
+
+  /// Thresholds that mean the same thing on both scales: a 280 in JAMB is
+  /// the same achievement as 70%.
+  int get percentEquivalent => isJamb ? (overall / 4).round() : overall;
 
   List<Correction> get missed => corrections.where((c) => !c.isRight).toList();
 }
@@ -400,6 +418,36 @@ class PracticeRepository {
     }
   }
 
+  /// REOPEN A FINISHED PAPER. The answer key is stored on the attempt, so a
+  /// sitting from last week can be walked through again — the corrections
+  /// used to exist for exactly as long as the result screen stayed open.
+  Future<SubmitResult> review(String attemptId) async {
+    final res = await _api.post(
+      '/api/attempts',
+      body: {'action': 'review', 'attemptId': attemptId},
+    );
+    return _submitResult(res);
+  }
+
+  /// Keep this question, or let it go. The same /api/qmark the website has
+  /// always used, so a question saved on a phone is in the list on the site.
+  Future<void> setSaved(String questionId, bool saved) => _api.post(
+    '/api/qmark',
+    body: {'op': saved ? 'save' : 'unsave', 'questionId': questionId},
+  );
+
+  /// Which questions this student has already kept, so a sitting can show
+  /// the bookmark already filled rather than making them guess.
+  Future<Set<String>> savedIds() async {
+    try {
+      final res = await _api.post('/api/qmark', body: {'op': 'saved_ids'});
+      return ((res['ids'] as List?) ?? const []).map((e) => '$e').toSet();
+    } on ApiFailure {
+      // Not knowing is not an error worth blocking a sitting for.
+      return <String>{};
+    }
+  }
+
   /// A paper built from the questions this student saved.
   ///
   /// The saved list existed and nothing turned it into a sitting — so the
@@ -517,7 +565,14 @@ class PracticeRepository {
       '/api/attempts',
       body: {'action': 'submit', 'attemptId': attemptId, 'answers': answers},
     );
-    final score = (res['score'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return _submitResult(res);
+  }
+
+  /// One parse for a graded paper, whether it was just submitted or is being
+  /// reopened weeks later — two parsers would eventually disagree about a
+  /// student's own score.
+  SubmitResult _submitResult(Map<String, dynamic> res) {
+    final score = ((res['score'] as Map?) ?? const {}).cast<String, dynamic>();
     return SubmitResult(
       correct: (score['correct'] as num?)?.toInt() ?? 0,
       total: (score['total'] as num?)?.toInt() ?? 0,
@@ -535,6 +590,16 @@ class PracticeRepository {
       corrections: ((res['corrections'] as List?) ?? const [])
           .cast<Map<String, dynamic>>()
           .map(Correction.fromJson)
+          .toList(),
+      isJamb: score['isJamb'] == true,
+      scaled: ((score['scaled'] as List?) ?? const [])
+          .whereType<Map>()
+          .map(
+            (p) => (
+              name: p['name'] as String? ?? '',
+              score: (p['score'] as num?)?.toInt() ?? 0,
+            ),
+          )
           .toList(),
     );
   }

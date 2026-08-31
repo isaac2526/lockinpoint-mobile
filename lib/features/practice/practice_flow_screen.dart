@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/shell.dart';
 import '../../core/api.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
@@ -175,11 +176,18 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
     // Remembered for next time, never blocking this time.
     unawaited(_repo.saveCombination(combination.map((s) => s.name).toList()));
     if (!mounted) return;
-    await Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
+    /* PUSH, NEVER REPLACE. When this flow is the embedded Practice TAB, the
+       current route is the shell itself - replacing it swapped the whole
+       shell out for the sitting, so "Back to the dashboard" had no dashboard
+       behind it and Leave popped into a dead black screen the student had to
+       force-close. */
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
         builder: (_) => PracticeSessionScreen(sitting: sitting),
       ),
     );
+    // The Continue card and counts go stale the moment a sitting ends.
+    ref.invalidate(dashboardProvider);
   });
 
   Future<void> _pickSubject(SubjectOption subject) => _guard(() async {
@@ -224,11 +232,18 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
       minutes: _minutes,
     );
     if (!mounted) return;
-    await Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
+    /* PUSH, NEVER REPLACE. When this flow is the embedded Practice TAB, the
+       current route is the shell itself - replacing it swapped the whole
+       shell out for the sitting, so "Back to the dashboard" had no dashboard
+       behind it and Leave popped into a dead black screen the student had to
+       force-close. */
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
         builder: (_) => PracticeSessionScreen(sitting: sitting),
       ),
     );
+    // The Continue card and counts go stale the moment a sitting ends.
+    ref.invalidate(dashboardProvider);
   });
 
   void _back() {
@@ -341,7 +356,11 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
                   if (widget.embedded && _step == 0)
                     Builder(
                       builder: (context) => IconButton(
-                        onPressed: () => Scaffold.of(context).openDrawer(),
+                        /* The drawer lives on the SHELL's scaffold; this screen's own
+                     inner Scaffold has none, so Scaffold.of() here found a
+                     drawerless scaffold and this tap did nothing at all in
+                     release builds. */
+                        onPressed: () => lipShellKey.currentState?.openDrawer(),
                         icon: const Icon(Icons.menu_rounded),
                         tooltip: 'Menu',
                       ),

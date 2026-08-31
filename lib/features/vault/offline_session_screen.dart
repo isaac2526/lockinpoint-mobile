@@ -67,7 +67,14 @@ class _OfflineState extends ConsumerState<OfflineSessionScreen> {
     setState(() => _checked.add(_q.id));
   }
 
+  bool _finishing = false;
+
   Future<void> _finish() async {
+    /* One paper, one row. Finish is reachable from two buttons and an
+       enthusiastic thumb can land both; without this guard the same sitting
+       queued twice and reached the student's record twice. */
+    if (_finishing) return;
+    _finishing = true;
     final unanswered = _qs.where((q) => _chosen[q.id] == null).length;
     if (unanswered > 0) {
       final sure = await showDialog<bool>(
@@ -89,7 +96,10 @@ class _OfflineState extends ConsumerState<OfflineSessionScreen> {
           ],
         ),
       );
-      if (sure != true) return;
+      if (sure != true) {
+        _finishing = false;
+        return;
+      }
     }
     if (!mounted) return;
 

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/open.dart';
 import '../../core/api.dart';
 import '../../core/config.dart';
 import '../../design/components.dart';
@@ -66,7 +66,10 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
       );
       final url = res['url'] as String?;
       if (url != null && url.isNotEmpty) {
-        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+        if (!mounted) return;
+        // Result checked: a checkout that silently fails to open reads as a
+        // dead Pay button, and a dead Pay button costs real money.
+        await openOutside(context, Uri.parse(url));
       }
     } on ApiFailure catch (e) {
       if (!mounted) return;
@@ -265,6 +268,17 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                                         await a.copy();
                                         if (!context.mounted) return;
                                         setState(() => _copied = a.id);
+                                        /* "Copied" is a MOMENT, not a state.
+                                           It used to stay lit forever, so on
+                                           a later visit it claimed a number
+                                           was on the clipboard that no longer
+                                           was. */
+                                        await Future<void>.delayed(
+                                          const Duration(seconds: 3),
+                                        );
+                                        if (mounted && _copied == a.id) {
+                                          setState(() => _copied = '');
+                                        }
                                       },
                                       icon: Icon(
                                         _copied == a.id
@@ -308,9 +322,9 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                       ),
                       const SizedBox(height: Gap.sm),
                       OutlinedButton.icon(
-                        onPressed: () => launchUrl(
+                        onPressed: () => openOutside(
+                          context,
                           Uri.parse('${AppConfig.apiBase}/activate'),
-                          mode: LaunchMode.externalApplication,
                         ),
                         icon: const Icon(Icons.upload_file_rounded, size: 18),
                         label: const Text('I have sent it · upload my receipt'),
@@ -336,10 +350,23 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                       ),
                     ),
                     const SizedBox(height: Gap.sm),
-                    LipButton(
-                      label: 'Redeem key',
-                      busy: _busy,
-                      onPressed: _key.text.trim().length < 4 ? null : _redeem,
+                    /* THE BUTTON THAT COULD NEVER ENABLE. Its onPressed read
+                       _key.text at BUILD time, and nothing rebuilt this
+                       screen while the student typed - so the decision was
+                       made once, on an empty field, and "Redeem key" stayed
+                       greyed out no matter what was entered. Activation by
+                       key was impossible in the installed app. Listening to
+                       the controller is what makes a text-driven button
+                       real. */
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _key,
+                      builder: (_, value, _) => LipButton(
+                        label: 'Redeem key',
+                        busy: _busy,
+                        onPressed: value.text.trim().length < 4
+                            ? null
+                            : _redeem,
+                      ),
                     ),
                     if (_message.isNotEmpty) ...[
                       const SizedBox(height: Gap.md),
