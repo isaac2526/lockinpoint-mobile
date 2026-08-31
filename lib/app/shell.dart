@@ -8,6 +8,7 @@ import '../design/theme.dart';
 import '../design/tokens.dart';
 import '../design/typography.dart';
 import '../design/wordmark.dart';
+import '../features/activation/activation_screen.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/content/content_repository.dart';
 import '../features/home/dashboard_screen.dart';
@@ -221,6 +222,13 @@ class _LipDrawer extends ConsumerWidget {
                   hue: FeatureHue.green,
                   title: 'Result history',
                   onTap: () => go(const ResultsScreen()),
+                ),
+                _Row(
+                  icon: Icons.vpn_key_rounded,
+                  hue: FeatureHue.amber,
+                  title: 'Activate',
+                  subtitle: 'Card, transfer or a key',
+                  onTap: () => go(const ActivationScreen()),
                 ),
                 _Row(
                   icon: Icons.insights_rounded,
