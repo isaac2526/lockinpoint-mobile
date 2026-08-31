@@ -102,6 +102,7 @@ class ServedQuestion {
     this.answer,
     this.explanation,
     this.media,
+    this.subjectId,
   });
 
   final String id;
@@ -111,6 +112,10 @@ class ServedQuestion {
   final String? passageId;
   final String? section;
   final int? year;
+
+  /// Which subject this question belongs to, in a multi-subject sitting.
+  /// Null in single-subject papers, where the answer is obvious.
+  final String? subjectId;
   final String? answer;
   final String? explanation;
   final Map<String, dynamic>? media;
@@ -134,6 +139,7 @@ class ServedQuestion {
     answer: (j['answer'] as String?)?.toUpperCase(),
     explanation: j['explanation'] as String?,
     media: j['media'] as Map<String, dynamic>?,
+    subjectId: j['subject_id'] as String?,
   );
 }
 
@@ -156,6 +162,7 @@ class Sitting {
     this.initialAnswers = const {},
     this.initialChecked = const {},
     this.initialFlags = const {},
+    this.subjects = const [],
   });
 
   final String attemptId;
@@ -175,6 +182,11 @@ class Sitting {
   final Map<String, String> initialAnswers;
   final Map<String, bool> initialChecked;
   final Map<String, bool> initialFlags;
+
+  /// The subjects in this paper, in served order. The server has sent this
+  /// list since the beginning — the app parsed it and dropped it, which is
+  /// why a four-subject UTME mock rendered as one undifferentiated stream.
+  final List<({String id, String name})> subjects;
 
   bool get timed => duration > 0;
 }
@@ -348,6 +360,46 @@ class PracticeRepository {
     return _sitting(res, label);
   }
 
+  /// A FULL UTME SITTING — Use of English plus three chosen subjects, run
+  /// through the same jamb_mock/jamb_mini engine the website has always had.
+  ///
+  /// The app never sent more than one subject id, so the four-subject mock —
+  /// the sitting JAMB candidates actually face — could not be started from a
+  /// phone at all. The server has supported subjectIds[] since the engine was
+  /// written; this is the call that finally uses it.
+  Future<Sitting> startUtme({
+    required List<({String id, String name})> combination,
+    bool mini = false,
+  }) async {
+    final label = combination.map((s) => s.name).join(', ');
+    final res = await _api.post(
+      '/api/attempts',
+      body: {
+        'action': 'start',
+        'mode': mini ? 'jamb_mini' : 'jamb_mock',
+        'examSlug': 'jamb',
+        'subjectIds': combination.map((s) => s.id).toList(),
+        'label': label,
+        'shuffleOptions': true,
+      },
+    );
+    return _sitting(res, label);
+  }
+
+  /// Remember the student's combination on their profile, so next time the
+  /// picker opens on THEIR four subjects rather than a blank slate. Fire and
+  /// forget — failing to save a preference must never block a mock.
+  Future<void> saveCombination(List<String> names) async {
+    try {
+      await _api.post(
+        '/api/profile/complete',
+        body: {'subjectCombination': names.join(' · ')},
+      );
+    } on ApiFailure {
+      // A preference, not a paper. Nothing is lost but a prefill.
+    }
+  }
+
   /// A paper built from the questions this student saved.
   ///
   /// The saved list existed and nothing turned it into a sitting — so the
@@ -421,6 +473,11 @@ class PracticeRepository {
         ),
       ),
     ),
+    subjects: ((res['subjects'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((m) => (id: '${m['id'] ?? ''}', name: '${m['name'] ?? ''}'))
+        .where((x) => x.id.isNotEmpty)
+        .toList(),
     initialIndex: initialIndex,
     initialAnswers: initialAnswers,
     initialChecked: initialChecked,

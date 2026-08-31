@@ -386,6 +386,40 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
                   ],
                 ),
               ),
+              /* THE SUBJECT RAIL. A four-subject UTME mock served as one
+                 undifferentiated stream of 180 questions is unusable: a
+                 candidate works subject by subject and needs to SEE where
+                 English ends and Physics begins. The server has sent the
+                 subjects list all along; the app dropped it. One chip per
+                 subject - the one you are inside is lit, tapping jumps to
+                 that subject's first question. Single-subject papers show
+                 nothing, because a rail of one is noise. */
+              if (sitting.subjects.length > 1)
+                SizedBox(
+                  height: 44,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: Gap.md),
+                    children: [
+                      for (final sub in sitting.subjects)
+                        Padding(
+                          padding: const EdgeInsets.only(right: Gap.sm),
+                          child: Center(
+                            child: LipChip(
+                              sub.name,
+                              selected: q.subjectId == sub.id,
+                              onTap: () {
+                                final first = sitting.questions.indexWhere(
+                                  (x) => x.subjectId == sub.id,
+                                );
+                                if (first >= 0) _go(first);
+                              },
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ClipRRect(
                 borderRadius: BorderRadius.circular(Radii.pill),
                 child: LinearProgressIndicator(

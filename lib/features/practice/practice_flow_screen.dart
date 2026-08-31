@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,6 +11,7 @@ import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
 import '../../core/vault/vault_repository.dart';
+import '../home/dashboard_screen.dart';
 import '../vault/vault_screen.dart';
 import 'practice_repository.dart';
 import 'practice_session_screen.dart';
@@ -57,6 +60,15 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
   bool _busy = false;
   String? _error;
 
+  /// The three subjects chosen BESIDE Use of English for a full UTME mock.
+  /// English itself is never in this set: it is compulsory, so it is locked
+  /// into the paper rather than offered as a choice a student could un-make.
+  final Set<String> _combo = {};
+
+  /// Mini mock: fewer questions, projected onto the 400 scale. The full mock
+  /// is the two-hour, four-subject sitting the real hall runs.
+  bool _utmeMini = false;
+
   /// The failure was the NETWORK, not the server — which changes the right
   /// next step from "retry" to "practise what is already on the phone".
   bool _errorOffline = false;
@@ -101,8 +113,73 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
       _subjects = list;
       _subject = null;
       _chooser = null;
-      _step = 1;
+      /* JAMB IS NOT A SUBJECT LIST. A UTME candidate sits FOUR subjects at
+         once, so dropping them straight into single-subject practice - which
+         is what this screen did - was the wrong flow for the exam this whole
+         product is named for. JAMB forks first: one subject, or the full
+         combination. Every other exam goes to its subjects as before. */
+      if (exam.slug == 'jamb') {
+        _combo.clear();
+        _prefillCombination(list);
+        _step = 5;
+      } else {
+        _step = 1;
+      }
     });
+  });
+
+  /// Open the picker on the student's OWN four, saved from their last mock.
+  /// A prefill, never a lock - every chip stays changeable.
+  void _prefillCombination(List<SubjectOption> subjects) {
+    final saved =
+        (ref.read(dashboardProvider).value?['student']
+                as Map<String, dynamic>?)?['subjectCombination']
+            as String?;
+    if (saved == null || saved.isEmpty) return;
+    final wanted = saved.toLowerCase();
+    for (final s in subjects) {
+      if (s.compulsory) continue;
+      if (wanted.contains(s.name.toLowerCase()) && _combo.length < 3) {
+        _combo.add(s.id);
+      }
+    }
+  }
+
+  SubjectOption? get _english {
+    final list = _subjects ?? const [];
+    for (final s in list) {
+      if (s.compulsory) return s;
+    }
+    // The flag is data an admin can forget; the name is the safety net.
+    for (final s in list) {
+      if (s.name.toLowerCase().contains('english')) return s;
+    }
+    return null;
+  }
+
+  Future<void> _startUtme() => _guard(() async {
+    final english = _english;
+    if (english == null) return;
+    final byId = {
+      for (final s in _subjects ?? const <SubjectOption>[]) s.id: s,
+    };
+    final combination = [
+      (id: english.id, name: english.name),
+      for (final id in _combo)
+        if (byId[id] != null) (id: id, name: byId[id]!.name),
+    ];
+    final sitting = await _repo.startUtme(
+      combination: combination,
+      mini: _utmeMini,
+    );
+    // Remembered for next time, never blocking this time.
+    unawaited(_repo.saveCombination(combination.map((s) => s.name).toList()));
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => PracticeSessionScreen(sitting: sitting),
+      ),
+    );
   });
 
   Future<void> _pickSubject(SubjectOption subject) => _guard(() async {
@@ -162,6 +239,22 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
       Navigator.of(context).pop();
     } else {
       setState(() {
+        /* The JAMB branch has its own spine: combination -> fork -> exams,
+           and the single-subject list also returns to the fork rather than
+           skipping it. Decrementing blindly would strand a student on step
+           4 - a screen that does not exist. */
+        if (_step == 6) {
+          _step = 5;
+          return;
+        }
+        if (_step == 5) {
+          _step = 0;
+          return;
+        }
+        if (_step == 1 && _exam?.slug == 'jamb') {
+          _step = 5;
+          return;
+        }
         _step -= 1;
         _error = null;
       });
@@ -267,10 +360,21 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
                         Text(switch (_step) {
                           0 => 'Choose your exam',
                           1 => _exam?.shortName ?? 'Choose your subject',
+                          5 => 'JAMB',
+                          6 => 'Your combination',
                           _ => _chooser?.subjectName ?? 'Set up your session',
                         }, style: LipType.heading.copyWith(color: c.text1)),
                         Text(
-                          'Step ${_step + 1} of 3',
+                          /* The counter only counts the classic spine. The
+                             JAMB fork is its own short road, and "Step 6 of
+                             3" - which this used to print there - is the
+                             kind of nonsense that makes an app feel broken
+                             even when it works. */
+                          switch (_step) {
+                            5 => 'One subject, or the full mock',
+                            6 => 'Use of English + 3 of yours',
+                            _ => 'Step ${_step + 1} of 3',
+                          },
                           style: LipType.label.copyWith(color: c.text3),
                         ),
                       ],
@@ -353,6 +457,8 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
     return switch (_step) {
       0 => _examStep(),
       1 => _subjectStep(),
+      5 => _jambForkStep(),
+      6 => _combinationStep(),
       _ => _chooserStep(),
     };
   }
@@ -416,6 +522,138 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
                 onTap: _busy ? null : () => _pickSubject(s),
               ),
           ],
+        ),
+      ],
+    );
+  }
+
+  Widget _jambForkStep() {
+    final c = context.lip;
+    return ListView(
+      padding: const EdgeInsets.all(Gap.md),
+      children: [
+        Text(
+          'How do you want to face JAMB today?',
+          style: LipType.heading.copyWith(color: c.text1),
+        ),
+        const SizedBox(height: Gap.md),
+        LipChoiceCard(
+          icon: Icons.menu_book_rounded,
+          title: 'Practise one subject',
+          subtitle: 'Drill a single subject - by year, by topic, or mixed',
+          selected: false,
+          onTap: _busy ? null : () => setState(() => _step = 1),
+        ),
+        const SizedBox(height: Gap.md),
+        LipChoiceCard(
+          icon: Icons.workspace_premium_rounded,
+          title: 'Full UTME mock - 4 subjects',
+          subtitle:
+              'Use of English plus your three, sat together and scored '
+              'out of 400, exactly like the hall',
+          selected: false,
+          onTap: _busy ? null : () => setState(() => _step = 6),
+        ),
+      ],
+    );
+  }
+
+  Widget _combinationStep() {
+    final c = context.lip;
+    final english = _english;
+    final others = (_subjects ?? const <SubjectOption>[])
+        .where((s) => s.id != english?.id)
+        .toList();
+
+    if (english == null) {
+      return const Center(
+        child: LipEmpty(
+          icon: Icons.menu_book_rounded,
+          title: 'Use of English is missing',
+          message:
+              'The JAMB bank has no English subject yet, and a UTME sitting '
+              'cannot exist without it. Try again shortly.',
+        ),
+      );
+    }
+
+    final ready = _combo.length == 3;
+    return ListView(
+      padding: const EdgeInsets.all(Gap.md),
+      children: [
+        Text(
+          'Your combination',
+          style: LipType.heading.copyWith(color: c.text1),
+        ),
+        const SizedBox(height: Gap.xs),
+        Text(
+          'Use of English sits in every UTME paper. Pick the three subjects '
+          'that make up YOUR combination - it is saved for next time.',
+          style: LipType.small.copyWith(color: c.text3, height: 1.5),
+        ),
+        const SizedBox(height: Gap.md),
+        Wrap(
+          spacing: Gap.sm,
+          runSpacing: Gap.sm,
+          children: [
+            LipChip('${english.name} - always in', tone: ChipTone.gold),
+            for (final s in others)
+              LipChip(
+                s.name,
+                selected: _combo.contains(s.id),
+                onTap: _busy
+                    ? null
+                    : () => setState(() {
+                        if (_combo.contains(s.id)) {
+                          _combo.remove(s.id);
+                        } else if (_combo.length < 3) {
+                          _combo.add(s.id);
+                        } else {
+                          /* Full. Say so - a chip that silently refuses reads
+                             as a broken chip, which is the exact bug class
+                             this build is curing. */
+                          ScaffoldMessenger.of(context)
+                            ..hideCurrentSnackBar()
+                            ..showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Three chosen already. Unpick one to swap '
+                                  'this one in.',
+                                ),
+                              ),
+                            );
+                        }
+                      }),
+              ),
+          ],
+        ),
+        const SizedBox(height: Gap.lg),
+        const LipLabel('Which sitting'),
+        const SizedBox(height: Gap.sm),
+        LipChoiceCard(
+          icon: Icons.timer_rounded,
+          title: 'Full mock',
+          subtitle: 'The real thing: four subjects, two hours, one score',
+          selected: !_utmeMini,
+          onTap: () => setState(() => _utmeMini = false),
+        ),
+        const SizedBox(height: Gap.md),
+        LipChoiceCard(
+          icon: Icons.bolt_rounded,
+          title: 'Mini mock',
+          subtitle: 'Shorter, still projected onto the 400 scale',
+          selected: _utmeMini,
+          onTap: () => setState(() => _utmeMini = true),
+        ),
+        const SizedBox(height: Gap.xl),
+        LipButton(
+          gold: true,
+          icon: Icons.play_arrow_rounded,
+          label: ready
+              ? 'Start: ${english.name} + 3'
+              : 'Pick ${3 - _combo.length} more subject${_combo.length == 2 ? '' : 's'}',
+          busy: _busy,
+          onPressed: ready && !_busy ? _startUtme : null,
         ),
       ],
     );
