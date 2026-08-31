@@ -346,21 +346,32 @@ void main() {
       expect(acted, isTrue);
     });
 
-    testWidgets('the offline bar reassures when a vault exists', (
+    testWidgets('the offline bar reassures — and is a DOOR, not a poster', (
       tester,
     ) async {
+      /* The bar used to say "your downloads still work" and could not take
+         you to them: a promise with no door. The founder's build had exactly
+         this class of dead element, so the tap is now part of the contract. */
+      var opened = false;
       await pumpThemed(
         tester,
-        const LipOfflineBar(hasVault: true),
+        LipOfflineBar(hasVault: true, onOpenVault: () => opened = true),
         dark: false,
       );
       expect(
-        find.textContaining('downloaded packs still work'),
+        find.textContaining('downloaded questions still work'),
         findsOneWidget,
       );
+      await tester.tap(find.byType(LipOfflineBar));
+      expect(opened, isTrue, reason: 'tapping the bar must open the vault');
 
       await pumpThemed(tester, const LipOfflineBar(), dark: false);
-      expect(find.text('No connection'), findsOneWidget);
+      expect(find.textContaining('No connection'), findsOneWidget);
+      expect(
+        find.textContaining('you have none yet'),
+        findsOneWidget,
+        reason: 'with no vault the bar explains rather than teases',
+      );
     });
   });
 

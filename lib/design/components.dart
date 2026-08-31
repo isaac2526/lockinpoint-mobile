@@ -470,38 +470,53 @@ class LipFormError extends StatelessWidget {
 /// The bar that appears when the phone loses signal. Not a dialog — a student
 /// mid-question must not be interrupted, only informed.
 class LipOfflineBar extends StatelessWidget {
-  const LipOfflineBar({super.key, this.hasVault = false});
+  const LipOfflineBar({super.key, this.hasVault = false, this.onOpenVault});
 
   /// Whether anything is downloaded, which changes the message from a warning
   /// into a reassurance.
   final bool hasVault;
 
+  /// Where "your downloads still work" actually takes you. A bar that names
+  /// the vault and cannot open it is a promise with no door — tap it and
+  /// nothing happening is exactly the class of bug this build is curing.
+  final VoidCallback? onOpenVault;
+
   @override
   Widget build(BuildContext context) {
     final c = context.lip;
-    return Container(
-      width: double.infinity,
-      color: hasVault ? c.successSoft : c.warningSoft,
-      padding: const EdgeInsets.symmetric(horizontal: Gap.lg, vertical: Gap.sm),
-      child: Row(
-        children: [
-          Icon(
-            hasVault ? Icons.offline_bolt_rounded : Icons.cloud_off_rounded,
-            size: 15,
-            color: hasVault ? c.success : c.warning,
-          ),
-          const SizedBox(width: Gap.sm),
-          Expanded(
-            child: Text(
-              hasVault
-                  ? 'Offline · your downloaded packs still work'
-                  : 'No connection',
-              style: LipType.caption.copyWith(
-                color: hasVault ? c.success : c.warning,
+    return InkWell(
+      onTap: hasVault ? onOpenVault : null,
+      child: Container(
+        width: double.infinity,
+        color: hasVault ? c.successSoft : c.warningSoft,
+        padding: const EdgeInsets.symmetric(
+          horizontal: Gap.lg,
+          vertical: Gap.sm,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              hasVault ? Icons.offline_bolt_rounded : Icons.cloud_off_rounded,
+              size: 15,
+              color: hasVault ? c.success : c.warning,
+            ),
+            const SizedBox(width: Gap.sm),
+            Expanded(
+              child: Text(
+                hasVault
+                    ? 'No connection — tap here: your downloaded questions '
+                          'still work'
+                    : 'No connection. Downloaded questions would still work — '
+                          'you have none yet.',
+                style: LipType.caption.copyWith(
+                  color: hasVault ? c.success : c.warning,
+                ),
               ),
             ),
-          ),
-        ],
+            if (hasVault && onOpenVault != null)
+              Icon(Icons.chevron_right_rounded, size: 16, color: c.success),
+          ],
+        ),
       ),
     );
   }

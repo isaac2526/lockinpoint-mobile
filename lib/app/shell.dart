@@ -90,12 +90,31 @@ class _AppShellState extends ConsumerState<AppShell> {
              phone holding a thousand questions. */
           Consumer(
             builder: (context, ref, _) {
+              /* WHEN THE NETWORK RETURNS, THE QUEUE DRAINS ITSELF. Papers sat
+                 offline used to wait for the student to find the vault's sync
+                 banner; a result should not depend on anyone remembering it
+                 exists. Fire-and-forget: a failed sync stays queued and the
+                 next reconnect tries again. */
+              ref.listen(connectivityProvider, (prev, next) {
+                final was = prev?.value ?? false;
+                final now = next.value ?? false;
+                if (!was && now) {
+                  ref.read(vaultProvider).syncPending().catchError((_) => 0);
+                }
+              });
               final online = ref.watch(isOnlineProvider);
               if (online) return const SizedBox.shrink();
               final hasVault = ref.watch(hasVaultProvider).value ?? false;
               return SafeArea(
                 bottom: false,
-                child: LipOfflineBar(hasVault: hasVault),
+                child: LipOfflineBar(
+                  hasVault: hasVault,
+                  onOpenVault: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const VaultScreen(),
+                    ),
+                  ),
+                ),
               );
             },
           ),

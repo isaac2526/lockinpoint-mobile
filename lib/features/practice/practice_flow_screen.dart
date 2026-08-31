@@ -8,6 +8,8 @@ import '../../design/motion_widgets.dart';
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
+import '../../core/vault/vault_repository.dart';
+import '../vault/vault_screen.dart';
 import 'practice_repository.dart';
 import 'practice_session_screen.dart';
 
@@ -55,6 +57,10 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
   bool _busy = false;
   String? _error;
 
+  /// The failure was the NETWORK, not the server — which changes the right
+  /// next step from "retry" to "practise what is already on the phone".
+  bool _errorOffline = false;
+
   PracticeRepository get _repo => ref.read(practiceRepositoryProvider);
 
   @override
@@ -67,11 +73,15 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
     setState(() {
       _busy = true;
       _error = null;
+      _errorOffline = false;
     });
     try {
       await work();
     } on ApiFailure catch (e) {
-      setState(() => _error = e.message);
+      setState(() {
+        _error = e.message;
+        _errorOffline = e.offline;
+      });
     } catch (_) {
       setState(() => _error = 'That did not load. Pull back and try again.');
     } finally {
@@ -273,18 +283,49 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
             if (_error != null)
               Expanded(
                 child: Center(
-                  child: LipError(
-                    message: _error!,
-                    onRetry: () {
-                      switch (_step) {
-                        case 0:
-                          _loadExams();
-                        case 1:
-                          _pickExam(_exam!);
-                        default:
-                          setState(() => _error = null);
-                      }
-                    },
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      /* NO SIGNAL IS NOT A DEAD END. If the phone is holding
+                         downloaded packs, the right answer to "could not
+                         load" is the vault, offered right here — not a retry
+                         button pointed at a network that is not there. */
+                      if (_errorOffline)
+                        Consumer(
+                          builder: (context, ref, _) {
+                            final has =
+                                ref.watch(hasVaultProvider).value ?? false;
+                            if (!has) return const SizedBox.shrink();
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: Gap.lg),
+                              child: LipButton(
+                                gold: true,
+                                icon: Icons.offline_bolt_rounded,
+                                label: 'Practise from your vault',
+                                expand: false,
+                                onPressed: () => Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => const VaultScreen(),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      LipError(
+                        message: _error!,
+                        onRetry: () {
+                          switch (_step) {
+                            case 0:
+                              _loadExams();
+                            case 1:
+                              _pickExam(_exam!);
+                            default:
+                              setState(() => _error = null);
+                          }
+                        },
+                      ),
+                    ],
                   ),
                 ),
               )
@@ -481,6 +522,28 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
           ),
           const SizedBox(height: Gap.md),
         ],
+        /* THE DOWNLOAD BUTTON, FINALLY MOUNTED. It was built, tested at the
+           repository level, promised by the vault's empty state ("open a
+           subject in Practice and download it") — and placed on no screen at
+           all, so no student could ever put a pack on their phone. This is
+           that screen. */
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Keep ${_subject?.name ?? 'this subject'} on your phone',
+                style: LipType.small.copyWith(color: context.lip.text2),
+              ),
+            ),
+            if (_subject != null)
+              DownloadPackButton(
+                subjectId: _subject!.id,
+                subjectName: _subject!.name,
+              ),
+          ],
+        ),
+        const SizedBox(height: Gap.lg),
+
         const LipLabel('How many questions'),
         const SizedBox(height: Gap.sm),
         Wrap(

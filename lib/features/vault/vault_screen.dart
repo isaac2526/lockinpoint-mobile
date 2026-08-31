@@ -5,6 +5,7 @@ import '../../core/api.dart';
 import '../../core/vault/connectivity.dart';
 import '../../core/vault/vault_db.dart';
 import '../../core/vault/vault_repository.dart';
+import 'offline_session_screen.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
 import '../../design/motion_widgets.dart';
@@ -186,12 +187,94 @@ class _PackCard extends ConsumerWidget {
   const _PackCard({required this.pack});
   final Pack pack;
 
+  Future<void> _practise(BuildContext context, WidgetRef ref) async {
+    final vault = ref.read(vaultProvider);
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+
+    final count = await showModalBottomSheet<int>(
+      context: context,
+      builder: (ctx) {
+        final c = ctx.lip;
+        final sizes = [
+          10,
+          20,
+          40,
+          pack.count,
+        ].where((n) => n <= pack.count).toSet().toList()..sort();
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(Gap.lg),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'How many questions?',
+                  style: LipType.title.copyWith(color: c.text1),
+                ),
+                const SizedBox(height: Gap.xs),
+                Text(
+                  'Shuffled fresh each sitting, marked on this phone. '
+                  'No connection needed.',
+                  style: LipType.small.copyWith(color: c.text3),
+                ),
+                const SizedBox(height: Gap.md),
+                Wrap(
+                  spacing: Gap.sm,
+                  runSpacing: Gap.sm,
+                  children: [
+                    for (final n in sizes)
+                      LipChip(
+                        n == pack.count ? 'All $n' : '$n',
+                        onTap: () => Navigator.pop(ctx, n),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: Gap.md),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (count == null) return;
+
+    final sitting = await vault.openSitting(pack.subjectId, count: count);
+    if (sitting == null || sitting.questions.isEmpty) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'That pack could not be opened. Remove it and download again.',
+            ),
+          ),
+        );
+      return;
+    }
+
+    // `true` back means "sit it again" — reopen with a fresh shuffle.
+    final again = await navigator.push<bool>(
+      MaterialPageRoute(builder: (_) => OfflineSessionScreen(sitting: sitting)),
+    );
+    if (again == true && context.mounted) {
+      await _practise(context, ref);
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.lip;
 
+    /* THE DOOR THAT WAS MISSING. This card used to have exactly one
+       interactive element: delete. A downloaded pack could be removed and
+       could not be OPENED — the vault was a store with no reader, which is
+       precisely the failure the founder hit in the installed build. Tapping
+       now starts an offline sitting, and the subtitle says so. */
     return GlassSurface(
       tier: GlassTier.card,
+      onTap: () => _practise(context, ref),
       child: Row(
         children: [
           Container(
@@ -221,7 +304,7 @@ class _PackCard extends ConsumerWidget {
                   // The exam is named, always. WAEC and WAEC GCE are
                   // different examinations and a student must be able to see
                   // which one they are holding.
-                  '${pack.examShort} · ${pack.count} questions',
+                  '${pack.examShort} · ${pack.count} questions · tap to practise',
                   style: LipType.small.copyWith(color: c.text3),
                 ),
               ],
