@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../design/tokens.dart';
@@ -219,9 +220,9 @@ IconData iconNamed(String? name, IconData fallback) => switch (name) {
 /// it or remove it. A row whose key the app does not know is IGNORED rather
 /// than rendered as a dead tile — the admin panel cannot invent a screen.
 List<Feature> mergeFeatureTiles(List<Map<String, dynamic>> rows) {
-  if (rows.isEmpty) return kFeatures;
+  if (rows.isEmpty) return visibleFeatures;
 
-  final byKey = {for (final f in kFeatures) f.key: f};
+  final byKey = {for (final f in visibleFeatures) f.key: f};
   final out = <Feature>[];
 
   for (final r in rows) {
@@ -244,6 +245,15 @@ List<Feature> mergeFeatureTiles(List<Map<String, dynamic>> rows) {
   // A tile the admin has not mentioned still belongs on the grid; silence is
   // not a request to hide something.
   final named = out.map((f) => f.key).toSet();
-  out.addAll(kFeatures.where((f) => !named.contains(f.key)));
+  out.addAll(visibleFeatures.where((f) => !named.contains(f.key)));
   return out;
 }
+
+/// The grid for THIS platform.
+///
+/// The offline vault stores questions on a device; a browser tab has nowhere
+/// to put them. Rather than show a tile that would apologise when tapped, the
+/// web build simply does not offer it — the same codebase, adapted where the
+/// platform genuinely differs.
+List<Feature> get visibleFeatures =>
+    kIsWeb ? kFeatures.where((f) => f.key != 'vault').toList() : kFeatures;

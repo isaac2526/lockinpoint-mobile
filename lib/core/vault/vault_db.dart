@@ -1,10 +1,13 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:drift/drift.dart';
-import 'package:drift/native.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+
+/* THE OPENER IS CHOSEN AT COMPILE TIME.
+   `drift/native.dart` imports `dart:ffi`, which a browser cannot compile —
+   so importing it unconditionally does not merely disable the vault on the
+   web, it breaks the entire web build. This conditional import keeps the
+   device path off the web target entirely. */
+import 'vault_open_io.dart' if (dart.library.js_interop) 'vault_open_web.dart';
 
 part 'vault_db.g.dart';
 
@@ -97,7 +100,7 @@ class PendingResults extends Table {
 
 @DriftDatabase(tables: [Packs, VaultQuestions, VaultPassages, PendingResults])
 class VaultDb extends _$VaultDb {
-  VaultDb() : super(_open());
+  VaultDb() : super(openVault());
 
   /// Used by tests: an in-memory database, so the vault can be proven to work
   /// offline without touching a real device's filesystem.
@@ -221,10 +224,3 @@ class VaultDb extends _$VaultDb {
     return rows.length;
   }
 }
-
-LazyDatabase _open() => LazyDatabase(() async {
-  final dir = await getApplicationDocumentsDirectory();
-  return NativeDatabase.createInBackground(
-    File(p.join(dir.path, 'vault.sqlite')),
-  );
-});

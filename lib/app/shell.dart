@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -227,13 +228,15 @@ class _LipDrawer extends ConsumerWidget {
                   title: 'Performance analysis',
                   onTap: () => go(const AnalysisScreen()),
                 ),
-                _Row(
-                  icon: Icons.offline_bolt_rounded,
-                  hue: FeatureHue.teal,
-                  title: 'Offline vault',
-                  subtitle: 'Practise with no signal',
-                  onTap: () => go(const VaultScreen()),
-                ),
+                // No device to store packs on means no row offering to.
+                if (!kIsWeb)
+                  _Row(
+                    icon: Icons.offline_bolt_rounded,
+                    hue: FeatureHue.teal,
+                    title: 'Offline vault',
+                    subtitle: 'Practise with no signal',
+                    onTap: () => go(const VaultScreen()),
+                  ),
                 _Row(
                   icon: Icons.auto_stories_rounded,
                   hue: FeatureHue.violet,
