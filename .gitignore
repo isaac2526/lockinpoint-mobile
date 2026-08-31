@@ -46,3 +46,11 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Release artifacts are produced by CI and attached to a run, never committed.
+*.deb
+*.tar.gz
+*.apk
+*.aab
+*.ipa
+*.dmg
