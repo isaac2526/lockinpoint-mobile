@@ -41,6 +41,13 @@ dependencies:
   path_provider: ^2.1.5
   path: ^1.9.1
 
+  # ---- reading a question aloud -------------------------------------------
+  # The website has had browser TTS since the beginning; the app had nothing,
+  # so a student who reads slowly was better served by the site than by the
+  # product built for them. This uses each platform's own engine — no network,
+  # so it works in the offline vault too, which a cloud voice would not.
+  flutter_tts: ^4.2.5
+
   # ---- rendering a question ----------------------------------------------
   # A stem is sanitised HTML with KaTeX inside it on the website. These two
   # together are the mobile half of that pipeline.

@@ -149,3 +149,87 @@ class ProgressController extends AsyncNotifier<Progress> {
 final progressProvider = AsyncNotifierProvider<ProgressController, Progress>(
   ProgressController.new,
 );
+
+/// ===========================================================================
+/// PER-TOPIC STRENGTH
+///
+/// "Your Chemistry is 61%" is a chart. "Your Mole Concept is 22% and the rest
+/// is fine" is advice, and it is the only version a student can act on
+/// tonight.
+///
+/// THE HONESTY RULE IS THE SERVER'S, and this only renders it: a topic seen
+/// fewer than `minSeen` times is not reported at all. A confident red bar off
+/// two data points can send a student away from a topic they were fine at,
+/// which is worse than saying nothing.
+/// ===========================================================================
+class TopicScore {
+  const TopicScore({
+    required this.topic,
+    required this.subject,
+    required this.seen,
+    required this.correct,
+    required this.percent,
+  });
+
+  final String topic;
+  final String subject;
+  final int seen;
+  final int correct;
+  final double percent;
+
+  static TopicScore from(Map<String, dynamic> j) => TopicScore(
+    topic: j['topic'] as String? ?? '',
+    subject: j['subject'] as String? ?? '',
+    seen: (j['seen'] as num?)?.toInt() ?? 0,
+    correct: (j['correct'] as num?)?.toInt() ?? 0,
+    percent: (j['percent'] as num?)?.toDouble() ?? 0,
+  );
+}
+
+class TopicStrength {
+  const TopicStrength({
+    required this.weakest,
+    required this.strongest,
+    required this.rows,
+    required this.unproven,
+    required this.minSeen,
+  });
+
+  final List<TopicScore> weakest;
+  final List<TopicScore> strongest;
+  final List<TopicScore> rows;
+
+  /// Topics met but not enough times to judge. Named rather than hidden, so
+  /// the screen can say "practise these to find out".
+  final List<({String topic, int seen})> unproven;
+  final int minSeen;
+
+  bool get hasAnything => rows.isNotEmpty || unproven.isNotEmpty;
+
+  static List<TopicScore> _list(Object? raw) => ((raw as List?) ?? const [])
+      .whereType<Map>()
+      .map((m) => TopicScore.from(m.cast<String, dynamic>()))
+      .toList();
+
+  static TopicStrength from(Map<String, dynamic> j) => TopicStrength(
+    weakest: _list(j['weakest']),
+    strongest: _list(j['strongest']),
+    rows: _list(j['rows']),
+    unproven: ((j['unproven'] as List?) ?? const [])
+        .whereType<Map>()
+        .map(
+          (m) => (
+            topic: m['topic'] as String? ?? '',
+            seen: (m['seen'] as num?)?.toInt() ?? 0,
+          ),
+        )
+        .toList(),
+    minSeen: (j['minSeen'] as num?)?.toInt() ?? 6,
+  );
+}
+
+final topicStrengthProvider = FutureProvider<TopicStrength>((ref) async {
+  return TopicStrength.from(
+    await ref.read(apiProvider).get('/api/mobile/topics'),
+  );
+});

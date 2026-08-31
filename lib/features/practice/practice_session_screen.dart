@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
+import '../../core/speech.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
 import '../../design/theme.dart';
@@ -454,9 +455,21 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              LipHtml(
-                q.question,
-                baseStyle: LipType.question.copyWith(color: c.text1),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: LipHtml(
+                      q.question,
+                      baseStyle: LipType.question.copyWith(color: c.text1),
+                    ),
+                  ),
+                  /* READ IT ALOUD. Uses the device's own engine, so it costs
+                     nothing, needs no key, and works with the network off —
+                     which matters, because the offline vault is exactly where
+                     a student practising on a bus will use it. */
+                  if (speechSupported) _SpeakButton(question: q),
+                ],
               ),
               if (q.mediaUrl('question') != null) ...[
                 const SizedBox(height: Gap.md),
@@ -964,6 +977,41 @@ class _ResultView extends StatelessWidget {
               onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Speak this question, or stop if it is already speaking.
+///
+/// A ValueListenableBuilder rather than setState: the speaking flag changes
+/// when the ENGINE finishes, which can be a minute after the tap, and
+/// rebuilding the whole sitting for it would be wasteful.
+class _SpeakButton extends ConsumerWidget {
+  const _SpeakButton({required this.question});
+  final ServedQuestion question;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
+    final speech = ref.watch(speechProvider);
+
+    return ValueListenableBuilder<bool>(
+      valueListenable: speech.speaking,
+      builder: (_, speaking, _) => IconButton(
+        tooltip: speaking ? 'Stop reading' : 'Read this question aloud',
+        onPressed: () => speaking
+            ? speech.stop()
+            : speech.question(
+                question.question,
+                question.options,
+                question.letters,
+              ),
+        icon: Icon(
+          speaking ? Icons.stop_circle_rounded : Icons.volume_up_rounded,
+          size: 22,
+          color: speaking ? c.brand : c.text3,
         ),
       ),
     );

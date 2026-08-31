@@ -140,6 +140,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         ),
 
         const SizedBox(height: Gap.lg),
+        const _TopicSection(),
+
+        const SizedBox(height: Gap.lg),
         const LipLabel('Where your marks are going'),
         const SizedBox(height: Gap.sm),
 
@@ -294,4 +297,153 @@ class _TrendPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_TrendPainter old) => old.values != values;
+}
+
+/// ===========================================================================
+/// THE TOPICS ACTUALLY LETTING A STUDENT DOWN
+///
+/// A subject average says "Chemistry, 61%". This says "Mole Concept, 22%" —
+/// and that is the difference between something to look at and something to
+/// do tonight.
+///
+/// Weakest first, deliberately: the list is meant to be worked down, not
+/// admired. A topic the server has not seen enough times is NOT given a bar;
+/// it appears under "not enough yet" instead, because a confident red bar off
+/// two questions can send a student away from a topic they were fine at.
+/// ===========================================================================
+class _TopicSection extends ConsumerWidget {
+  const _TopicSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
+    final topics = ref.watch(topicStrengthProvider);
+
+    return topics.when(
+      // Silent while loading and silent on failure: this section is an extra
+      // on a screen that already works, and an error card for it would sit
+      // above charts that are perfectly fine.
+      loading: () => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
+      data: (t) {
+        if (!t.hasAnything) return const SizedBox.shrink();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const LipLabel('Topic by topic'),
+            const SizedBox(height: Gap.sm),
+            if (t.weakest.isNotEmpty)
+              GlassSurface(
+                hue: c.hues.indigo,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Revise these first',
+                      style: LipType.subheading.copyWith(color: c.text1),
+                    ),
+                    const SizedBox(height: Gap.md),
+                    for (final row in t.weakest) ...[
+                      _TopicBar(row: row),
+                      const SizedBox(height: Gap.sm),
+                    ],
+                  ],
+                ),
+              ),
+            if (t.strongest.isNotEmpty) ...[
+              const SizedBox(height: Gap.md),
+              GlassSurface(
+                tier: GlassTier.raised,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Solid ground',
+                      style: LipType.subheading.copyWith(color: c.text1),
+                    ),
+                    const SizedBox(height: Gap.md),
+                    for (final row in t.strongest.take(3)) ...[
+                      _TopicBar(row: row),
+                      const SizedBox(height: Gap.sm),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+            if (t.unproven.isNotEmpty) ...[
+              const SizedBox(height: Gap.md),
+              Text(
+                'Not enough yet to judge: '
+                '${t.unproven.map((u) => u.topic).take(6).join(', ')}. '
+                'Sit ${t.minSeen} questions in a topic and it appears here.',
+                style: LipType.small.copyWith(color: c.text3, height: 1.5),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _TopicBar extends StatelessWidget {
+  const _TopicBar({required this.row});
+  final TopicScore row;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.lip;
+    // Red under 40, amber under 70, green above. The thresholds are the same
+    // ones the subject chart uses, so a colour means one thing on this screen.
+    final tint = row.percent < 40
+        ? c.danger
+        : row.percent < 70
+        ? c.warning
+        : c.success;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                row.topic,
+                style: LipType.body.copyWith(color: c.text1),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: Gap.sm),
+            Text(
+              '${row.percent.toStringAsFixed(0)}%',
+              style: LipType.body.copyWith(
+                color: tint,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(Radii.pill),
+          child: LinearProgressIndicator(
+            value: (row.percent / 100).clamp(0, 1),
+            minHeight: 7,
+            backgroundColor: c.glassDeep,
+            valueColor: AlwaysStoppedAnimation(tint),
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          // The denominator is shown because "40%" off ten questions and off
+          // a hundred are not the same claim.
+          '${row.correct} of ${row.seen}'
+          '${row.subject.isNotEmpty ? " · ${row.subject}" : ""}',
+          style: LipType.caption.copyWith(color: c.text3),
+        ),
+      ],
+    );
+  }
 }

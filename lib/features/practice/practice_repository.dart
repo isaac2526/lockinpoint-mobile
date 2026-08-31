@@ -322,6 +322,12 @@ class PracticeRepository {
     /// one, marked at the end exactly as the real hall does it.
     String mode = 'practice',
     int minutes = 30,
+
+    /// SHUFFLE THE OPTIONS. On by default, because practising a paper twice
+    /// should teach the subject rather than "question 14 is C". The server
+    /// leaves comprehension questions alone and records the order it used, so
+    /// resuming shows the same paper the student left.
+    bool shuffleOptions = true,
   }) async {
     final res = await _api.post(
       '/api/attempts',
@@ -335,10 +341,36 @@ class PracticeRepository {
         'year': ?year,
         'topicId': ?topicId,
         'kind': kind,
+        'shuffleOptions': shuffleOptions,
         if (mode == 'cbt') 'minutes': '$minutes',
       },
     );
     return _sitting(res, label);
+  }
+
+  /// A paper built from the questions this student saved.
+  ///
+  /// The saved list existed and nothing turned it into a sitting — so the
+  /// questions a student had explicitly marked as hard were the only ones they
+  /// could not practise as a set. The server picks them; the app only asks.
+  Future<Sitting> startFromSaved({
+    int count = 20,
+    String mode = 'practice',
+    int minutes = 30,
+  }) async {
+    final res = await _api.post(
+      '/api/attempts',
+      body: {
+        'action': 'start',
+        'mode': mode,
+        'fromSaved': true,
+        'count': '$count',
+        'label': 'Saved questions',
+        'shuffleOptions': true,
+        if (mode == 'cbt') 'minutes': '$minutes',
+      },
+    );
+    return _sitting(res, 'Saved questions');
   }
 
   Future<Sitting> resume(String attemptId) async {

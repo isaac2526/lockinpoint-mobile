@@ -37,14 +37,52 @@ class ActivationScreen extends ConsumerStatefulWidget {
 
 class _ActivationScreenState extends ConsumerState<ActivationScreen> {
   final _key = TextEditingController();
+  final _code = TextEditingController();
   String _message = '';
   bool _ok = false;
   bool _busy = false;
+  bool _paying = false;
   String _copied = '';
+
+  /// Open Paystack, carrying a code if one was typed.
+  ///
+  /// The checkout opens in the SYSTEM BROWSER rather than a webview: a bank's
+  /// 3-D Secure page and an in-app webview disagree often enough that a
+  /// student loses a payment over it.
+  ///
+  /// A code is checked here first, so a bad one is a sentence on this screen
+  /// rather than a surprise on a payment page.
+  Future<void> _payByCard() async {
+    final api = ref.read(apiProvider);
+    final code = _code.text.trim();
+    setState(() {
+      _paying = true;
+      _message = '';
+    });
+    try {
+      final res = await api.post(
+        '/api/pay/init',
+        body: {if (code.isNotEmpty) 'code': code},
+      );
+      final url = res['url'] as String?;
+      if (url != null && url.isNotEmpty) {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      }
+    } on ApiFailure catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _message = e.message;
+        _ok = false;
+      });
+    } finally {
+      if (mounted) setState(() => _paying = false);
+    }
+  }
 
   @override
   void dispose() {
     _key.dispose();
+    _code.dispose();
     super.dispose();
   }
 
@@ -141,15 +179,35 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                     ),
                     const SizedBox(height: Gap.lg),
 
+                    // ---- a code, if they have one -----------------------
+                    /* THE OTHER HALF OF THE REFERRAL LOOP. A referrer earned
+                       ₦500 and the person being referred got nothing, so the
+                       only reason to type somebody's code was generosity.
+                       Either a promotion code or another student's referral
+                       code works here; the SERVER decides what either is
+                       worth, and refuses one it does not recognise rather
+                       than quietly charging full price. */
+                    const LipLabel('Have a discount or referral code?'),
+                    const SizedBox(height: Gap.sm),
+                    TextField(
+                      controller: _code,
+                      textCapitalization: TextCapitalization.characters,
+                      style: LipType.body.copyWith(
+                        color: c.text1,
+                        fontFamily: 'JetBrainsMono',
+                        letterSpacing: 1.5,
+                      ),
+                      decoration: const InputDecoration(hintText: 'Optional'),
+                    ),
+                    const SizedBox(height: Gap.lg),
+
                     // ---- card ------------------------------------------
                     LipButton(
                       gold: true,
                       icon: Icons.credit_card_rounded,
                       label: 'Pay by card, transfer or USSD',
-                      onPressed: () => launchUrl(
-                        Uri.parse('${AppConfig.apiBase}/activate'),
-                        mode: LaunchMode.externalApplication,
-                      ),
+                      busy: _paying,
+                      onPressed: _payByCard,
                     ),
                     Padding(
                       padding: const EdgeInsets.only(top: Gap.xs),

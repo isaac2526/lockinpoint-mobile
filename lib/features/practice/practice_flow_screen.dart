@@ -158,6 +158,69 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
     }
   }
 
+  /// Ask for a number the chips do not offer.
+  ///
+  /// Bounded on both sides and the bounds are explained: below 1 there is no
+  /// paper, and above 200 a single sitting stops being practice and starts
+  /// being a way to time out a phone.
+  Future<void> _askCount() => _askNumber(
+    title: 'How many questions?',
+    hint: 'Between 1 and 200',
+    initial: _count,
+    min: 1,
+    max: 200,
+    onPicked: (n) => setState(() => _count = n),
+  );
+
+  Future<void> _askMinutes() => _askNumber(
+    title: 'How many minutes?',
+    hint: 'Between 1 and 240',
+    initial: _minutes,
+    min: 1,
+    max: 240,
+    onPicked: (n) => setState(() => _minutes = n),
+  );
+
+  Future<void> _askNumber({
+    required String title,
+    required String hint,
+    required int initial,
+    required int min,
+    required int max,
+    required void Function(int) onPicked,
+  }) async {
+    final controller = TextEditingController(text: '$initial');
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(hintText: hint),
+          onSubmitted: (v) => Navigator.of(ctx).pop(int.tryParse(v.trim())),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(ctx).pop(int.tryParse(controller.text.trim())),
+            child: const Text('Use it'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (picked == null) return;
+    // Clamped rather than refused: a student who typed 500 meant "as many as
+    // you have", and an error dialog would just make them type again.
+    onPicked(picked.clamp(min, max));
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.lip;
@@ -422,13 +485,26 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
         const SizedBox(height: Gap.sm),
         Wrap(
           spacing: Gap.sm,
+          runSpacing: Gap.sm,
           children: [
-            for (final n in const [10, 20, 40])
+            for (final n in const [10, 20, 40, 60, 100])
               LipChip(
                 '$n',
                 selected: _count == n,
                 onTap: () => setState(() => _count = n),
               ),
+            /* A CHIP IS A SHORTCUT, NOT A LIMIT. Three fixed sizes meant a
+               student revising one weak topic could not sit five questions,
+               and one grinding before an exam could not sit 150. The chips
+               stay because most people want one of them; the field is for
+               everyone else. */
+            LipChip(
+              const [10, 20, 40, 60, 100].contains(_count)
+                  ? 'Other'
+                  : '$_count',
+              selected: !const [10, 20, 40, 60, 100].contains(_count),
+              onTap: _askCount,
+            ),
           ],
         ),
         const SizedBox(height: Gap.lg),
@@ -458,13 +534,21 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
           const SizedBox(height: Gap.sm),
           Wrap(
             spacing: Gap.sm,
+            runSpacing: Gap.sm,
             children: [
-              for (final m in const [10, 20, 30, 45])
+              for (final m in const [10, 20, 30, 45, 60, 120])
                 LipChip(
                   '$m min',
                   selected: _minutes == m,
                   onTap: () => setState(() => _minutes = m),
                 ),
+              LipChip(
+                const [10, 20, 30, 45, 60, 120].contains(_minutes)
+                    ? 'Other'
+                    : '$_minutes min',
+                selected: !const [10, 20, 30, 45, 60, 120].contains(_minutes),
+                onTap: _askMinutes,
+              ),
             ],
           ),
         ],
