@@ -335,11 +335,33 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
     if (choice == 'submit') {
       await _submit(force: true);
     } else if (choice == 'leave') {
+      final messenger = ScaffoldMessenger.of(context);
       // The last answer goes up BEFORE the screen goes away.
-      await _saveNow();
+      var saved = true;
+      try {
+        await _saveNow();
+      } catch (_) {
+        saved = false;
+      }
       if (!mounted) return;
       ref.invalidate(dashboardProvider);
       Navigator.of(context).pop();
+      /* THE DIALOG PROMISED "your progress is saved" AND LEFT ANYWAY. On a
+         dead connection nothing reached the server, and on resume every
+         answer since the last successful autosave was silently gone. The
+         student is now told the truth on the way out. */
+      if (!saved) {
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text(
+                'No connection — the last few answers could not be saved.',
+              ),
+              duration: Duration(seconds: 5),
+            ),
+          );
+      }
     }
   }
 

@@ -122,9 +122,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     _debounce = Timer(const Duration(milliseconds: 500), () => _run(1));
   }
 
+  /// Which request is the current one. On a slow connection the results for
+  /// an earlier, shorter query could arrive AFTER the query the student
+  /// actually finished typing and overwrite it — leaving the list and the
+  /// "N matches for …" header contradicting the text in the box.
+  int _issue = 0;
+
   Future<void> _run(int page) async {
     final q = _controller.text.trim();
     if (q.length < SearchRepository.minChars) return;
+    final issue = ++_issue;
     setState(() {
       _busy = true;
       _error = null;
@@ -132,16 +139,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     });
     try {
       final res = await ref.read(searchRepositoryProvider).find(q, page: page);
-      if (!mounted) return;
+      if (!mounted || issue != _issue) return;
       setState(() {
         _results = res;
         _ran = q;
       });
     } on ApiFailure catch (e) {
-      if (!mounted) return;
+      if (!mounted || issue != _issue) return;
       setState(() => _error = e.message);
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && issue == _issue) setState(() => _busy = false);
     }
   }
 
@@ -238,7 +245,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       separatorBuilder: (_, _) => const SizedBox(height: Gap.md),
       itemBuilder: (context, i) => Entrance.inList(
         index: i,
-        child: _HitCard(hit: res.rows[i]),
+        child: _HitCard(key: ValueKey(res.rows[i].id), hit: res.rows[i]),
       ),
     );
   }
@@ -272,7 +279,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 }
 
 class _HitCard extends StatefulWidget {
-  const _HitCard({required this.hit});
+  const _HitCard({super.key, required this.hit});
   final SearchHit hit;
 
   @override
@@ -280,6 +287,12 @@ class _HitCard extends StatefulWidget {
 }
 
 class _HitCardState extends State<_HitCard> {
+  /* KEYED BY THE QUESTION, NOT THE SLOT. Without a ValueKey on the card,
+     Flutter reuses the State at list position 3 for whatever question lands
+     there next — so pressing Next showed the new page's questions with their
+     answers already revealed, spoiling questions the student never tapped.
+     The key at the call site is the fix; this comment is here because the
+     symptom shows up in this class. */
   bool _open = false;
 
   @override

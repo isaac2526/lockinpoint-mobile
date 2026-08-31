@@ -115,6 +115,13 @@ class _SavedScreenState extends ConsumerState<SavedScreen> {
                       );
                     }
                     return _SavedCard(
+                      /* KEYED BY THE QUESTION, NOT THE SLOT. Without this,
+                         removing one saved question handed its State - busy
+                         flag stuck true, expanded flag and all - to whatever
+                         question slid into that position: an identical-looking
+                         bookmark button that was dead forever, and an answer
+                         revealed on a question nobody tapped. */
+                      key: ValueKey(p.questions[i].id),
                       q: p.questions[i],
                       onRemoved: () {
                         ref.invalidate(savedQuestionsProvider(_page));
@@ -137,7 +144,7 @@ class _SavedScreenState extends ConsumerState<SavedScreen> {
 }
 
 class _SavedCard extends ConsumerStatefulWidget {
-  const _SavedCard({required this.q, required this.onRemoved});
+  const _SavedCard({super.key, required this.q, required this.onRemoved});
   final SavedQuestion q;
   final VoidCallback onRemoved;
 
@@ -152,11 +159,29 @@ class _SavedCardState extends ConsumerState<_SavedCard> {
   Future<void> _remove() async {
     final api = ref.read(apiProvider);
     setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
     try {
       await unsaveQuestion(api, widget.q.id);
       widget.onRemoved();
+    } on ApiFailure catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      /* A FAILED REMOVE MUST NOT LOOK LIKE A DEAD BUTTON. It used to reset
+         the busy flag and say nothing at all, so a student offline tapped it
+         over and over, concluding the app was broken. */
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
-      if (mounted) setState(() => _busy = false);
+      if (!mounted) return;
+      setState(() => _busy = false);
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Could not remove that one. Try again.'),
+          ),
+        );
     }
   }
 

@@ -326,8 +326,18 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                           context,
                           Uri.parse('${AppConfig.apiBase}/activate'),
                         ),
-                        icon: const Icon(Icons.upload_file_rounded, size: 18),
-                        label: const Text('I have sent it · upload my receipt'),
+                        icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                        /* HONEST ABOUT WHERE IT GOES. This button opened the
+                           website's /activate, which requires a session the
+                           browser does not have - so the student met a login
+                           page, then landed on /dashboard, and the upload
+                           form it promised never appeared. Uploading a photo
+                           from inside the app needs a picker this build does
+                           not carry; until it does, the label says what will
+                           actually happen rather than promising a form. */
+                        label: const Text(
+                          'Upload my receipt on the website · sign in there',
+                        ),
                       ),
                     ],
                     const SizedBox(height: Gap.lg),
