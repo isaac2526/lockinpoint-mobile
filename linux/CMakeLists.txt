@@ -48,6 +48,33 @@ endfunction()
 
 # Flutter library and tool build rules.
 set(FLUTTER_MANAGED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/flutter")
+# =============================================================================
+# BUILDING WITHOUT REACHING sqlite.org
+#
+# sqlite3_flutter_libs compiles SQLite from source, and it gets that source
+# with a CMake FetchContent that downloads a tarball from sqlite.org at build
+# time. On a machine that cannot reach sqlite.org — a locked-down CI image, a
+# corporate network, an air-gapped build box — the Linux build does not
+# degrade, it FAILS, with a FetchContent error that names a download rather
+# than a missing library.
+#
+# Set LOCAL_SQLITE_AMALGAMATION to a directory holding sqlite3.c, sqlite3.h
+# and sqlite3ext.h and the download is skipped. Leave it unset and nothing
+# here changes at all: FetchContent downloads exactly as before, so an
+# ordinary machine and the GitHub runners are unaffected.
+#
+# The amalgamation for a given release is reproducible from the official
+# source: clone https://github.com/sqlite/sqlite at tag version-X.Y.Z and run
+# `./configure && make sqlite3.c`. MATCH THE VERSION the plugin asks for —
+# read the URL in its linux/CMakeLists.txt — or the app ships a SQLite it was
+# not tested against.
+# =============================================================================
+if(DEFINED ENV{LOCAL_SQLITE_AMALGAMATION} AND NOT DEFINED FETCHCONTENT_SOURCE_DIR_SQLITE3)
+  set(FETCHCONTENT_SOURCE_DIR_SQLITE3 "$ENV{LOCAL_SQLITE_AMALGAMATION}"
+      CACHE PATH "Local SQLite amalgamation, used instead of downloading one")
+  message(STATUS "Using local SQLite amalgamation: ${FETCHCONTENT_SOURCE_DIR_SQLITE3}")
+endif()
+
 add_subdirectory(${FLUTTER_MANAGED_DIR})
 
 # System-level dependencies.
