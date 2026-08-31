@@ -9,7 +9,9 @@ import '../design/tokens.dart';
 import '../design/typography.dart';
 import '../design/wordmark.dart';
 import '../features/activation/activation_screen.dart';
+import '../features/career/career_screen.dart';
 import '../features/classroom/classroom_screen.dart';
+import '../features/games/games_screen.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/content/content_repository.dart';
 import '../features/home/dashboard_screen.dart';
@@ -232,6 +234,20 @@ class _LipDrawer extends ConsumerWidget {
                   hue: FeatureHue.lime,
                   title: 'Saved questions',
                   onTap: () => go(const SavedScreen()),
+                ),
+                _Row(
+                  icon: Icons.sports_esports_rounded,
+                  hue: FeatureHue.purple,
+                  title: 'Games arena',
+                  subtitle: 'Blitz, Survival, The Climb',
+                  onTap: () => go(const GamesScreen()),
+                ),
+                _Row(
+                  icon: Icons.school_rounded,
+                  hue: FeatureHue.orange,
+                  title: 'Career & institutions',
+                  subtitle: 'Who offers your course',
+                  onTap: () => go(const CareerScreen()),
                 ),
                 _Row(
                   icon: Icons.smart_toy_rounded,

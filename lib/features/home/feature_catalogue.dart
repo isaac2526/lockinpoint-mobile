@@ -142,15 +142,13 @@ const kFeatures = <Feature>[
     subtitle: 'Blitz, Survival, The Climb',
     icon: Icons.sports_esports_rounded,
     hue: FeatureHue.purple,
-    ready: false,
   ),
   Feature(
     key: 'challenge',
-    title: 'Challenge',
-    subtitle: 'Compete for prizes',
+    title: 'The Climb',
+    subtitle: 'Fifteen rungs, three lifelines',
     icon: Icons.emoji_events_rounded,
     hue: FeatureHue.amber,
-    ready: false,
   ),
   Feature(
     key: 'leaderboard',
@@ -179,7 +177,6 @@ const kFeatures = <Feature>[
     subtitle: 'Courses, schools and cut-offs',
     icon: Icons.school_rounded,
     hue: FeatureHue.orange,
-    ready: false,
   ),
   Feature(
     key: 'tutor',
