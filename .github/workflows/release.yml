@@ -11,6 +11,22 @@
 #   Enough to inspect and to sideload through tools that re-sign; distributing
 #   through TestFlight or the App Store requires an Apple Developer account,
 #   which is a paid, human step no workflow can conjure.
+#
+# web · the one artifact that needs no platform SDK at all, so it is also the
+#   one this project can verify anywhere.
+#
+# windows / macos-desktop / linux · one Flutter codebase, six targets. Each
+#   must be built ON its own operating system: a Windows .exe cannot be
+#   produced on Linux, a .dmg cannot be produced anywhere but macOS. That is
+#   a property of the toolchains, not a gap in this file, and it is exactly
+#   why these jobs exist here rather than being run by hand.
+#
+# NONE OF THE DESKTOP ARTIFACTS ARE CODE SIGNED. Windows will show
+# SmartScreen's "unrecognised app" warning and macOS will refuse to open the
+# app until it is right-clicked once, or Gatekeeper is told otherwise. Signing
+# needs a paid certificate from Microsoft and an Apple Developer ID — human,
+# paid steps that no workflow can conjure. Better to say so than to ship an
+# artifact that quietly frightens the first person who opens it.
 # =============================================================================
 name: release
 
@@ -74,5 +90,161 @@ jobs:
         with:
           name: lockinpoint-unsigned-ipa
           path: lockinpoint-unsigned.ipa
+          retention-days: 30
+          if-no-files-found: error
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.2"
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Build web
+        run: flutter build web --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lockinpoint-web
+          path: build/web
+          retention-days: 30
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.2"
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Build Windows
+        run: flutter build windows --release
+      # The zip is the artifact that is guaranteed: it contains lockinpoint.exe
+      # and every DLL beside it, which is what a Windows app actually is.
+      - name: Zip the build
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build/windows/x64/runner/Release/* `
+                           -DestinationPath lockinpoint-windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lockinpoint-windows
+          path: lockinpoint-windows.zip
+          retention-days: 30
+          if-no-files-found: error
+
+  macos-desktop:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.2"
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Build macOS
+        run: flutter build macos --release
+      # hdiutil ships with macOS, so the .dmg needs no extra tooling. It is
+      # UNSIGNED and UNNOTARISED: the first person to open it must right-click
+      # and choose Open once. Notarising needs a paid Developer ID.
+      - name: Make the disk image
+        run: |
+          APP=$(find build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
+          test -n "$APP" || { echo "No .app was produced"; exit 1; }
+          mkdir -p dmg-staging
+          cp -R "$APP" dmg-staging/
+          ln -s /Applications dmg-staging/Applications
+          hdiutil create -volname LockInPoint -srcfolder dmg-staging \
+                         -ov -format UDZO lockinpoint-macos.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lockinpoint-macos-dmg
+          path: lockinpoint-macos.dmg
+          retention-days: 30
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      # GTK for the shell, libsecret for flutter_secure_storage, ninja and
+      # cmake for the build itself. Without libsecret the build fails at link
+      # time, not at runtime, which is a confusing way to learn this.
+      - name: Install the Linux desktop toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config \
+                                  libgtk-3-dev liblzma-dev libstdc++-12-dev \
+                                  libsecret-1-dev libjsoncpp-dev
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.2"
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Build Linux
+        run: flutter build linux --release
+      - name: Tar the bundle
+        run: tar -czf lockinpoint-linux-x64.tar.gz -C build/linux/x64/release/bundle .
+      # A .deb on top, because "download a tarball and find the binary" is not
+      # how anyone installs software on Ubuntu. Built with dpkg-deb, which is
+      # already on the runner — no packaging action, nothing to trust.
+      - name: Build the .deb
+        run: |
+          V=$(grep -m1 '^version:' pubspec.yaml | sed 's/version: *//' | cut -d+ -f1)
+          ROOT=deb/lockinpoint
+          mkdir -p "$ROOT/DEBIAN" "$ROOT/opt/lockinpoint" "$ROOT/usr/share/applications" "$ROOT/usr/bin"
+          cp -r build/linux/x64/release/bundle/* "$ROOT/opt/lockinpoint/"
+          ln -s /opt/lockinpoint/lockinpoint "$ROOT/usr/bin/lockinpoint"
+          # A DEBIAN control file cannot carry stray leading whitespace, and
+          # every line inside a YAML block scalar necessarily has some. So the
+          # heredoc is piped through sed, which strips exactly this file's own
+          # indentation and leaves the ONE space that Description's
+          # continuation lines are required to keep.
+          sed 's/^          //' > "$ROOT/DEBIAN/control" <<EOF
+          Package: lockinpoint
+          Version: $V
+          Section: education
+          Priority: optional
+          Architecture: amd64
+          Depends: libgtk-3-0, libsecret-1-0
+          Maintainer: LockInPoint <info@lockinpoint.com>
+          Description: LockInPoint exam preparation
+           Past questions, CBT mocks and an AI tutor for JAMB, WAEC, NECO,
+           NABTEB, Post UTME and GCE.
+          EOF
+          # The icon is copied in explicitly rather than pointed at inside
+          # flutter_assets, because the app does not declare an assets: block
+          # and nothing under assets/ is bundled. A .desktop entry aimed at a
+          # path that is not there shows a blank tile in the launcher.
+          install -Dm644 assets/icon/icon.png \
+                  "$ROOT/usr/share/icons/hicolor/512x512/apps/lockinpoint.png"
+          sed 's/^          //' > "$ROOT/usr/share/applications/lockinpoint.desktop" <<EOF
+          [Desktop Entry]
+          Name=LockInPoint
+          Comment=Past questions, CBT mocks and an AI tutor
+          Exec=/opt/lockinpoint/lockinpoint
+          Icon=lockinpoint
+          Terminal=false
+          Type=Application
+          Categories=Education;
+          EOF
+          dpkg-deb --build --root-owner-group "$ROOT" "lockinpoint_${V}_amd64.deb"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lockinpoint-linux
+          path: |
+            lockinpoint-linux-x64.tar.gz
+            lockinpoint_*_amd64.deb
           retention-days: 30
           if-no-files-found: error
