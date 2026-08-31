@@ -9,6 +9,8 @@ import '../../design/typography.dart';
 import '../content/content_repository.dart';
 import '../leaderboard/leaderboard_screen.dart';
 import '../practice/practice_flow_screen.dart';
+import '../progress/analysis_screen.dart';
+import '../progress/results_screen.dart';
 import '../search/search_screen.dart';
 import 'feature_catalogue.dart';
 
@@ -72,6 +74,8 @@ class FeatureTile extends StatelessWidget {
       'practice' => const PracticeFlowScreen(),
       'search' => const SearchScreen(),
       'leaderboard' => const LeaderboardScreen(),
+      'history' => const ResultsScreen(),
+      'analysis' => const AnalysisScreen(),
       _ => null,
     };
     if (destination != null) {

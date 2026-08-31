@@ -136,7 +136,6 @@ const kFeatures = <Feature>[
     subtitle: 'Every paper you have sat',
     icon: Icons.receipt_long_rounded,
     hue: FeatureHue.green,
-    ready: false,
   ),
   Feature(
     key: 'analysis',
@@ -144,7 +143,6 @@ const kFeatures = <Feature>[
     subtitle: 'Where your marks are going',
     icon: Icons.insights_rounded,
     hue: FeatureHue.indigo,
-    ready: false,
   ),
   Feature(
     key: 'games',

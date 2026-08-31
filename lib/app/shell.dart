@@ -15,6 +15,8 @@ import '../features/leaderboard/leaderboard_screen.dart';
 import '../features/notifications/notifications_screen.dart';
 import '../features/practice/practice_flow_screen.dart';
 import '../features/profile/profile_screen.dart';
+import '../features/progress/analysis_screen.dart';
+import '../features/progress/results_screen.dart';
 import '../features/search/search_screen.dart';
 
 /// ===========================================================================
@@ -187,6 +189,18 @@ class _LipDrawer extends ConsumerWidget {
                   hue: FeatureHue.pink,
                   title: 'Leaderboard',
                   onTap: () => go(const LeaderboardScreen()),
+                ),
+                _Row(
+                  icon: Icons.receipt_long_rounded,
+                  hue: FeatureHue.green,
+                  title: 'Result history',
+                  onTap: () => go(const ResultsScreen()),
+                ),
+                _Row(
+                  icon: Icons.insights_rounded,
+                  hue: FeatureHue.indigo,
+                  title: 'Performance analysis',
+                  onTap: () => go(const AnalysisScreen()),
                 ),
                 _Row(
                   icon: Icons.auto_stories_rounded,
