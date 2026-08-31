@@ -12,6 +12,7 @@ import '../practice/practice_flow_screen.dart';
 import '../progress/analysis_screen.dart';
 import '../progress/results_screen.dart';
 import '../search/search_screen.dart';
+import '../vault/vault_screen.dart';
 import 'feature_catalogue.dart';
 
 /// ===========================================================================
@@ -76,6 +77,7 @@ class FeatureTile extends StatelessWidget {
       'leaderboard' => const LeaderboardScreen(),
       'history' => const ResultsScreen(),
       'analysis' => const AnalysisScreen(),
+      'vault' => const VaultScreen(),
       _ => null,
     };
     if (destination != null) {

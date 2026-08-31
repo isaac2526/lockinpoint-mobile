@@ -102,10 +102,14 @@ void main() {
           kFeatures.firstWhere((f) => f.key == key).hue.of(LipColors.light);
       expect(hueOf('practice'), LipColors.light.hues.blue);
       expect(hueOf('classroom'), LipColors.light.hues.violet);
-      expect(hueOf('notes'), LipColors.light.hues.teal);
       expect(hueOf('leaderboard'), LipColors.light.hues.pink);
       expect(hueOf('analysis'), LipColors.light.hues.indigo);
       expect(hueOf('bookmarks'), LipColors.light.hues.lime);
+      expect(hueOf('history'), LipColors.light.hues.green);
+      /* The offline vault is teal. Notes are not a tile of their own — they
+         are classroom content, which is how the backend models them too. */
+      expect(hueOf('vault'), LipColors.light.hues.teal);
+      expect(kFeatures.any((f) => f.key == 'notes'), isFalse);
     });
   });
 

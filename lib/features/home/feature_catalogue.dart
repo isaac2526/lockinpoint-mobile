@@ -110,7 +110,7 @@ const kFeatures = <Feature>[
   Feature(
     key: 'classroom',
     title: 'Classroom',
-    subtitle: 'Notes, materials and lessons',
+    subtitle: 'Notes, materials and video lessons',
     icon: Icons.auto_stories_rounded,
     hue: FeatureHue.violet,
     ready: false,
@@ -121,14 +121,6 @@ const kFeatures = <Feature>[
     subtitle: 'Find any question, fast',
     icon: Icons.search_rounded,
     hue: FeatureHue.slate,
-  ),
-  Feature(
-    key: 'notes',
-    title: 'Science notes',
-    subtitle: 'Written for the way you are examined',
-    icon: Icons.science_rounded,
-    hue: FeatureHue.teal,
-    ready: false,
   ),
   Feature(
     key: 'history',
@@ -174,6 +166,13 @@ const kFeatures = <Feature>[
     icon: Icons.bookmark_rounded,
     hue: FeatureHue.lime,
     ready: false,
+  ),
+  Feature(
+    key: 'vault',
+    title: 'Offline vault',
+    subtitle: 'Downloaded questions, no signal needed',
+    icon: Icons.offline_bolt_rounded,
+    hue: FeatureHue.teal,
   ),
   Feature(
     key: 'career',

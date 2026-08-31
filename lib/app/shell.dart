@@ -18,6 +18,10 @@ import '../features/profile/profile_screen.dart';
 import '../features/progress/analysis_screen.dart';
 import '../features/progress/results_screen.dart';
 import '../features/search/search_screen.dart';
+import '../features/vault/vault_screen.dart';
+import '../core/vault/connectivity.dart';
+import '../core/vault/vault_repository.dart';
+import '../design/components.dart';
 
 /// ===========================================================================
 /// THE SHELL
@@ -70,13 +74,34 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     return Scaffold(
       drawer: const _LipDrawer(),
-      body: IndexedStack(
-        index: _tab,
-        children: const [
-          DashboardScreen(embedded: true),
-          PracticeFlowScreen(embedded: true),
-          LeaderboardScreen(embedded: true),
-          ProfileScreen(embedded: true),
+      body: Column(
+        children: [
+          /* THE HONEST OFFLINE BAR. It only appears when there is genuinely
+             no network, and it says something DIFFERENT when the student has
+             downloads — because "no connection" is the wrong sentence for a
+             phone holding a thousand questions. */
+          Consumer(
+            builder: (context, ref, _) {
+              final online = ref.watch(isOnlineProvider);
+              if (online) return const SizedBox.shrink();
+              final hasVault = ref.watch(hasVaultProvider).value ?? false;
+              return SafeArea(
+                bottom: false,
+                child: LipOfflineBar(hasVault: hasVault),
+              );
+            },
+          ),
+          Expanded(
+            child: IndexedStack(
+              index: _tab,
+              children: const [
+                DashboardScreen(embedded: true),
+                PracticeFlowScreen(embedded: true),
+                LeaderboardScreen(embedded: true),
+                ProfileScreen(embedded: true),
+              ],
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -201,6 +226,13 @@ class _LipDrawer extends ConsumerWidget {
                   hue: FeatureHue.indigo,
                   title: 'Performance analysis',
                   onTap: () => go(const AnalysisScreen()),
+                ),
+                _Row(
+                  icon: Icons.offline_bolt_rounded,
+                  hue: FeatureHue.teal,
+                  title: 'Offline vault',
+                  subtitle: 'Practise with no signal',
+                  onTap: () => go(const VaultScreen()),
                 ),
                 _Row(
                   icon: Icons.auto_stories_rounded,
