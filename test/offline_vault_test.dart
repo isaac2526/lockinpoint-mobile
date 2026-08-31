@@ -30,7 +30,11 @@ class _NoNetwork extends Fake implements Api {
   }
 
   @override
-  Future<Map<String, dynamic>> post(String path, {Object? body}) {
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Duration? receiveTimeout,
+  }) {
     calls++;
     throw ApiFailure('No connection.', offline: true);
   }
@@ -50,7 +54,11 @@ class _Network extends Fake implements Api {
   }) async => pack;
 
   @override
-  Future<Map<String, dynamic>> post(String path, {Object? body}) async {
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Duration? receiveTimeout,
+  }) async {
     if (failFirst > 0) {
       failFirst--;
       throw ApiFailure('No connection.', offline: true);

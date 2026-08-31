@@ -18,7 +18,11 @@ class _Server extends Fake implements Api {
   Object? lastBody;
 
   @override
-  Future<Map<String, dynamic>> post(String path, {Object? body}) async {
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Duration? receiveTimeout,
+  }) async {
     lastBody = body;
     return answer;
   }

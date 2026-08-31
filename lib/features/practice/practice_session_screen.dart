@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
 import '../../core/speech.dart';
+import '../tutor/tutor_screen.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
 import '../../design/theme.dart';
@@ -503,6 +504,31 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
                      which matters, because the offline vault is exactly where
                      a student practising on a bus will use it. */
                   if (speechSupported) _SpeakButton(question: q),
+                  /* ASK LUMI ABOUT THIS ONE. The entry point existed as a
+                     constructor parameter - TutorScreen(questionId) - and
+                     nothing in the app ever passed it, so the tutor could
+                     never be asked about the question in front of the
+                     student. Practice mode only, the same rule the website
+                     enforces: in a timed CBT the tutor stays outside the
+                     hall. The id alone travels - the server looks the
+                     question up itself and never surrenders the answer. */
+                  if (sitting.mode == 'practice')
+                    IconButton(
+                      tooltip: 'Ask Lumi about this question',
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => TutorScreen(
+                            questionId: q.id,
+                            opening: 'Help me with this question.',
+                          ),
+                        ),
+                      ),
+                      icon: Icon(
+                        Icons.smart_toy_rounded,
+                        size: 21,
+                        color: context.lip.hues.rose.ink,
+                      ),
+                    ),
                 ],
               ),
               if (q.mediaUrl('question') != null) ...[

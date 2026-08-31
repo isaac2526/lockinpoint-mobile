@@ -47,6 +47,12 @@ Future<LumiReply> askLumi(
   try {
     final res = await api.post(
       '/api/ai/ask',
+      /* TWO MINUTES, NOT THIRTY SECONDS. The ask route tries a ladder of
+         models and a slow one can take a minute on a good day; the Dio
+         default killed the request at 30s and the student saw a failure for
+         an answer that was still on its way. The screen shows a live
+         thinking state the whole time, so the wait is visible, not frozen. */
+      receiveTimeout: const Duration(seconds: 120),
       body: {
         'question': question,
         'history': history.map((t) => t.wire).toList(),

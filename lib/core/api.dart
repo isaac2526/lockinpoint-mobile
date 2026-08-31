@@ -122,13 +122,25 @@ class Api {
     ),
   );
 
-  Future<Map<String, dynamic>> post(String path, {Object? body}) => _request(
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+
+    /// Per-request override of the 30s receive ceiling. The default suits
+    /// data calls; an AI answer legitimately takes longer, and killing it at
+    /// 30s showed the student an error for a reply that was still coming.
+    /// Auth traffic never passes this - the refresh path keeps its own Dio.
+    Duration? receiveTimeout,
+  }) => _request(
     'POST',
     path,
     (token, url) => _dio.post(
       url,
       data: body,
-      options: Options(headers: _authHeader(token)),
+      options: Options(
+        headers: _authHeader(token),
+        receiveTimeout: receiveTimeout,
+      ),
     ),
   );
 
