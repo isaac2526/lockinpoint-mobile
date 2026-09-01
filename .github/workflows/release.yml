@@ -97,14 +97,38 @@ jobs:
           # error names WHICH of the three is wrong. No secret is echoed:
           # keytool's messages never contain the password.
           # ---------------------------------------------------------------
-          if ! keytool -list -keystore "$RUNNER_TEMP/upload-keystore.jks" \
-                 -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" \
-                 > /dev/null 2> keytool.err; then
-            echo "::error::The upload keystore did not open. keytool says: $(tr '\n' ' ' < keytool.err | head -c 400)"
-            echo "::error::Check ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_ALIAS. The alias configured here is '$KEY_ALIAS'; list yours with keytool -list -v -keystore <your.jks>"
+          KS="$RUNNER_TEMP/upload-keystore.jks"
+
+          # Is it a keystore at all? This separates "the base64 lost bytes"
+          # from "the password is wrong" WITHOUT needing keytool's prose —
+          # and without printing anything derived from a secret. A JKS starts
+          # with the magic FEEDFEED; a PKCS12 is DER, starting 30 82.
+          SIZE=$(stat -c%s "$KS")
+          MAGIC=$(head -c 4 "$KS" | od -An -tx1 | tr -d ' \n')
+          echo "decoded keystore: $SIZE bytes, magic $MAGIC"
+          case "$MAGIC" in
+            feedfeed*) echo "format: JKS" ;;
+            3082*)     echo "format: PKCS12" ;;
+            *)
+              echo "::error::ANDROID_KEYSTORE_BASE64 did not decode to a keystore ($SIZE bytes, magic $MAGIC). Re-run: base64 -w0 your.jks | gh secret set ANDROID_KEYSTORE_BASE64 (macOS: base64 -i your.jks)."
+              exit 1 ;;
+          esac
+
+          # keytool writes some failures to stdout and some to stderr, so
+          # BOTH are captured. The first version sent stdout to /dev/null and
+          # reported an empty reason, which is its own small lesson.
+          if ! keytool -list -keystore "$KS" -storepass "$STORE_PASSWORD" > ks.out 2>&1; then
+            echo "::error::The keystore did not open with ANDROID_KEYSTORE_PASSWORD. keytool: $(tr '\n' ' ' < ks.out | head -c 400)"
             exit 1
           fi
-          echo "Keystore opens with the configured password, alias '$KEY_ALIAS'."
+          echo "The store password is correct."
+
+          if ! keytool -list -keystore "$KS" -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" > alias.out 2>&1; then
+            echo "::error::The store opened but ANDROID_KEY_ALIAS was not found in it. keytool: $(tr '\n' ' ' < alias.out | head -c 300)"
+            echo "::error::Aliases actually present: $(grep -oE '^[^,]+, [A-Za-z]{3} [0-9]{1,2}, [0-9]{4}' ks.out | cut -d, -f1 | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "The alias exists and the store password opens it."
 
 
       # A build failure here used to reach me as "Process completed with exit
