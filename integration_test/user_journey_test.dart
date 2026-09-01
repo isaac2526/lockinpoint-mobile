@@ -168,10 +168,21 @@ void main() {
       if (close.evaluate().isNotEmpty) {
         await tester.tap(close.first);
         await settle(tester);
+        /* THE DIALOG IS NOT THE SAME IN A TIMED SITTING.
+           An untimed paper offers "Leave"; a CBT offers "Submit now" and
+           "Leave anyway", because walking out of a timed hall is a different
+           decision from closing a practice sheet. This looked only for
+           "Leave", so a CBT's dialog stayed open, the unwind never reached
+           the shell, and the NEXT case failed with no hamburger — a
+           failure two cases away from its cause. */
+        final anyway = find.widgetWithText(TextButton, 'Leave anyway');
         final leave = find.widgetWithText(FilledButton, 'Leave');
-        if (leave.evaluate().isNotEmpty) {
+        if (anyway.evaluate().isNotEmpty) {
+          await tester.tap(anyway.last);
+          await settle(tester, 1.5);
+        } else if (leave.evaluate().isNotEmpty) {
           await tester.tap(leave.last);
-          await settle(tester);
+          await settle(tester, 1.5);
         }
         continue;
       }
@@ -235,7 +246,7 @@ void main() {
       .descendant(of: find.byType(Drawer), matching: find.byType(Scrollable))
       .first;
 
-  Future<void> openMenu(WidgetTester tester) async {
+  Future<void> openMenu(WidgetTester tester, [String note = '']) async {
     /* ASSERT THE MENU IS REACHABLE, THEN THAT IT OPENED.
        Both halves matter. A missing hamburger means the walk back to the
        shell did not finish, and an unopened drawer is the founder's original
@@ -245,7 +256,7 @@ void main() {
     await see(
       tester,
       find.byTooltip('Menu'),
-      why: 'no hamburger — the app is not standing on the shell',
+      why: 'no hamburger — the app is not standing on the shell$note',
       seconds: 8,
     );
     await tester.tap(find.byTooltip('Menu').first);
@@ -253,7 +264,7 @@ void main() {
     await see(
       tester,
       find.byType(Drawer),
-      why: 'the hamburger was tapped and no drawer opened',
+      why: 'the hamburger was tapped and no drawer opened$note',
       seconds: 8,
     );
   }
@@ -699,7 +710,9 @@ void main() {
     };
     for (final row in rows.keys) {
       await toHome(tester);
-      await openMenu(tester);
+      // The row name travels into the failure, so a walk that breaks on the
+      // ninth door says which door rather than leaving it to be guessed.
+      await openMenu(tester, ' (on the way to "$row")');
       await tapDrawerRow(tester, row);
       await see(
         tester,

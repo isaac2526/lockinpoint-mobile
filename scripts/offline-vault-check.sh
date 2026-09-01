@@ -52,8 +52,20 @@ sleep 1
 #   ./scripts/offline-vault-check.sh [device] [debug|profile]
 MODE="${2:-profile}"
 
-flutter test integration_test/offline_vault_real_test.dart \
-  -d "$DEVICE" \
-  --"$MODE" \
-  --dart-define=LIP_API="http://127.0.0.1:$PORT" \
-  --reporter expanded
+if [ "$MODE" = "debug" ]; then
+  # The fast path, for iterating.
+  flutter test integration_test/offline_vault_real_test.dart \
+    -d "$DEVICE" \
+    --dart-define=LIP_API="http://127.0.0.1:$PORT" \
+    --reporter expanded
+else
+  # `flutter test` has no mode flag — it is always debug. `flutter drive` is
+  # the one that can run a profile (release-compiler) binary, which is why the
+  # driver file exists.
+  flutter drive \
+    --driver=test_driver/integration_test.dart \
+    --target=integration_test/offline_vault_real_test.dart \
+    -d "$DEVICE" \
+    --"$MODE" \
+    --dart-define=LIP_API="http://127.0.0.1:$PORT"
+fi
