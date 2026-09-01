@@ -79,7 +79,17 @@ jobs:
             echo "::error::ANDROID_KEYSTORE_BASE64 is not set. Refusing to build a debug-signed bundle: Google Play rejects one, and a runner's debug key is regenerated per run, so even an accepted upload could never be updated. Add ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD, or run the play-aab workflow which does only this."
             exit 1
           fi
-          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload-keystore.jks"
+          # DECODE DEFENSIVELY.
+          # A secret pasted from a terminal or an editor can carry CRLF or be
+          # line-wrapped. GNU base64 tolerates newlines and CHOKES on \r,
+          # and a choke here writes a PARTIAL file whose header still looks
+          # like a keystore — which is exactly the truncation that reached
+          # keytool as an EOFException. Strip every scrap of whitespace, and
+          # check the decode's own exit status rather than the file's shape.
+          printf '%s' "$KEYSTORE_BASE64" | tr -d '\r\n \t' | base64 -d > "$RUNNER_TEMP/upload-keystore.jks" || {
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not valid base64 — the secret did not decode at all."
+            exit 1
+          }
           # The file is git-ignored and lives only on this runner.
           {
             echo "storeFile=$RUNNER_TEMP/upload-keystore.jks"
@@ -105,7 +115,10 @@ jobs:
           # with the magic FEEDFEED; a PKCS12 is DER, starting 30 82.
           SIZE=$(stat -c%s "$KS")
           MAGIC=$(head -c 4 "$KS" | od -An -tx1 | tr -d ' \n')
-          echo "decoded keystore: $SIZE bytes, magic $MAGIC"
+          # Emitted as an ANNOTATION, not just a log line: this environment
+          # cannot read Actions logs, and the byte count is the single most
+          # useful number when a keystore arrives truncated.
+          echo "::notice::decoded keystore: $SIZE bytes, magic $MAGIC (a 2048-bit RSA JKS with one key is normally 2.5-3 KB)"
           case "$MAGIC" in
             feedfeed*) echo "format: JKS" ;;
             3082*)     echo "format: PKCS12" ;;
@@ -118,7 +131,14 @@ jobs:
           # BOTH are captured. The first version sent stdout to /dev/null and
           # reported an empty reason, which is its own small lesson.
           if ! keytool -list -keystore "$KS" -storepass "$STORE_PASSWORD" > ks.out 2>&1; then
-            echo "::error::The keystore did not open with ANDROID_KEYSTORE_PASSWORD. keytool: $(tr '\n' ' ' < ks.out | head -c 400)"
+            REASON=$(tr '\n' ' ' < ks.out | head -c 400)
+            echo "::error::The keystore did not open. keytool: $REASON"
+            case "$REASON" in
+              *EOFException*|*"Invalid keystore format"*)
+                echo "::error::That is a TRUNCATED file, not a wrong password — $SIZE bytes arrived. Re-set the secret in one piece: gh secret set ANDROID_KEYSTORE_BASE64 --body \"\$(base64 -w0 your.jks)\"  (macOS: base64 -i your.jks). Then check the byte count in the next run matches your local file: stat -c%s your.jks" ;;
+              *"password was incorrect"*|*tampered*)
+                echo "::error::The bytes are fine; ANDROID_KEYSTORE_PASSWORD is wrong for this store." ;;
+            esac
             exit 1
           fi
           echo "The store password is correct."
