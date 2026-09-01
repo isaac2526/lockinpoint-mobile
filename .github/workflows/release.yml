@@ -51,6 +51,51 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+
+      # ---------------------------------------------------------------------
+      # THE UPLOAD KEY, IF THERE IS ONE.
+      #
+      # Four repository secrets turn this on. Without them the build still
+      # runs and is signed with the debug key — useful for inspection, and
+      # REFUSED by the Play Console, which the summary step says out loud so
+      # nobody discovers it at upload time.
+      #
+      #   ANDROID_KEYSTORE_BASE64   base64 of your upload-keystore.jks
+      #   ANDROID_KEYSTORE_PASSWORD the store password
+      #   ANDROID_KEY_ALIAS         the alias inside the store (e.g. upload)
+      #   ANDROID_KEY_PASSWORD      that alias's password
+      # ---------------------------------------------------------------------
+      - name: Write the upload key
+        # The secrets context is not available to a step `if:`, so the secret
+        # is bound to an env var and THAT is tested. A missing secret is an
+        # empty string, never an error.
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "No upload key configured; leaving the debug key in place."
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload-keystore.jks"
+          # The file is git-ignored and lives only on this runner.
+          {
+            echo "storeFile=$RUNNER_TEMP/upload-keystore.jks"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > android/key.properties
+
+      - name: Say how this build is signed
+        run: |
+          if [ -f android/key.properties ]; then
+            echo "::notice::Signed with the upload key from repository secrets."
+          else
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret — this bundle is DEBUG-SIGNED and Google Play will refuse it."
+          fi
+
       - name: Build app bundle
         run: flutter build appbundle --release
       - name: Build release APK

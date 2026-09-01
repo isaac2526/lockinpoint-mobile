@@ -1,8 +1,36 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+/* ============================================================================
+   THE UPLOAD KEY.
+
+   android/key.properties is git-ignored and holds four lines:
+
+       storeFile=/absolute/path/to/upload-keystore.jks
+       storePassword=…
+       keyAlias=upload
+       keyPassword=…
+
+   CI writes that file from repository secrets before building; a developer
+   creates it once by hand. When it is absent — a fresh clone, a contributor,
+   `flutter run --release` on a laptop — the build still works and signs with
+   the debug key, because a release build that cannot be run locally is a
+   release build nobody tests.
+
+   Google Play REFUSES a debug-signed bundle, so the artifact tells you which
+   it got rather than leaving you to find out at upload time.
+   ============================================================================ */
+val keystoreProperties = Properties().apply {
+    val f = rootProject.file("key.properties")
+    if (f.exists()) load(FileInputStream(f))
+}
+val hasUploadKey = keystoreProperties.getProperty("storeFile") != null
 
 android {
     namespace = "com.lockinpoint.app"
@@ -29,11 +57,28 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasUploadKey) {
+            create("upload") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // The real key when there is one, the debug key when there is not.
+            // Never silently: the build prints which, so a debug-signed bundle
+            // is discovered here rather than by the Play Console.
+            signingConfig = if (hasUploadKey) {
+                signingConfigs.getByName("upload")
+            } else {
+                logger.lifecycle("[lockinpoint] No android/key.properties — signing the release with the DEBUG key. Google Play will refuse this bundle.")
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

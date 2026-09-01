@@ -388,6 +388,12 @@ class PracticeRepository {
   Future<Sitting> startUtme({
     required List<({String id, String name})> combination,
     bool mini = false,
+
+    /// Questions per subject in a MINI mock. The route has read this as
+    /// `body.per` since the mode existed and the app never sent it, so every
+    /// mini mock was the route's fallback of ten and the student's choice
+    /// went nowhere. Ignored for a full mock, which is JAMB's own shape.
+    int per = 10,
   }) async {
     final label = combination.map((s) => s.name).join(', ');
     final res = await _api.post(
@@ -399,6 +405,7 @@ class PracticeRepository {
         'subjectIds': combination.map((s) => s.id).toList(),
         'label': label,
         'shuffleOptions': true,
+        if (mini) 'per': per,
       },
     );
     return _sitting(res, label);

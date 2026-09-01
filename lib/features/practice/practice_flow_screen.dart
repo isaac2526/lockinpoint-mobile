@@ -39,6 +39,10 @@ class PracticeFlowScreen extends ConsumerStatefulWidget {
 
 enum _Source { year, topic, random, tutorial }
 
+/// The shortcuts on the mini mock's size. The field beside them takes any
+/// number, because a chip is a shortcut and never a limit.
+const _kPerSubject = [5, 10, 15, 20, 25];
+
 class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
   int _step = 0;
 
@@ -69,6 +73,14 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
   /// Mini mock: fewer questions, projected onto the 400 scale. The full mock
   /// is the two-hour, four-subject sitting the real hall runs.
   bool _utmeMini = false;
+
+  /* HOW MANY QUESTIONS A MINI MOCK ASKS PER SUBJECT.
+     /api/attempts has read `per` for a jamb_mini since the mode was added
+     — `parseInt(body.per) || 10` — and the app never sent it, so every mini
+     mock in the product was silently forty questions and the student had no
+     say. The full mock is JAMB's own shape (60 English + 40 each) and is not
+     a number anybody should be choosing. */
+  int _utmePer = 10;
 
   /// The failure was the NETWORK, not the server — which changes the right
   /// next step from "retry" to "practise what is already on the phone".
@@ -172,6 +184,7 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
     final sitting = await _repo.startUtme(
       combination: combination,
       mini: _utmeMini,
+      per: _utmePer,
     );
     // Remembered for next time, never blocking this time.
     unawaited(_repo.saveCombination(combination.map((s) => s.name).toList()));
@@ -296,6 +309,15 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
     min: 1,
     max: 200,
     onPicked: (n) => setState(() => _count = n),
+  );
+
+  Future<void> _askPerSubject() => _askNumber(
+    title: 'How many per subject?',
+    hint: 'Between 1 and 60',
+    initial: _utmePer,
+    min: 1,
+    max: 60,
+    onPicked: (n) => setState(() => _utmePer = n),
   );
 
   Future<void> _askMinutes() => _askNumber(
@@ -672,12 +694,49 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
           selected: _utmeMini,
           onTap: () => setState(() => _utmeMini = true),
         ),
+
+        /* THE MINI MOCK IS NOW THE STUDENT'S SIZE, NOT A HIDDEN DEFAULT.
+           A full mock is JAMB's own shape and nobody should be picking its
+           numbers. A mini mock is a revision tool, and how long it is depends
+           entirely on how long the student has - twenty minutes on a bus is a
+           different sitting from an hour at a desk. */
+        if (_utmeMini) ...[
+          const SizedBox(height: Gap.lg),
+          const LipLabel('How many questions per subject'),
+          const SizedBox(height: Gap.sm),
+          Wrap(
+            spacing: Gap.sm,
+            runSpacing: Gap.sm,
+            children: [
+              for (final n in _kPerSubject)
+                LipChip(
+                  '$n',
+                  selected: _utmePer == n,
+                  onTap: () => setState(() => _utmePer = n),
+                ),
+              LipChip(
+                _kPerSubject.contains(_utmePer) ? 'Other' : '$_utmePer',
+                selected: !_kPerSubject.contains(_utmePer),
+                onTap: _askPerSubject,
+              ),
+            ],
+          ),
+          const SizedBox(height: Gap.sm),
+          Text(
+            '$_utmePer each across four subjects - ${_utmePer * 4} questions, '
+            'about ${((_utmePer * 4 * 40) / 60).round()} minutes.',
+            style: LipType.small.copyWith(color: c.text3),
+          ),
+        ],
+
         const SizedBox(height: Gap.xl),
         LipButton(
           gold: true,
           icon: Icons.play_arrow_rounded,
           label: ready
-              ? 'Start: ${english.name} + 3'
+              ? (_utmeMini
+                    ? 'Start: ${english.name} + 3 - ${_utmePer * 4} questions'
+                    : 'Start: ${english.name} + 3')
               : 'Pick ${3 - _combo.length} more subject${_combo.length == 2 ? '' : 's'}',
           busy: _busy,
           onPressed: ready && !_busy ? _startUtme : null,

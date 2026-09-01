@@ -74,10 +74,21 @@ class DashboardController extends AsyncNotifier<Map<String, dynamic>> {
   }
 
   /// Pull to refresh, and the silent refresh behind a cached paint.
+  ///
+  /// EVERY WRITE HERE IS GUARDED BY ref.mounted.
+  /// This is a request with a screen behind it, and a student who logs out,
+  /// or whose session ends, while it is in flight leaves this provider
+  /// disposed before the answer lands. Writing `state` then throws
+  /// UnmountedRefException out of an async gap — an unhandled error with
+  /// nothing to catch it, at the exact moment the app is already changing
+  /// screens. Nothing is lost by dropping a refresh nobody is waiting for.
   Future<void> refresh() async {
     try {
-      state = AsyncData(await _fetch());
+      final data = await _fetch();
+      if (!ref.mounted) return;
+      state = AsyncData(data);
     } on ApiFailure catch (e, st) {
+      if (!ref.mounted) return;
       if (e.unauthorised) {
         await ref
             .read(authControllerProvider.notifier)
@@ -642,6 +653,27 @@ class _Footer extends ConsumerWidget {
   }
 }
 
+/// Menu, wordmark — the part of the home that is true before any request is.
+class _MenuBar extends StatelessWidget {
+  const _MenuBar();
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      IconButton(
+        // The drawer lives on the SHELL's scaffold, reached by its key.
+        onPressed: () => lipShellKey.currentState?.openDrawer(),
+        icon: const Icon(Icons.menu_rounded),
+        tooltip: 'Menu',
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+      ),
+      const SizedBox(width: Gap.sm),
+      const LipWordmark(size: 24),
+    ],
+  );
+}
+
 class _Skeleton extends StatelessWidget {
   const _Skeleton();
 
@@ -650,6 +682,14 @@ class _Skeleton extends StatelessWidget {
     physics: const AlwaysScrollableScrollPhysics(),
     padding: const EdgeInsets.all(Gap.lg),
     children: const [
+      /* THE MENU STAYS REACHABLE WHILE THE HOME LOADS.
+         The hamburger lives inside the loaded dashboard, so until the first
+         request came back there was no way into the drawer at all — on a slow
+         Nigerian connection that is several seconds of an app that looks like
+         it has nothing in it and offers no way out. The bar is not data; it
+         does not need the data to arrive. */
+      _MenuBar(),
+      SizedBox(height: Gap.lg),
       LipSkeleton(height: 26, width: 170),
       SizedBox(height: Gap.lg),
       LipSkeleton(height: 74, radius: Radii.lg),

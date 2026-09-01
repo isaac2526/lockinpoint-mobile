@@ -39,7 +39,21 @@ rm -f "$HOME/.local/share/com.lockinpoint.lockinpoint/vault.sqlite" \
 node tool/fake_backend.js "$PORT" &
 sleep 1
 
+# PROFILE MODE BY DEFAULT — the RELEASE compiler, not the debug VM.
+#
+# A debug build runs the analyzer's world: assertions on, JIT, tree-shaking
+# off. The founder installs a release build, and the two differ in ways that
+# matter here — an assertion that fires in debug is simply skipped in release,
+# so a debug-only run can both invent failures and hide them. `profile` is the
+# release compiler (AOT, no assertions, tree-shaken) with the observatory left
+# on, which is the closest to the shipped artifact that a driven test can be:
+# `--release` strips the VM service the test harness needs to attach at all.
+#
+#   ./scripts/offline-vault-check.sh [device] [debug|profile]
+MODE="${2:-profile}"
+
 flutter test integration_test/offline_vault_real_test.dart \
   -d "$DEVICE" \
+  --"$MODE" \
   --dart-define=LIP_API="http://127.0.0.1:$PORT" \
   --reporter expanded

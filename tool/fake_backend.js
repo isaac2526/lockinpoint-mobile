@@ -186,7 +186,15 @@ const server = http.createServer(async (req, res) => {
       const ids = Array.isArray(body.subjectIds) && body.subjectIds.length
         ? body.subjectIds
         : ["mth"];
-      const per = body.mode === "jamb_mock" ? 5 : 4;
+      /* THE MINI MOCK HONOURS `per`, AS THE REAL ROUTE DOES.
+         /api/attempts reads `parseInt(body.per) || 10` for a jamb_mini. The
+         full mock's real shape is 60 English + 40 each, shrunk to 5 here so a
+         drive is not a two-hour paper — the SHAPE is what matters, and the
+         mini's shape is "exactly what the student asked for". */
+      const per =
+        body.mode === "jamb_mock" ? 5
+        : body.mode === "jamb_mini" ? (parseInt(body.per, 10) || 10)
+        : 4;
       const qs = body.fromSaved
         ? [...saved].map((sid, i) => question(i + 1, "mth"))
         : ids.flatMap((s) => pack(s, per));

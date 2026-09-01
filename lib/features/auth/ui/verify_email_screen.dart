@@ -52,7 +52,9 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
       _error = '';
     });
     try {
-      await ref.read(apiProvider).post('/api/auth/verify', body: {'code': code});
+      await ref
+          .read(apiProvider)
+          .post('/api/auth/verify', body: {'code': code});
       if (!mounted) return;
       // The badge on the dashboard is the point of all this, so refresh it
       // before leaving rather than showing a stale "not verified".
@@ -80,7 +82,10 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
       body: ListView(
         padding: const EdgeInsets.all(Gap.lg),
         children: [
-          Text('Check your email', style: LipType.heading.copyWith(color: c.text1)),
+          Text(
+            'Check your email',
+            style: LipType.heading.copyWith(color: c.text1),
+          ),
           const SizedBox(height: Gap.xs),
           Text(
             widget.email == null || widget.email!.isEmpty
