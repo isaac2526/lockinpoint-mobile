@@ -157,8 +157,14 @@ void main() {
   /// Back out of anything pushed, close any open drawer, and select Home.
   Future<void> toHome(WidgetTester tester) async {
     for (var i = 0; i < 8; i++) {
-      // A drawer left open by the previous case swallows every later tap.
-      if (find.text('Study plan').evaluate().isNotEmpty) {
+      /* AN OPEN DRAWER IS A DRAWER, NOT A WORD.
+         This detected one by looking for the text "Study plan" — which is
+         also the Study plan SCREEN's own app bar title. So after visiting
+         that screen the unwind believed a drawer was open, tapped at empty
+         coordinates eight times, and left the app exactly where it was; the
+         NEXT row then failed with "no hamburger", two steps from its cause.
+         Ask for the widget. */
+      if (find.byType(Drawer).evaluate().isNotEmpty) {
         await tester.tapAt(const Offset(700, 300));
         await settle(tester);
         continue;
