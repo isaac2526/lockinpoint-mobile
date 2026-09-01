@@ -94,20 +94,64 @@ jobs:
       - name: Build release APK
         run: flutter build apk --release
 
-      - name: Prove the bundle is not debug-signed
+      # ---------------------------------------------------------------------
+      # INTERROGATE THE FINISHED BUNDLE.
+      #
+      # Everything below is read back OUT of the .aab. What the build was told
+      # (pubspec.yaml, build.gradle.kts) is not evidence of what it produced —
+      # that distinction is the whole reason a debug-signed bundle was once
+      # handed over as a release.
+      # ---------------------------------------------------------------------
+      - name: Prove the bundle is release-signed and fit for Play
         run: |
           set -euo pipefail
           AAB=build/app/outputs/bundle/release/app-release.aab
+          test -s "$AAB" || { echo "::error::no bundle was produced"; exit 1; }
+
+          # --- the signer, from the bundle -------------------------------
           keytool -printcert -jarfile "$AAB" > signer.txt
           if grep -q "CN=Android Debug" signer.txt; then
             echo "::error::debug-signed bundle — Google Play will refuse it"
+            cat signer.txt
             exit 1
           fi
+
+          # --- the manifest, from the bundle, with Google's own tool ------
+          BT=1.17.2
+          curl -sSL -o bundletool.jar \
+            "https://github.com/google/bundletool/releases/download/$BT/bundletool-all-$BT.jar"
+          PKG=$(java -jar bundletool.jar dump manifest --bundle="$AAB" --xpath=/manifest/@package)
+          VC=$(java -jar bundletool.jar dump manifest --bundle="$AAB" --xpath=/manifest/@android:versionCode)
+          VN=$(java -jar bundletool.jar dump manifest --bundle="$AAB" --xpath=/manifest/@android:versionName)
+
+          # The package name can never change once Play has seen it.
+          if [ "$PKG" != "com.lockinpoint.app" ]; then
+            echo "::error::package is $PKG, expected com.lockinpoint.app"
+            exit 1
+          fi
+
+          {
+            echo "### The Play bundle"
+            echo ""
+            echo "| Read from the .aab | Value |"
+            echo "|---|---|"
+            echo "| package | \`$PKG\` |"
+            echo "| versionName | \`$VN\` |"
+            echo "| versionCode | \`$VC\` |"
+            echo "| size | \`$(du -h "$AAB" | cut -f1)\` |"
+            echo ""
+            echo '```'
+            grep -E "Owner:|Issuer:|Valid from:|SHA256:" signer.txt | head -5
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
           grep -E "Owner:|SHA256:" signer.txt | head -2
+          echo "::notice::Release-signed $PKG $VN ($VC) — fit to upload to Google Play."
 
       - uses: actions/upload-artifact@v4
         with:
-          name: lockinpoint-aab
+          # Named for what it is: the verified, release-signed Play bundle.
+          name: lockinpoint-release-aab
           path: build/app/outputs/bundle/release/app-release.aab
           retention-days: 30
           if-no-files-found: error
