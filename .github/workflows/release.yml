@@ -194,6 +194,27 @@ jobs:
             exit 1
           fi
 
+          # THE RIGHT KEY, NOT MERELY A NON-DEBUG ONE.
+          #
+          # "Not the debug certificate" is a weaker claim than it sounds: any
+          # key at all would pass it, including one accidentally regenerated
+          # between runs — which would strand every installed copy just as
+          # surely. So the signer is compared against the fingerprint of the
+          # upload key Isaac created and read back with keytool -list.
+          #
+          # A certificate fingerprint is PUBLIC — it can be extracted from any
+          # published app — so it belongs in the repository, unlike the key.
+          EXPECTED=2953BB83663A352EA750F661001D6893B294B7F98B3881BEA936E282EF542E27
+          GOT=$(grep -A1 -i "SHA256:" signer.txt | grep -oiE "([0-9A-F]{2}:){31}[0-9A-F]{2}" | head -1 | tr -d ':' | tr 'a-f' 'A-F')
+          if [ -z "$GOT" ]; then
+            GOT=$(grep -oiE "([0-9A-F]{2}:){31}[0-9A-F]{2}" signer.txt | head -1 | tr -d ':' | tr 'a-f' 'A-F')
+          fi
+          if [ "$GOT" != "$EXPECTED" ]; then
+            echo "::error::The bundle is signed with an UNEXPECTED key.%0Aexpected SHA-256 $EXPECTED%0Agot      SHA-256 $GOT%0AIf you deliberately replaced the upload keystore, update EXPECTED in .github/workflows/release.yml to the new fingerprint."
+            exit 1
+          fi
+          echo "Signer matches the upload key: SHA-256 $GOT"
+
           # --- the manifest, from the bundle, with Google's own tool ------
           BT=1.17.2
           curl -sSL -o bundletool.jar \
