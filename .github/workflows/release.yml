@@ -88,9 +88,43 @@ jobs:
             echo "keyPassword=$KEY_PASSWORD"
           } > android/key.properties
 
+          # ---------------------------------------------------------------
+          # OPEN THE KEYSTORE BEFORE GRADLE DOES.
+          #
+          # A wrong password, a wrong alias or a mangled base64 all surface
+          # from Gradle as an opaque "exit code 1" several minutes into a
+          # build. keytool answers the same question in a second, and its
+          # error names WHICH of the three is wrong. No secret is echoed:
+          # keytool's messages never contain the password.
+          # ---------------------------------------------------------------
+          if ! keytool -list -keystore "$RUNNER_TEMP/upload-keystore.jks" \
+                 -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" \
+                 > /dev/null 2> keytool.err; then
+            echo "::error::The upload keystore did not open. keytool says: $(tr '\n' ' ' < keytool.err | head -c 400)"
+            echo "::error::Check ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_ALIAS. The alias configured here is '$KEY_ALIAS'; list yours with keytool -list -v -keystore <your.jks>"
+            exit 1
+          fi
+          echo "Keystore opens with the configured password, alias '$KEY_ALIAS'."
 
+
+      # A build failure here used to reach me as "Process completed with exit
+      # code 1" and nothing else, because this environment cannot download
+      # Actions logs. The diagnostic lines are lifted into an ANNOTATION,
+      # which the API does serve — a failure nobody can read is a failure
+      # nobody can fix.
       - name: Build app bundle
-        run: flutter build appbundle --release
+        run: |
+          set -o pipefail
+          if ! flutter build appbundle --release 2>&1 | tee bundle.log; then
+            echo "::group::the last of the build log"
+            tail -80 bundle.log
+            echo "::endgroup::"
+            DIAG=$(grep -iE "keystore|password|alias|signing|FAILURE:|Caused by|error:|Execution failed" bundle.log \
+                   | tail -25 | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error::flutter build appbundle failed.%0A$DIAG"
+            exit 1
+          fi
+
       - name: Build release APK
         run: flutter build apk --release
 
