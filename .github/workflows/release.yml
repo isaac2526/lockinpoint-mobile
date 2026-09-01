@@ -76,8 +76,8 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "No upload key configured; leaving the debug key in place."
-            exit 0
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not set. Refusing to build a debug-signed bundle: Google Play rejects one, and a runner's debug key is regenerated per run, so even an accepted upload could never be updated. Add ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD, or run the play-aab workflow which does only this."
+            exit 1
           fi
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload-keystore.jks"
           # The file is git-ignored and lives only on this runner.
@@ -88,18 +88,23 @@ jobs:
             echo "keyPassword=$KEY_PASSWORD"
           } > android/key.properties
 
-      - name: Say how this build is signed
-        run: |
-          if [ -f android/key.properties ]; then
-            echo "::notice::Signed with the upload key from repository secrets."
-          else
-            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret — this bundle is DEBUG-SIGNED and Google Play will refuse it."
-          fi
 
       - name: Build app bundle
         run: flutter build appbundle --release
       - name: Build release APK
         run: flutter build apk --release
+
+      - name: Prove the bundle is not debug-signed
+        run: |
+          set -euo pipefail
+          AAB=build/app/outputs/bundle/release/app-release.aab
+          keytool -printcert -jarfile "$AAB" > signer.txt
+          if grep -q "CN=Android Debug" signer.txt; then
+            echo "::error::debug-signed bundle — Google Play will refuse it"
+            exit 1
+          fi
+          grep -E "Owner:|SHA256:" signer.txt | head -2
+
       - uses: actions/upload-artifact@v4
         with:
           name: lockinpoint-aab
