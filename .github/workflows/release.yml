@@ -528,6 +528,44 @@ jobs:
               --notes "Automated build of $TAG. The .aab is for Google Play; everything else is a direct download. Desktop builds are unsigned."
           fi
 
+      # ---------------------------------------------------------------------
+      # AND STRAIGHT ONTO THE WEBSITE, IF THE SECRETS ARE THERE.
+      #
+      # A GitHub Release asset on a PRIVATE repository is a 404 for anyone not
+      # signed in, so the release above is an archive, not a download link.
+      # This uploads the same files to the public `app` bucket in Supabase
+      # Storage — permanent, loginless URLs — and registers them in
+      # app_downloads, which is what the landing page reads.
+      #
+      # Skipped, loudly, when the secrets are absent: a release that half
+      # happened must say which half.
+      # ---------------------------------------------------------------------
+      - name: Publish the downloads to Supabase Storage
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          V: ${{ steps.gather.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+            echo "::warning::SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are not set, so the files were NOT published to the website. The GitHub Release above needs a login to download."
+            echo "### Downloads were not published" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Add the repository secrets \`SUPABASE_URL\` and \`SUPABASE_SERVICE_ROLE_KEY\` and re-run this job to put these files on the website." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # The publisher lives in THIS repository, beside the builds it
+          # uploads. An earlier draft fetched it from the website repository
+          # to avoid two copies; that needs a cross-repo token this workflow
+          # does not have, and a release step that depends on a token nobody
+          # created is a release step that fails on the day it matters.
+          ./scripts/publish-artifacts.sh --register "$V" out/*
+          {
+            echo "## The website has been updated"
+            echo ""
+            echo "Every platform above is now live on the landing page. Nothing to paste."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Print the exact URLs to paste into Admin
         env:
           TAG: ${{ steps.gather.outputs.tag }}
