@@ -18,6 +18,15 @@ cd "$(dirname "$0")/.."
 DEVICE="${1:-linux}"
 PORT="${LIP_TEST_PORT:-4599}"
 
+# A Linux Flutter binary needs somewhere to draw. On a headless container that
+# is Xvfb; without it the app never starts and the run reports a load failure
+# that has nothing to do with the vault.
+export DISPLAY="${DISPLAY:-:99}"
+if ! xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
+  Xvfb "$DISPLAY" -screen 0 1280x1024x24 >/dev/null 2>&1 &
+  sleep 2
+fi
+
 cleanup() { pkill -f fake_backend.js >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 cleanup
@@ -30,7 +39,33 @@ rm -f "$HOME/.local/share/com.lockinpoint.lockinpoint/vault.sqlite" \
 node tool/fake_backend.js "$PORT" &
 sleep 1
 
-flutter test integration_test/offline_vault_real_test.dart \
-  -d "$DEVICE" \
-  --dart-define=LIP_API="http://127.0.0.1:$PORT" \
-  --reporter expanded
+# PROFILE MODE BY DEFAULT — the RELEASE compiler, not the debug VM.
+#
+# A debug build runs the analyzer's world: assertions on, JIT, tree-shaking
+# off. The founder installs a release build, and the two differ in ways that
+# matter here — an assertion that fires in debug is simply skipped in release,
+# so a debug-only run can both invent failures and hide them. `profile` is the
+# release compiler (AOT, no assertions, tree-shaken) with the observatory left
+# on, which is the closest to the shipped artifact that a driven test can be:
+# `--release` strips the VM service the test harness needs to attach at all.
+#
+#   ./scripts/offline-vault-check.sh [device] [debug|profile]
+MODE="${2:-profile}"
+
+if [ "$MODE" = "debug" ]; then
+  # The fast path, for iterating.
+  flutter test integration_test/offline_vault_real_test.dart \
+    -d "$DEVICE" \
+    --dart-define=LIP_API="http://127.0.0.1:$PORT" \
+    --reporter expanded
+else
+  # `flutter test` has no mode flag — it is always debug. `flutter drive` is
+  # the one that can run a profile (release-compiler) binary, which is why the
+  # driver file exists.
+  flutter drive \
+    --driver=test_driver/integration_test.dart \
+    --target=integration_test/offline_vault_real_test.dart \
+    -d "$DEVICE" \
+    --"$MODE" \
+    --dart-define=LIP_API="http://127.0.0.1:$PORT"
+fi

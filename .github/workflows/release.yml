@@ -51,13 +51,206 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+
+      # ---------------------------------------------------------------------
+      # THE UPLOAD KEY, IF THERE IS ONE.
+      #
+      # Four repository secrets turn this on. Without them the build still
+      # runs and is signed with the debug key — useful for inspection, and
+      # REFUSED by the Play Console, which the summary step says out loud so
+      # nobody discovers it at upload time.
+      #
+      #   ANDROID_KEYSTORE_BASE64   base64 of your upload-keystore.jks
+      #   ANDROID_KEYSTORE_PASSWORD the store password
+      #   ANDROID_KEY_ALIAS         the alias inside the store (e.g. upload)
+      #   ANDROID_KEY_PASSWORD      that alias's password
+      # ---------------------------------------------------------------------
+      - name: Write the upload key
+        # The secrets context is not available to a step `if:`, so the secret
+        # is bound to an env var and THAT is tested. A missing secret is an
+        # empty string, never an error.
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not set. Refusing to build a debug-signed bundle: Google Play rejects one, and a runner's debug key is regenerated per run, so even an accepted upload could never be updated. Add ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD, or run the play-aab workflow which does only this."
+            exit 1
+          fi
+          # DECODE DEFENSIVELY.
+          # A secret pasted from a terminal or an editor can carry CRLF or be
+          # line-wrapped. GNU base64 tolerates newlines and CHOKES on \r,
+          # and a choke here writes a PARTIAL file whose header still looks
+          # like a keystore — which is exactly the truncation that reached
+          # keytool as an EOFException. Strip every scrap of whitespace, and
+          # check the decode's own exit status rather than the file's shape.
+          printf '%s' "$KEYSTORE_BASE64" | tr -d '\r\n \t' | base64 -d > "$RUNNER_TEMP/upload-keystore.jks" || {
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not valid base64 — the secret did not decode at all."
+            exit 1
+          }
+          # The file is git-ignored and lives only on this runner.
+          {
+            echo "storeFile=$RUNNER_TEMP/upload-keystore.jks"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > android/key.properties
+
+          # ---------------------------------------------------------------
+          # OPEN THE KEYSTORE BEFORE GRADLE DOES.
+          #
+          # A wrong password, a wrong alias or a mangled base64 all surface
+          # from Gradle as an opaque "exit code 1" several minutes into a
+          # build. keytool answers the same question in a second, and its
+          # error names WHICH of the three is wrong. No secret is echoed:
+          # keytool's messages never contain the password.
+          # ---------------------------------------------------------------
+          KS="$RUNNER_TEMP/upload-keystore.jks"
+
+          # Is it a keystore at all? This separates "the base64 lost bytes"
+          # from "the password is wrong" WITHOUT needing keytool's prose —
+          # and without printing anything derived from a secret. A JKS starts
+          # with the magic FEEDFEED; a PKCS12 is DER, starting 30 82.
+          SIZE=$(stat -c%s "$KS")
+          MAGIC=$(head -c 4 "$KS" | od -An -tx1 | tr -d ' \n')
+          # Emitted as an ANNOTATION, not just a log line: this environment
+          # cannot read Actions logs, and the byte count is the single most
+          # useful number when a keystore arrives truncated.
+          echo "::notice::decoded keystore: $SIZE bytes, magic $MAGIC (a 2048-bit RSA JKS with one key is normally 2.5-3 KB)"
+          case "$MAGIC" in
+            feedfeed*) echo "format: JKS" ;;
+            3082*)     echo "format: PKCS12" ;;
+            *)
+              echo "::error::ANDROID_KEYSTORE_BASE64 did not decode to a keystore ($SIZE bytes, magic $MAGIC). Re-run: base64 -w0 your.jks | gh secret set ANDROID_KEYSTORE_BASE64 (macOS: base64 -i your.jks)."
+              exit 1 ;;
+          esac
+
+          # keytool writes some failures to stdout and some to stderr, so
+          # BOTH are captured. The first version sent stdout to /dev/null and
+          # reported an empty reason, which is its own small lesson.
+          if ! keytool -list -keystore "$KS" -storepass "$STORE_PASSWORD" > ks.out 2>&1; then
+            REASON=$(tr '\n' ' ' < ks.out | head -c 400)
+            echo "::error::The keystore did not open. keytool: $REASON"
+            case "$REASON" in
+              *EOFException*|*"Invalid keystore format"*)
+                echo "::error::That is a TRUNCATED file, not a wrong password — $SIZE bytes arrived. Re-set the secret in one piece: gh secret set ANDROID_KEYSTORE_BASE64 --body \"\$(base64 -w0 your.jks)\"  (macOS: base64 -i your.jks). Then check the byte count in the next run matches your local file: stat -c%s your.jks" ;;
+              *"password was incorrect"*|*tampered*)
+                echo "::error::The bytes are fine; ANDROID_KEYSTORE_PASSWORD is wrong for this store." ;;
+            esac
+            exit 1
+          fi
+          echo "The store password is correct."
+
+          if ! keytool -list -keystore "$KS" -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" > alias.out 2>&1; then
+            echo "::error::The store opened but ANDROID_KEY_ALIAS was not found in it. keytool: $(tr '\n' ' ' < alias.out | head -c 300)"
+            echo "::error::Aliases actually present: $(grep -oE '^[^,]+, [A-Za-z]{3} [0-9]{1,2}, [0-9]{4}' ks.out | cut -d, -f1 | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "The alias exists and the store password opens it."
+
+
+      # A build failure here used to reach me as "Process completed with exit
+      # code 1" and nothing else, because this environment cannot download
+      # Actions logs. The diagnostic lines are lifted into an ANNOTATION,
+      # which the API does serve — a failure nobody can read is a failure
+      # nobody can fix.
       - name: Build app bundle
-        run: flutter build appbundle --release
+        run: |
+          set -o pipefail
+          if ! flutter build appbundle --release 2>&1 | tee bundle.log; then
+            echo "::group::the last of the build log"
+            tail -80 bundle.log
+            echo "::endgroup::"
+            DIAG=$(grep -iE "keystore|password|alias|signing|FAILURE:|Caused by|error:|Execution failed" bundle.log \
+                   | tail -25 | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error::flutter build appbundle failed.%0A$DIAG"
+            exit 1
+          fi
+
       - name: Build release APK
         run: flutter build apk --release
+
+      # ---------------------------------------------------------------------
+      # INTERROGATE THE FINISHED BUNDLE.
+      #
+      # Everything below is read back OUT of the .aab. What the build was told
+      # (pubspec.yaml, build.gradle.kts) is not evidence of what it produced —
+      # that distinction is the whole reason a debug-signed bundle was once
+      # handed over as a release.
+      # ---------------------------------------------------------------------
+      - name: Prove the bundle is release-signed and fit for Play
+        run: |
+          set -euo pipefail
+          AAB=build/app/outputs/bundle/release/app-release.aab
+          test -s "$AAB" || { echo "::error::no bundle was produced"; exit 1; }
+
+          # --- the signer, from the bundle -------------------------------
+          keytool -printcert -jarfile "$AAB" > signer.txt
+          if grep -q "CN=Android Debug" signer.txt; then
+            echo "::error::debug-signed bundle — Google Play will refuse it"
+            cat signer.txt
+            exit 1
+          fi
+
+          # THE RIGHT KEY, NOT MERELY A NON-DEBUG ONE.
+          #
+          # "Not the debug certificate" is a weaker claim than it sounds: any
+          # key at all would pass it, including one accidentally regenerated
+          # between runs — which would strand every installed copy just as
+          # surely. So the signer is compared against the fingerprint of the
+          # upload key Isaac created and read back with keytool -list.
+          #
+          # A certificate fingerprint is PUBLIC — it can be extracted from any
+          # published app — so it belongs in the repository, unlike the key.
+          EXPECTED=2953BB83663A352EA750F661001D6893B294B7F98B3881BEA936E282EF542E27
+          GOT=$(grep -A1 -i "SHA256:" signer.txt | grep -oiE "([0-9A-F]{2}:){31}[0-9A-F]{2}" | head -1 | tr -d ':' | tr 'a-f' 'A-F')
+          if [ -z "$GOT" ]; then
+            GOT=$(grep -oiE "([0-9A-F]{2}:){31}[0-9A-F]{2}" signer.txt | head -1 | tr -d ':' | tr 'a-f' 'A-F')
+          fi
+          if [ "$GOT" != "$EXPECTED" ]; then
+            echo "::error::The bundle is signed with an UNEXPECTED key.%0Aexpected SHA-256 $EXPECTED%0Agot      SHA-256 $GOT%0AIf you deliberately replaced the upload keystore, update EXPECTED in .github/workflows/release.yml to the new fingerprint."
+            exit 1
+          fi
+          echo "Signer matches the upload key: SHA-256 $GOT"
+
+          # --- the manifest, from the bundle, with Google's own tool ------
+          BT=1.17.2
+          curl -sSL -o bundletool.jar \
+            "https://github.com/google/bundletool/releases/download/$BT/bundletool-all-$BT.jar"
+          PKG=$(java -jar bundletool.jar dump manifest --bundle="$AAB" --xpath=/manifest/@package)
+          VC=$(java -jar bundletool.jar dump manifest --bundle="$AAB" --xpath=/manifest/@android:versionCode)
+          VN=$(java -jar bundletool.jar dump manifest --bundle="$AAB" --xpath=/manifest/@android:versionName)
+
+          # The package name can never change once Play has seen it.
+          if [ "$PKG" != "com.lockinpoint.app" ]; then
+            echo "::error::package is $PKG, expected com.lockinpoint.app"
+            exit 1
+          fi
+
+          {
+            echo "### The Play bundle"
+            echo ""
+            echo "| Read from the .aab | Value |"
+            echo "|---|---|"
+            echo "| package | \`$PKG\` |"
+            echo "| versionName | \`$VN\` |"
+            echo "| versionCode | \`$VC\` |"
+            echo "| size | \`$(du -h "$AAB" | cut -f1)\` |"
+            echo ""
+            echo '```'
+            grep -E "Owner:|Issuer:|Valid from:|SHA256:" signer.txt | head -5
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          grep -E "Owner:|SHA256:" signer.txt | head -2
+          echo "::notice::Release-signed $PKG $VN ($VC) — fit to upload to Google Play."
+
       - uses: actions/upload-artifact@v4
         with:
-          name: lockinpoint-aab
+          # Named for what it is: the verified, release-signed Play bundle.
+          name: lockinpoint-release-aab
           path: build/app/outputs/bundle/release/app-release.aab
           retention-days: 30
           if-no-files-found: error
@@ -248,3 +441,152 @@ jobs:
             lockinpoint_*_amd64.deb
           retention-days: 30
           if-no-files-found: error
+
+  # ===========================================================================
+  # PERMANENT DOWNLOAD URLS.
+  #
+  # THE PROBLEM THIS SOLVES. Everything above ends as a WORKFLOW ARTIFACT, and
+  # a workflow artifact is not a download link: it expires after 30 days, it
+  # can only be fetched by someone signed in to GitHub with access to this
+  # repository, and its URL changes with every run. Pasting one into Admin
+  # would put a link on the landing page that dies in a month.
+  #
+  # A GITHUB RELEASE ASSET is the opposite: the URL is
+  #   https://github.com/<owner>/<repo>/releases/download/<tag>/<file>
+  # it never changes, it never expires, and on a public repository it needs no
+  # login. That is the URL to paste into Admin → App Distribution.
+  #
+  # WHEN THIS RUNS. Only for a tag push (v1.0.0, v1.0.1 …). A tag is the one
+  # thing that says "this build is the one people get" — running it on every
+  # manual dispatch would publish half-finished builds under a name students
+  # can reach.
+  #
+  # IF THE REPOSITORY IS PRIVATE these assets still exist but need a token to
+  # download, so they are not public links. Either make the repository public,
+  # or upload the files to object storage (Supabase Storage, Cloudflare R2, S3)
+  # and paste THAT url instead. The website does not care which — it shows
+  # whatever https url the row holds.
+  # ===========================================================================
+  publish:
+    needs: [android-bundle, ios-unsigned, web, windows, macos-desktop, linux]
+    # Never on a manual dispatch, and never if a platform failed: a release
+    # that is missing the Android build is worse than no release.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write        # the only write this workflow ever needs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: incoming
+
+      - name: Gather the files under names a human can read
+        id: gather
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/}"
+          V="${TAG#v}"
+          mkdir -p out
+
+          # download-artifact nests each artifact in its own directory; the
+          # release wants flat files with versioned names.
+          copy() { [ -f "$1" ] && cp "$1" "out/$2" && echo "  $2"; }
+          copy incoming/lockinpoint-release-aab/app-release.aab      "lockinpoint-$V.aab"
+          copy incoming/lockinpoint-release-apk/app-release.apk      "lockinpoint-$V.apk"
+          copy incoming/lockinpoint-unsigned-ipa/lockinpoint-unsigned.ipa "lockinpoint-$V-unsigned.ipa"
+          copy incoming/lockinpoint-windows/lockinpoint-windows.zip  "lockinpoint-$V-windows.zip"
+          copy incoming/lockinpoint-macos-dmg/lockinpoint-macos.dmg  "lockinpoint-$V-macos.dmg"
+          copy incoming/lockinpoint-linux/lockinpoint-linux-x64.tar.gz "lockinpoint-$V-linux-x64.tar.gz"
+          for d in incoming/lockinpoint-linux/lockinpoint_*_amd64.deb; do
+            [ -f "$d" ] && cp "$d" "out/lockinpoint_${V}_amd64.deb" && echo "  lockinpoint_${V}_amd64.deb"
+          done
+          # The web build is a directory, so it becomes one zip.
+          if [ -d incoming/lockinpoint-web ]; then
+            (cd incoming/lockinpoint-web && zip -qry "../../out/lockinpoint-$V-web.zip" .)
+            echo "  lockinpoint-$V-web.zip"
+          fi
+
+          test -n "$(ls -A out)" || { echo "nothing to publish"; exit 1; }
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the release and attach every file
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.gather.outputs.tag }}
+          V: ${{ steps.gather.outputs.version }}
+        run: |
+          set -euo pipefail
+          # gh is pre-installed on GitHub-hosted runners.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" out/* --clobber
+          else
+            gh release create "$TAG" out/* \
+              --title "LockInPoint $V" \
+              --notes "Automated build of $TAG. The .aab is for Google Play; everything else is a direct download. Desktop builds are unsigned."
+          fi
+
+      # ---------------------------------------------------------------------
+      # AND STRAIGHT ONTO THE WEBSITE, IF THE SECRETS ARE THERE.
+      #
+      # A GitHub Release asset on a PRIVATE repository is a 404 for anyone not
+      # signed in, so the release above is an archive, not a download link.
+      # This uploads the same files to the public `app` bucket in Supabase
+      # Storage — permanent, loginless URLs — and registers them in
+      # app_downloads, which is what the landing page reads.
+      #
+      # Skipped, loudly, when the secrets are absent: a release that half
+      # happened must say which half.
+      # ---------------------------------------------------------------------
+      - name: Publish the downloads to Supabase Storage
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          V: ${{ steps.gather.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+            echo "::warning::SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are not set, so the files were NOT published to the website. The GitHub Release above needs a login to download."
+            echo "### Downloads were not published" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Add the repository secrets \`SUPABASE_URL\` and \`SUPABASE_SERVICE_ROLE_KEY\` and re-run this job to put these files on the website." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # The publisher lives in THIS repository, beside the builds it
+          # uploads. An earlier draft fetched it from the website repository
+          # to avoid two copies; that needs a cross-repo token this workflow
+          # does not have, and a release step that depends on a token nobody
+          # created is a release step that fails on the day it matters.
+          ./scripts/publish-artifacts.sh --register "$V" out/*
+          {
+            echo "## The website has been updated"
+            echo ""
+            echo "Every platform above is now live on the landing page. Nothing to paste."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Print the exact URLs to paste into Admin
+        env:
+          TAG: ${{ steps.gather.outputs.tag }}
+        run: |
+          set -euo pipefail
+          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          {
+            echo "## Permanent download URLs"
+            echo ""
+            echo "Paste these into **Admin → App Distribution**, then switch the platform to"
+            echo "*available*. Nothing needs to be rebuilt or redeployed — the website reads"
+            echo "these links on every page load."
+            echo ""
+            echo "| file | url |"
+            echo "| --- | --- |"
+            for f in out/*; do
+              n=$(basename "$f")
+              echo "| \`$n\` | \`$BASE/$n\` |"
+            done
+            echo ""
+            echo "> If this repository is PRIVATE these urls require a GitHub login and are"
+            echo "> not usable as public download links. Make the repository public, or"
+            echo "> re-host the files on object storage and paste that url instead."
+          } >> "$GITHUB_STEP_SUMMARY"

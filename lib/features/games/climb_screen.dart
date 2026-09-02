@@ -10,6 +10,7 @@ import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
 import '../activation/activation_screen.dart';
+import '../tutor/tutor_screen.dart';
 import 'games_repository.dart';
 
 /// ===========================================================================
@@ -213,9 +214,19 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
   String? _revealed;
   String? _picked;
   bool _busy = false;
+
+  /// Double Dip has been spent and is waiting to absorb one wrong answer.
+  /// Without this the server never hears `secondGuess` and the lifeline is
+  /// bought for nothing.
+  bool _dipArmed = false;
   Map<String, int>? _classSays;
   int _left = 0;
   Timer? _clock;
+
+  /// The question the student is looking at, so Ask Lumi is about THIS rung
+  /// rather than the game in general. Null when the server did not name one,
+  /// in which case Lumi opens as a plain chat.
+  String? get _currentQuestionId => _s.questionId;
 
   @override
   void initState() {
@@ -230,11 +241,23 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
     super.dispose();
   }
 
-  void _armClock() {
+  /// Start, or resume, the rung clock.
+  ///
+  /// `restart: false` PICKS THE CLOCK BACK UP WHERE IT WAS. This was always an
+  /// unconditional reset, so spending a lifeline handed the student a fresh
+  /// full allocation of seconds — a way to buy time three times a game, in a
+  /// mode whose entire point is that time is scarce. A new question deserves a
+  /// new clock; reading a fifty-fifty does not.
+  void _armClock({bool restart = true}) {
     _clock?.cancel();
+    _clock = null;
     final secs = _s.seconds;
     if (secs == null || !_s.playing) return;
-    setState(() => _left = secs);
+    if (restart) {
+      setState(() => _left = secs);
+    } else if (_left <= 0) {
+      return;
+    }
     _clock = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return t.cancel();
       setState(() => _left--);
@@ -261,36 +284,60 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
         _s.id,
         letter,
         timeLeft: _s.seconds == null ? null : _left,
-        secondGuess: second,
+        // The FIRST wrong answer after arming the dip is the one the server
+        // must be told about; a second wrong answer really does end it.
+        secondGuess: second || _dipArmed,
       );
       if (!mounted) return;
 
-      if (!a.correct && a.dipRemaining == false && a.right == null) {
-        // Double Dip is live: wrong, but the game has not ended and the
-        // server has deliberately not said what the answer is.
+      if (!a.correct && a.right == null) {
+        // Double Dip absorbed it: wrong, the game continues, and the server
+        // has deliberately not said what the answer is — so the second guess
+        // is still a guess.
         setState(() {
+          _dipArmed = false;
           _message = 'Not that one. Your double dip gives you one more try.';
           _picked = null;
           _busy = false;
         });
+        _armClock();
         return;
       }
 
       setState(() {
         _revealed = a.right;
         _message = a.explanation;
+        _dipArmed = false;
         if (a.state != null) _s = a.state!;
         _busy = false;
       });
 
+      /* A LOST CLIMB STILL TEACHES. The ending screen used to replace the
+         question the instant a wrong answer landed, so the student never saw
+         which option was right — even though the server had just sent it.
+         Hold the reveal on screen first. */
+      if (!_s.playing && a.right != null) {
+        await Future<void>.delayed(const Duration(milliseconds: 2200));
+        if (!mounted) return;
+        setState(() {});
+      }
+
       if (_s.playing) {
         // A beat to read the explanation, then the next rung.
+        /* THE READING BEAT IS A PAUSE, NOT A WINDOW. The next rung used to
+           arrive with the PREVIOUS question's explanation still under it and
+           its options already live — a tap in that gap was silently wiped by
+           the delayed reset. _busy holds through the beat, so the options
+           stay inert until the new question is really on screen. */
+        setState(() => _busy = true);
         await Future<void>.delayed(const Duration(milliseconds: 1400));
         if (!mounted) return;
         setState(() {
           _picked = null;
           _revealed = null;
           _classSays = null;
+          _message = '';
+          _busy = false;
         });
         _armClock();
       }
@@ -306,36 +353,77 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
 
   Future<void> _spend(String which) async {
     final api = ref.read(apiProvider);
+    final navigator = Navigator.of(context);
+
+    /* ASK LUMI IS A CONVERSATION, NOT A PAYLOAD. The route says so in its own
+       comment — "Lumi is answered by the chat panel" — and returns only a
+       state. The app was hunting a hint key that is never sent, so the
+       lifeline vanished and showed nothing at all. It now spends the lifeline
+       and OPENS Lumi on this very question. */
+    /* THE CLOCK STOPS WHILE A LIFELINE IS BEING SPENT — and, above all, while
+       Lumi is open on top of this screen. It used to keep ticking behind the
+       tutor, so a student who paid a lifeline for a hint could be timed out
+       and lose the climb while reading the hint they had just bought. */
+    final wasOnQuestion = _currentQuestionId;
+    _clock?.cancel();
+    _clock = null;
     setState(() => _busy = true);
     try {
-      final res = await ClimbApi(api).lifeline(_s.id, which);
+      final vote = await ClimbApi(api).lifeline(_s.id, which);
       if (!mounted) return;
       setState(() {
-        final st = res['state'];
-        if (st is Map) _s = ClimbState.from(st.cast<String, dynamic>());
-        // Ask the class comes back as a distribution; Ask Lumi as a sentence.
-        final dist = res['distribution'] ?? res['class'];
-        if (dist is Map) {
-          _classSays = {
-            for (final e in dist.entries) '${e.key}': (e.value as num).toInt(),
-          };
+        if (vote?.state != null) _s = vote!.state!;
+        if (vote?.percentages != null) {
+          _classSays = vote!.percentages;
+          _message = vote.real
+              ? 'How ${vote.sample} students answered this one.'
+              : 'Too few students have met this question — that split is an '
+                    'estimate, not a crowd.';
         }
-        final hint = res['hint'] ?? res['answer'] ?? res['message'];
-        if (hint is String && hint.isNotEmpty) _message = hint;
+        /* DOUBLE DIP IS ARMED, and the student is told. The server only
+           honours a second guess when the app SENDS secondGuess, which it
+           never did — so the earned lifeline protected nothing and the next
+           wrong answer still ended the climb. */
+        if (which == 'doubledip') {
+          _dipArmed = true;
+          _message = 'Double dip is live: your next answer gets a second try.';
+        }
         _busy = false;
       });
-      _armClock();
+
+      if (which == 'lumi') {
+        await navigator.push<void>(
+          MaterialPageRoute(
+            builder: (_) => TutorScreen(
+              questionId: _currentQuestionId,
+              opening:
+                  'Give me a hint for this question — do not tell me the '
+                  'answer outright.',
+            ),
+          ),
+        );
+      }
+      // Switching the question earns a fresh clock. Everything else resumes.
+      _armClock(restart: _currentQuestionId != wasOnQuestion);
     } on ApiFailure catch (e) {
       if (!mounted) return;
       setState(() {
         _message = e.message;
         _busy = false;
       });
+      // A failed lifeline must not be worth a clock either.
+      _armClock(restart: false);
     }
   }
 
   Future<void> _placeNet() async {
     final api = ref.read(apiProvider);
+    /* A SHEET THAT BLOCKS ANSWERING MUST NOT BURN THE CLOCK. Placing a net is
+       a deliberate wager taken with a sheet covering the question; the clock
+       kept running underneath it, so thinking about the net could time the
+       student out of a rung they never got to answer. */
+    _clock?.cancel();
+    _clock = null;
     final chosen = await showModalBottomSheet<int>(
       context: context,
       builder: (ctx) {
@@ -372,7 +460,11 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
         );
       },
     );
-    if (chosen == null || !mounted) return;
+    if (!mounted) return;
+    if (chosen == null) {
+      _armClock(restart: false);
+      return;
+    }
     try {
       final st = await ClimbApi(api).setNet(_s.id, chosen);
       if (!mounted) return;
@@ -381,10 +473,15 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
       if (!mounted) return;
       setState(() => _message = e.message);
     }
+    _armClock(restart: false);
   }
 
   Future<void> _walk() async {
     final api = ref.read(apiProvider);
+    // Same rule: a confirmation the student cannot answer through does not
+    // get to spend their seconds.
+    _clock?.cancel();
+    _clock = null;
     final sure = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -402,7 +499,11 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
         ],
       ),
     );
-    if (sure != true || !mounted) return;
+    if (!mounted) return;
+    if (sure != true) {
+      _armClock(restart: false);
+      return;
+    }
     _clock?.cancel();
     try {
       final st = await ClimbApi(api).walk(_s.id);
@@ -419,100 +520,110 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
     final c = context.lip;
     if (!_s.playing) return _ending(c);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Rung ${_s.rung} of ${_s.total}'),
-        actions: [
-          TextButton(
-            onPressed: _busy ? null : _walk,
-            child: const Text('Walk'),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _header(c),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(
-                  Gap.lg,
-                  Gap.md,
-                  Gap.lg,
-                  Gap.huge,
-                ),
-                children: [
-                  Text(
-                    _s.question,
-                    style: LipType.question.copyWith(
-                      color: c.text1,
-                      height: 1.45,
-                    ),
+    return PopScope(
+      /* A LIVE CLIMB IS NOT ABANDONED BY ACCIDENT. Back used to drop a
+         server-graded game on the floor: points gone, the game still
+         "playing" on the server, no way back into it. Walking away is a
+         decision with a number attached, so it is made deliberately. */
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !_busy) _walk();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('Rung ${_s.rung} of ${_s.total}'),
+          actions: [
+            TextButton(
+              onPressed: _busy ? null : _walk,
+              child: const Text('Walk'),
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: Column(
+            children: [
+              _header(c),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(
+                    Gap.lg,
+                    Gap.md,
+                    Gap.lg,
+                    Gap.huge,
                   ),
-                  const SizedBox(height: Gap.lg),
-                  ..._s.options.map((o) {
-                    final chosen = _picked == o.letter;
-                    final right = _revealed == o.letter;
-                    final wrongPick = chosen && _revealed != null && !right;
-                    final share = _classSays?[o.letter];
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: Gap.sm),
-                      child: GlassSurface(
-                        tier: GlassTier.raised,
-                        selected: chosen && _revealed == null,
-                        padding: const EdgeInsets.all(Gap.md),
-                        onTap: _busy ? null : () => _answer(o.letter),
-                        child: Row(
-                          children: [
-                            Text(
-                              '${o.letter}. ',
-                              style: LipType.option.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: right
-                                    ? c.success
-                                    : wrongPick
-                                    ? c.danger
-                                    : c.text3,
-                              ),
-                            ),
-                            Expanded(
-                              child: Text(
-                                o.text,
+                  children: [
+                    Text(
+                      _s.question,
+                      style: LipType.question.copyWith(
+                        color: c.text1,
+                        height: 1.45,
+                      ),
+                    ),
+                    const SizedBox(height: Gap.lg),
+                    ..._s.options.map((o) {
+                      final chosen = _picked == o.letter;
+                      final right = _revealed == o.letter;
+                      final wrongPick = chosen && _revealed != null && !right;
+                      final share = _classSays?[o.letter];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: Gap.sm),
+                        child: GlassSurface(
+                          tier: GlassTier.raised,
+                          selected: chosen && _revealed == null,
+                          padding: const EdgeInsets.all(Gap.md),
+                          onTap: _busy ? null : () => _answer(o.letter),
+                          child: Row(
+                            children: [
+                              Text(
+                                '${o.letter}. ',
                                 style: LipType.option.copyWith(
+                                  fontWeight: FontWeight.w700,
                                   color: right
                                       ? c.success
                                       : wrongPick
                                       ? c.danger
-                                      : c.text1,
+                                      : c.text3,
                                 ),
                               ),
-                            ),
-                            if (share != null)
-                              LipChip('$share%', tone: ChipTone.neutral),
-                          ],
+                              Expanded(
+                                child: Text(
+                                  o.text,
+                                  style: LipType.option.copyWith(
+                                    color: right
+                                        ? c.success
+                                        : wrongPick
+                                        ? c.danger
+                                        : c.text1,
+                                  ),
+                                ),
+                              ),
+                              if (share != null)
+                                LipChip('$share%', tone: ChipTone.neutral),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                    if (_message.isNotEmpty) ...[
+                      const SizedBox(height: Gap.md),
+                      GlassSurface(
+                        tier: GlassTier.deep,
+                        child: Text(
+                          _message,
+                          style: LipType.small.copyWith(
+                            color: c.text2,
+                            height: 1.5,
+                          ),
                         ),
                       ),
-                    );
-                  }),
-                  if (_message.isNotEmpty) ...[
-                    const SizedBox(height: Gap.md),
-                    GlassSurface(
-                      tier: GlassTier.deep,
-                      child: Text(
-                        _message,
-                        style: LipType.small.copyWith(
-                          color: c.text2,
-                          height: 1.5,
-                        ),
-                      ),
-                    ),
+                    ],
+                    const SizedBox(height: Gap.lg),
+                    _lifelines(c),
                   ],
-                  const SizedBox(height: Gap.lg),
-                  _lifelines(c),
-                ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

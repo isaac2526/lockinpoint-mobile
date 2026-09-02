@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
+import '../../core/speech.dart';
+import '../tutor/tutor_screen.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
 import '../../design/theme.dart';
@@ -51,6 +53,10 @@ class PracticeSessionScreen extends ConsumerStatefulWidget {
 }
 
 class _SessionState extends ConsumerState<PracticeSessionScreen> {
+  /// Questions this student has kept. Loaded once when the sitting opens so
+  /// the bookmark shows its real state instead of starting hollow.
+  final Set<String> _saved = <String>{};
+
   late int _idx = widget.sitting.questions.isEmpty
       ? 0
       : widget.sitting.initialIndex.clamp(
@@ -94,19 +100,39 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
   @override
   void initState() {
     super.initState();
+    /* Fire and forget, and INSULATED. A sitting must never wait on a
+       bookmark list — and must never fail to open because fetching one
+       threw. The paper is the point; the stars are a convenience. */
+    try {
+      ref.read(practiceRepositoryProvider).savedIds().then((ids) {
+        if (mounted) setState(() => _saved.addAll(ids));
+      }, onError: (_) {});
+    } catch (_) {
+      // No repository available (a widget test, a torn-down container).
+    }
     if (sitting.timed) {
       _deadline = widget.clock().add(Duration(seconds: sitting.duration));
-      _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (!mounted) return;
-        if (_left == 0) {
-          _tick?.cancel();
-          // Time is up. The paper goes in exactly as it would in the hall.
-          _submit(force: true);
-        } else {
-          setState(() {});
-        }
-      });
+      _startTicker();
     }
+  }
+
+  /// Repaint the clock once a second, and put the paper in when time is up.
+  ///
+  /// The deadline is a wall-clock instant, so stopping and starting this
+  /// costs the student nothing — which is what makes it safe to stop it while
+  /// a submit is in flight and start it again if that submit fails.
+  void _startTicker() {
+    _tick?.cancel();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (_left == 0) {
+        _tick?.cancel();
+        // Time is up. The paper goes in exactly as it would in the hall.
+        _submit(force: true);
+      } else {
+        setState(() {});
+      }
+    });
   }
 
   @override
@@ -145,6 +171,26 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
       if (_canMark) _checked[q.id] = true;
     });
     _queueSave();
+  }
+
+  Future<void> _toggleSaved() async {
+    final id = q.id;
+    final wasSaved = _saved.contains(id);
+    final repo = ref.read(practiceRepositoryProvider);
+    final messenger = ScaffoldMessenger.of(context);
+
+    // Optimistic: the star fills under the thumb, and rolls back if the
+    // server disagrees. A bookmark that waits on a round trip feels broken.
+    setState(() => wasSaved ? _saved.remove(id) : _saved.add(id));
+    try {
+      await repo.setSaved(id, !wasSaved);
+    } on ApiFailure catch (e) {
+      if (!mounted) return;
+      setState(() => wasSaved ? _saved.add(id) : _saved.remove(id));
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 
   void _go(int to) {
@@ -192,8 +238,25 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
       ref.invalidate(dashboardProvider);
     } on ApiFailure catch (e) {
       if (!mounted) return;
+      /* A FAILED SUBMIT MUST NOT COST THE PAPER.
+         Every answer is still held here, and the deadline is a wall-clock
+         instant that has not moved — so the clock starts again (the student
+         loses no time, and a timed paper still goes in by itself when the
+         time is up) and the snackbar carries a retry rather than vanishing
+         after four seconds and leaving a finished paper with nowhere to go. */
+      if (sitting.timed && _left > 0) _startTicker();
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.message)));
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text('${e.message} Your answers are still here.'),
+            duration: const Duration(seconds: 10),
+            action: SnackBarAction(
+              label: 'Try again',
+              onPressed: () => _submit(force: true),
+            ),
+          ),
+        );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -299,18 +362,40 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
     if (choice == 'submit') {
       await _submit(force: true);
     } else if (choice == 'leave') {
+      final messenger = ScaffoldMessenger.of(context);
       // The last answer goes up BEFORE the screen goes away.
-      await _saveNow();
+      var saved = true;
+      try {
+        await _saveNow();
+      } catch (_) {
+        saved = false;
+      }
       if (!mounted) return;
       ref.invalidate(dashboardProvider);
       Navigator.of(context).pop();
+      /* THE DIALOG PROMISED "your progress is saved" AND LEFT ANYWAY. On a
+         dead connection nothing reached the server, and on resume every
+         answer since the last successful autosave was silently gone. The
+         student is now told the truth on the way out. */
+      if (!saved) {
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text(
+                'No connection — the last few answers could not be saved.',
+              ),
+              duration: Duration(seconds: 5),
+            ),
+          );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     if (_result != null) {
-      return _ResultView(result: _result!, label: sitting.label);
+      return ResultView(result: _result!, label: sitting.label);
     }
     /* The server refuses to open an empty paper, so this is only reachable by
        resuming a sitting whose questions have since gone. Say so and let the
@@ -385,6 +470,40 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
                   ],
                 ),
               ),
+              /* THE SUBJECT RAIL. A four-subject UTME mock served as one
+                 undifferentiated stream of 180 questions is unusable: a
+                 candidate works subject by subject and needs to SEE where
+                 English ends and Physics begins. The server has sent the
+                 subjects list all along; the app dropped it. One chip per
+                 subject - the one you are inside is lit, tapping jumps to
+                 that subject's first question. Single-subject papers show
+                 nothing, because a rail of one is noise. */
+              if (sitting.subjects.length > 1)
+                SizedBox(
+                  height: 44,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: Gap.md),
+                    children: [
+                      for (final sub in sitting.subjects)
+                        Padding(
+                          padding: const EdgeInsets.only(right: Gap.sm),
+                          child: Center(
+                            child: LipChip(
+                              sub.name,
+                              selected: q.subjectId == sub.id,
+                              onTap: () {
+                                final first = sitting.questions.indexWhere(
+                                  (x) => x.subjectId == sub.id,
+                                );
+                                if (first >= 0) _go(first);
+                              },
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ClipRRect(
                 borderRadius: BorderRadius.circular(Radii.pill),
                 child: LinearProgressIndicator(
@@ -454,9 +573,66 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              LipHtml(
-                q.question,
-                baseStyle: LipType.question.copyWith(color: c.text1),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: LipHtml(
+                      q.question,
+                      baseStyle: LipType.question.copyWith(color: c.text1),
+                    ),
+                  ),
+                  /* READ IT ALOUD. Uses the device's own engine, so it costs
+                     nothing, needs no key, and works with the network off —
+                     which matters, because the offline vault is exactly where
+                     a student practising on a bus will use it. */
+                  /* THE BOOKMARK THE SAVED SCREEN KEPT PROMISING. Its
+                     empty state told students to "tap the bookmark on a
+                     question while you practise" — a button that existed on
+                     no screen, so an app-only student could never save
+                     anything and Practise-my-saved was permanently empty. */
+                  IconButton(
+                    tooltip: _saved.contains(q.id)
+                        ? 'Remove from saved'
+                        : 'Save this question',
+                    onPressed: _toggleSaved,
+                    icon: Icon(
+                      _saved.contains(q.id)
+                          ? Icons.bookmark_rounded
+                          : Icons.bookmark_border_rounded,
+                      size: 21,
+                      color: _saved.contains(q.id)
+                          ? context.lip.hues.lime.ink
+                          : context.lip.text3,
+                    ),
+                  ),
+                  if (speechSupported) _SpeakButton(question: q),
+                  /* ASK LUMI ABOUT THIS ONE. The entry point existed as a
+                     constructor parameter - TutorScreen(questionId) - and
+                     nothing in the app ever passed it, so the tutor could
+                     never be asked about the question in front of the
+                     student. Practice mode only, the same rule the website
+                     enforces: in a timed CBT the tutor stays outside the
+                     hall. The id alone travels - the server looks the
+                     question up itself and never surrenders the answer. */
+                  if (sitting.mode == 'practice')
+                    IconButton(
+                      tooltip: 'Ask Lumi about this question',
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => TutorScreen(
+                            questionId: q.id,
+                            opening: 'Help me with this question.',
+                          ),
+                        ),
+                      ),
+                      icon: Icon(
+                        Icons.smart_toy_rounded,
+                        size: 21,
+                        color: context.lip.hues.rose.ink,
+                      ),
+                    ),
+                ],
               ),
               if (q.mediaUrl('question') != null) ...[
                 const SizedBox(height: Gap.md),
@@ -846,8 +1022,11 @@ class _MediaImage extends StatelessWidget {
 }
 
 /// The graded end of a sitting: the score, per subject lines, and the way out.
-class _ResultView extends StatelessWidget {
-  const _ResultView({required this.result, required this.label});
+/// The graded paper. Public because the Results history reopens the SAME
+/// sheet for a sitting from last week — two correction screens would
+/// eventually disagree about a student's own marks.
+class ResultView extends StatelessWidget {
+  const ResultView({super.key, required this.result, required this.label});
 
   final SubmitResult result;
   final String label;
@@ -855,8 +1034,12 @@ class _ResultView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.lip;
-    final good = result.overall >= 70;
-    final mid = result.overall >= 50;
+    /* A JAMB MOCK IS OUT OF 400. Comparing a 265 against a 70 threshold
+       painted every mock green and printed "265%" in the circle. The
+       equivalent percentage keeps one meaning for the colour on both
+       scales. */
+    final good = result.percentEquivalent >= 70;
+    final mid = result.percentEquivalent >= 50;
     return Scaffold(
       body: SafeArea(
         child: ListView(
@@ -885,7 +1068,7 @@ class _ResultView extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  '${result.overall}%',
+                  result.headline,
                   style: LipType.monoBig.copyWith(
                     fontSize: 30,
                     color: good
@@ -897,6 +1080,21 @@ class _ResultView extends StatelessWidget {
                 ),
               ),
             ),
+            /* "265" IS NOT A SCORE UNTIL YOU SAY OUT OF WHAT.
+               A UTME mock scores on the 400 scale, and the repository has
+               carried that line since the day the scale was added — it was
+               simply never put on a screen. So the circle read as a bare
+               number, and a student had to know the scale to read their own
+               result. Nothing but a percentage says "out of 400". */
+            if (result.outOf != null) ...[
+              const SizedBox(height: Gap.sm),
+              Center(
+                child: Text(
+                  result.outOf!,
+                  style: LipType.smallStrong.copyWith(color: c.text2),
+                ),
+              ),
+            ],
             const SizedBox(height: Gap.lg),
             Center(
               child: Text(
@@ -964,6 +1162,41 @@ class _ResultView extends StatelessWidget {
               onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Speak this question, or stop if it is already speaking.
+///
+/// A ValueListenableBuilder rather than setState: the speaking flag changes
+/// when the ENGINE finishes, which can be a minute after the tap, and
+/// rebuilding the whole sitting for it would be wasteful.
+class _SpeakButton extends ConsumerWidget {
+  const _SpeakButton({required this.question});
+  final ServedQuestion question;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
+    final speech = ref.watch(speechProvider);
+
+    return ValueListenableBuilder<bool>(
+      valueListenable: speech.speaking,
+      builder: (_, speaking, _) => IconButton(
+        tooltip: speaking ? 'Stop reading' : 'Read this question aloud',
+        onPressed: () => speaking
+            ? speech.stop()
+            : speech.question(
+                question.question,
+                question.options,
+                question.letters,
+              ),
+        icon: Icon(
+          speaking ? Icons.stop_circle_rounded : Icons.volume_up_rounded,
+          size: 22,
+          color: speaking ? c.brand : c.text3,
         ),
       ),
     );

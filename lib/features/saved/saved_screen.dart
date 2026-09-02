@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
+import '../practice/practice_repository.dart';
+import '../practice/practice_session_screen.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
 import '../../design/theme.dart';
@@ -25,6 +27,32 @@ class SavedScreen extends ConsumerStatefulWidget {
 
 class _SavedScreenState extends ConsumerState<SavedScreen> {
   int _page = 1;
+  bool _busy = false;
+
+  /// Build a sitting from everything this student kept.
+  Future<void> _practise() async {
+    // Resolved before the gap: the screen can be popped while the server is
+    // still assembling the paper.
+    final repo = ref.read(practiceRepositoryProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    setState(() => _busy = true);
+    try {
+      final sitting = await repo.startFromSaved(count: 40);
+      if (!mounted) return;
+      await navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => PracticeSessionScreen(sitting: sitting),
+        ),
+      );
+    } on ApiFailure catch (e) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +60,20 @@ class _SavedScreenState extends ConsumerState<SavedScreen> {
     final page = ref.watch(savedQuestionsProvider(_page));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Saved questions')),
+      appBar: AppBar(
+        title: const Text('Saved questions'),
+        actions: [
+          /* PRACTISE THEM. The saved list existed and nothing turned it into a
+             paper, so the questions a student had marked as hard were the only
+             ones they could not sit as a set. */
+          if ((page.value?.questions.isNotEmpty ?? false))
+            TextButton.icon(
+              onPressed: _busy ? null : _practise,
+              icon: const Icon(Icons.play_arrow_rounded, size: 18),
+              label: const Text('Practise'),
+            ),
+        ],
+      ),
       body: SafeArea(
         child: page.when(
           loading: () => const Padding(
@@ -74,6 +115,13 @@ class _SavedScreenState extends ConsumerState<SavedScreen> {
                       );
                     }
                     return _SavedCard(
+                      /* KEYED BY THE QUESTION, NOT THE SLOT. Without this,
+                         removing one saved question handed its State - busy
+                         flag stuck true, expanded flag and all - to whatever
+                         question slid into that position: an identical-looking
+                         bookmark button that was dead forever, and an answer
+                         revealed on a question nobody tapped. */
+                      key: ValueKey(p.questions[i].id),
                       q: p.questions[i],
                       onRemoved: () {
                         ref.invalidate(savedQuestionsProvider(_page));
@@ -96,7 +144,7 @@ class _SavedScreenState extends ConsumerState<SavedScreen> {
 }
 
 class _SavedCard extends ConsumerStatefulWidget {
-  const _SavedCard({required this.q, required this.onRemoved});
+  const _SavedCard({super.key, required this.q, required this.onRemoved});
   final SavedQuestion q;
   final VoidCallback onRemoved;
 
@@ -111,11 +159,29 @@ class _SavedCardState extends ConsumerState<_SavedCard> {
   Future<void> _remove() async {
     final api = ref.read(apiProvider);
     setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
     try {
       await unsaveQuestion(api, widget.q.id);
       widget.onRemoved();
+    } on ApiFailure catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      /* A FAILED REMOVE MUST NOT LOOK LIKE A DEAD BUTTON. It used to reset
+         the busy flag and say nothing at all, so a student offline tapped it
+         over and over, concluding the app was broken. */
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
-      if (mounted) setState(() => _busy = false);
+      if (!mounted) return;
+      setState(() => _busy = false);
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Could not remove that one. Try again.'),
+          ),
+        );
     }
   }
 

@@ -62,11 +62,47 @@ void main() {
     expect(find.text('WAEC'), findsOneWidget);
   });
 
+  testWidgets('JAMB forks FIRST: one subject, or the full UTME mock', (
+    tester,
+  ) async {
+    /* The old flow dropped a JAMB candidate straight into single-subject
+       practice - the wrong flow for the one exam this product is named for.
+       The fork is now the contract: tapping JAMB must offer both roads. */
+    await _pump(tester);
+    await tester.tap(find.text('JAMB'));
+    await tester.pumpAndSettle();
+    expect(find.text('Practise one subject'), findsOneWidget);
+    expect(find.text('Full UTME mock - 4 subjects'), findsOneWidget);
+  });
+
+  testWidgets('the combination locks English and demands exactly three', (
+    tester,
+  ) async {
+    await _pump(tester);
+    await tester.tap(find.text('JAMB'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Full UTME mock - 4 subjects'));
+    await tester.pumpAndSettle();
+
+    // English is not a choice - it is the constant of every UTME paper.
+    expect(find.text('Use of English - always in'), findsOneWidget);
+    // With nothing picked, the start button says what is missing instead of
+    // sitting there enabled and doing nothing when tapped.
+    expect(find.textContaining('Pick 3 more'), findsOneWidget);
+
+    await tester.tap(find.text('Mathematics'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Pick 2 more'), findsOneWidget);
+  });
+
   testWidgets('exam leads to subjects, subject leads to the ways in', (
     tester,
   ) async {
     await _pump(tester);
     await tester.tap(find.text('JAMB'));
+    await tester.pumpAndSettle();
+    // Through the fork's single-subject road.
+    await tester.tap(find.text('Practise one subject'));
     await tester.pumpAndSettle();
     expect(find.text('Step 2 of 3'), findsOneWidget);
     expect(find.text('Mathematics'), findsOneWidget);
@@ -87,6 +123,8 @@ void main() {
   ) async {
     await _pump(tester);
     await tester.tap(find.text('JAMB'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Practise one subject'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Mathematics'));
     await tester.pumpAndSettle();
