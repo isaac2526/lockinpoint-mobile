@@ -441,3 +441,114 @@ jobs:
             lockinpoint_*_amd64.deb
           retention-days: 30
           if-no-files-found: error
+
+  # ===========================================================================
+  # PERMANENT DOWNLOAD URLS.
+  #
+  # THE PROBLEM THIS SOLVES. Everything above ends as a WORKFLOW ARTIFACT, and
+  # a workflow artifact is not a download link: it expires after 30 days, it
+  # can only be fetched by someone signed in to GitHub with access to this
+  # repository, and its URL changes with every run. Pasting one into Admin
+  # would put a link on the landing page that dies in a month.
+  #
+  # A GITHUB RELEASE ASSET is the opposite: the URL is
+  #   https://github.com/<owner>/<repo>/releases/download/<tag>/<file>
+  # it never changes, it never expires, and on a public repository it needs no
+  # login. That is the URL to paste into Admin → App Distribution.
+  #
+  # WHEN THIS RUNS. Only for a tag push (v1.0.0, v1.0.1 …). A tag is the one
+  # thing that says "this build is the one people get" — running it on every
+  # manual dispatch would publish half-finished builds under a name students
+  # can reach.
+  #
+  # IF THE REPOSITORY IS PRIVATE these assets still exist but need a token to
+  # download, so they are not public links. Either make the repository public,
+  # or upload the files to object storage (Supabase Storage, Cloudflare R2, S3)
+  # and paste THAT url instead. The website does not care which — it shows
+  # whatever https url the row holds.
+  # ===========================================================================
+  publish:
+    needs: [android-bundle, ios-unsigned, web, windows, macos-desktop, linux]
+    # Never on a manual dispatch, and never if a platform failed: a release
+    # that is missing the Android build is worse than no release.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write        # the only write this workflow ever needs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: incoming
+
+      - name: Gather the files under names a human can read
+        id: gather
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/}"
+          V="${TAG#v}"
+          mkdir -p out
+
+          # download-artifact nests each artifact in its own directory; the
+          # release wants flat files with versioned names.
+          copy() { [ -f "$1" ] && cp "$1" "out/$2" && echo "  $2"; }
+          copy incoming/lockinpoint-release-aab/app-release.aab      "lockinpoint-$V.aab"
+          copy incoming/lockinpoint-release-apk/app-release.apk      "lockinpoint-$V.apk"
+          copy incoming/lockinpoint-unsigned-ipa/lockinpoint-unsigned.ipa "lockinpoint-$V-unsigned.ipa"
+          copy incoming/lockinpoint-windows/lockinpoint-windows.zip  "lockinpoint-$V-windows.zip"
+          copy incoming/lockinpoint-macos-dmg/lockinpoint-macos.dmg  "lockinpoint-$V-macos.dmg"
+          copy incoming/lockinpoint-linux/lockinpoint-linux-x64.tar.gz "lockinpoint-$V-linux-x64.tar.gz"
+          for d in incoming/lockinpoint-linux/lockinpoint_*_amd64.deb; do
+            [ -f "$d" ] && cp "$d" "out/lockinpoint_${V}_amd64.deb" && echo "  lockinpoint_${V}_amd64.deb"
+          done
+          # The web build is a directory, so it becomes one zip.
+          if [ -d incoming/lockinpoint-web ]; then
+            (cd incoming/lockinpoint-web && zip -qry "../../out/lockinpoint-$V-web.zip" .)
+            echo "  lockinpoint-$V-web.zip"
+          fi
+
+          test -n "$(ls -A out)" || { echo "nothing to publish"; exit 1; }
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the release and attach every file
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.gather.outputs.tag }}
+          V: ${{ steps.gather.outputs.version }}
+        run: |
+          set -euo pipefail
+          # gh is pre-installed on GitHub-hosted runners.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" out/* --clobber
+          else
+            gh release create "$TAG" out/* \
+              --title "LockInPoint $V" \
+              --notes "Automated build of $TAG. The .aab is for Google Play; everything else is a direct download. Desktop builds are unsigned."
+          fi
+
+      - name: Print the exact URLs to paste into Admin
+        env:
+          TAG: ${{ steps.gather.outputs.tag }}
+        run: |
+          set -euo pipefail
+          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          {
+            echo "## Permanent download URLs"
+            echo ""
+            echo "Paste these into **Admin → App Distribution**, then switch the platform to"
+            echo "*available*. Nothing needs to be rebuilt or redeployed — the website reads"
+            echo "these links on every page load."
+            echo ""
+            echo "| file | url |"
+            echo "| --- | --- |"
+            for f in out/*; do
+              n=$(basename "$f")
+              echo "| \`$n\` | \`$BASE/$n\` |"
+            done
+            echo ""
+            echo "> If this repository is PRIVATE these urls require a GitHub login and are"
+            echo "> not usable as public download links. Make the repository public, or"
+            echo "> re-host the files on object storage and paste that url instead."
+          } >> "$GITHUB_STEP_SUMMARY"
