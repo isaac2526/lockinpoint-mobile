@@ -9,6 +9,7 @@ import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
 import 'progress_repository.dart';
+import 'topics_repository.dart';
 import 'results_screen.dart';
 
 /// ===========================================================================
@@ -138,6 +139,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             ),
           ),
         ),
+
+        const SizedBox(height: Gap.lg),
+        /* WHICH TOPIC, NOT WHICH SUBJECT. Everything above this line says a
+           student's Chemistry is at 61%; this says their Mole Concept is at
+           22% and the rest is fine, which is the only version of the number
+           they can act on tonight. The endpoint has served it all along. */
+        const _WeakTopics(),
 
         const SizedBox(height: Gap.lg),
         const LipLabel('Where your marks are going'),
@@ -294,4 +302,104 @@ class _TrendPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_TrendPainter old) => old.values != values;
+}
+
+/// ===========================================================================
+/// THE TOPICS COSTING THE MARKS.
+///
+/// Silent when there is nothing honest to say. A topic seen fewer than the
+/// backend's minimum is listed as unproven rather than drawn as a confident
+/// red bar — a student who abandons a topic they were fine at, because the
+/// app judged them off two questions, has been actively harmed.
+/// ===========================================================================
+class _WeakTopics extends ConsumerWidget {
+  const _WeakTopics();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
+    final topics = ref.watch(topicStrengthProvider);
+
+    return topics.when(
+      // No skeleton and no error: this is one section of a page that is
+      // already useful without it. A red box here would be louder than the
+      // information is worth.
+      loading: () => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
+      data: (t) {
+        if (t.isEmpty) return const SizedBox.shrink();
+        final weak = t.weakest.take(5).toList();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const LipLabel('Topics to revise first'),
+            const SizedBox(height: Gap.sm),
+            GlassSurface(
+              tier: GlassTier.card,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (weak.isEmpty)
+                    Text(
+                      'Nothing is weak enough to single out yet. Sit a few '
+                      'more papers and the worst topics will surface here.',
+                      style: LipType.caption.copyWith(color: c.text3),
+                    ),
+                  for (final row in weak)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: Gap.sm),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  row.topic,
+                                  style: LipType.body.copyWith(color: c.text1),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  '${row.subject} · ${row.correct} of '
+                                  '${row.seen} right',
+                                  style: LipType.caption.copyWith(
+                                    color: c.text3,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: Gap.md),
+                          Text(
+                            '${row.percent.round()}%',
+                            style: LipType.bodyStrong.copyWith(
+                              color: row.percent < 40
+                                  ? c.hues.rose.ink
+                                  : row.percent < 65
+                                  ? c.hues.amber.ink
+                                  : c.hues.green.ink,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (t.unproven.isNotEmpty) ...[
+                    const SizedBox(height: Gap.xs),
+                    Text(
+                      'Not judged yet: '
+                      '${t.unproven.take(6).map((u) => u.topic).join(', ')}'
+                      '${t.unproven.length > 6 ? ' and more' : ''}. '
+                      'Fewer than ${t.minSeen} questions each — too few to '
+                      'call. Practise them to find out.',
+                      style: LipType.caption.copyWith(color: c.text3),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }

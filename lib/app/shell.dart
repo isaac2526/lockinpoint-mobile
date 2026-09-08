@@ -9,6 +9,7 @@ import '../design/tokens.dart';
 import '../design/typography.dart';
 import '../design/wordmark.dart';
 import '../features/activation/activation_screen.dart';
+import '../features/activity/activity_screen.dart';
 import '../features/career/career_screen.dart';
 import '../features/classroom/classroom_screen.dart';
 import '../features/games/games_screen.dart';
@@ -18,8 +19,10 @@ import '../features/home/dashboard_screen.dart';
 import '../features/home/feature_catalogue.dart';
 import '../features/leaderboard/leaderboard_screen.dart';
 import '../features/notifications/notifications_screen.dart';
+import '../features/plan/plan_screen.dart';
 import '../features/practice/practice_flow_screen.dart';
 import '../features/profile/profile_screen.dart';
+import '../features/rounds/rounds_screen.dart';
 import '../features/progress/analysis_screen.dart';
 import '../features/progress/results_screen.dart';
 import '../features/saved/saved_screen.dart';
@@ -266,7 +269,22 @@ class _LipDrawer extends ConsumerWidget {
                   icon: Icons.insights_rounded,
                   hue: FeatureHue.indigo,
                   title: 'Performance analysis',
+                  subtitle: 'And the topics costing you marks',
                   onTap: () => go(const AnalysisScreen()),
+                ),
+                _Row(
+                  icon: Icons.event_note_rounded,
+                  hue: FeatureHue.amber,
+                  title: 'Study plan',
+                  subtitle: 'Fourteen days from your own weak topics',
+                  onTap: () => go(const PlanScreen()),
+                ),
+                _Row(
+                  icon: Icons.emoji_events_rounded,
+                  hue: FeatureHue.purple,
+                  title: 'The Challenge',
+                  subtitle: 'Competition rounds and past winners',
+                  onTap: () => go(const RoundsScreen()),
                 ),
                 // No device to store packs on means no row offering to.
                 if (!kIsWeb)
@@ -294,6 +312,13 @@ class _LipDrawer extends ConsumerWidget {
                   hue: FeatureHue.amber,
                   title: 'Notifications',
                   onTap: () => go(const NotificationsScreen()),
+                ),
+                _Row(
+                  icon: Icons.history_rounded,
+                  hue: FeatureHue.slate,
+                  title: 'Your activity',
+                  subtitle: 'Everything you have done here',
+                  onTap: () => go(const ActivityScreen()),
                 ),
                 /* SIGN OUT BELONGS WHERE A STUDENT LOOKS FOR IT. There was
                    no way out of the app from anywhere except the profile tab,
