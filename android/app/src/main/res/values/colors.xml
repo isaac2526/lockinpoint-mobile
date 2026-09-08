@@ -1,4 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  THE COLOUR BEHIND THE FIRST FRAME.
+
+  The launch window used to be @android:color/white with the logo commented
+  out — the Flutter template's untouched default. So opening the app showed a
+  bare white rectangle with nothing on it, then the real splash: a white flash
+  on every launch, and on a phone in dark mode a bright one.
+
+  These are the app's own surface colours, so the window that appears before
+  Flutter has drawn anything is already the app's background rather than a
+  stranger's.
+-->
 <resources>
-    <color name="ic_launcher_background">#0F2C86</color>
+    <color name="lipSurface">#F6F8FC</color>
 </resources>

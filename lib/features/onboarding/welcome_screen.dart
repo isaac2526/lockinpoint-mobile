@@ -235,13 +235,20 @@ class _PanelView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.lip;
-    /* Scrollable, and centred only when there is room to centre in. A short
-       phone or a large accessibility font must never overflow the panel. */
+    /* CENTRED, NOT RAGGED LEFT.
+
+       Every child here was CrossAxisAlignment.start, so the very first screen
+       of the app — the one a student meets before they have any reason to
+       trust it — was a column of shapes pinned to the left edge with a wide
+       empty gutter down the right. On a phone that reads as unfinished.
+
+       Still scrollable and still only centred vertically when there is room:
+       a short phone or a large accessibility font must never overflow. */
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: Gap.xl, vertical: Gap.lg),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Entrance(
             child: Container(
@@ -263,16 +270,25 @@ class _PanelView extends StatelessWidget {
           Entrance(
             index: 1,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Text(
                   panel.eyebrow.toUpperCase(),
+                  textAlign: TextAlign.center,
                   style: LipType.label.copyWith(color: c.accent),
                 ),
                 const SizedBox(height: Gap.sm),
-                Text(panel.title, style: LipType.hero.copyWith(color: c.text1)),
+                Text(
+                  panel.title,
+                  textAlign: TextAlign.center,
+                  style: LipType.hero.copyWith(color: c.text1),
+                ),
                 const SizedBox(height: Gap.md),
-                Text(panel.body, style: LipType.body.copyWith(color: c.text2)),
+                Text(
+                  panel.body,
+                  textAlign: TextAlign.center,
+                  style: LipType.body.copyWith(color: c.text2, height: 1.55),
+                ),
               ],
             ),
           ),
@@ -291,15 +307,17 @@ class _PanelView extends StatelessWidget {
                         horizontal: Gap.sm,
                       ),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Text(
                             n,
+                            textAlign: TextAlign.center,
                             style: LipType.monoBig.copyWith(color: c.brand),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             label,
+                            textAlign: TextAlign.center,
                             style: LipType.caption.copyWith(color: c.text3),
                           ),
                         ],

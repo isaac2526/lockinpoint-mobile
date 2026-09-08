@@ -41,8 +41,38 @@ const _student = {
     'streak': 3,
   },
   'counts': {'questions': 100, 'attempts': 2, 'notes': 5},
+  // The home screen leads with the STUDENT's numbers now, not the platform's.
+  'you': {
+    'accuracy': 68,
+    'answered': 240,
+    'sittings': 2,
+    'dueToday': 3,
+    'bestStreak': 12,
+  },
   'resume': null,
 };
+
+/// Mounts the real dashboard against a fixed payload, with the providers it
+/// reaches for stubbed out so the test is about layout and not the network.
+Future<void> pumpDashboard(WidgetTester tester) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        dashboardProvider.overrideWith(() => _FakeDashboard(_student)),
+        featureTilesProvider.overrideWith((ref) async => const []),
+        carouselProvider.overrideWith((ref) async => const []),
+        supportContactsProvider.overrideWith((ref) async => const []),
+      ],
+      child: MaterialApp(
+        theme: LipTheme.light(),
+        home: const DashboardScreen(),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  await tester.pump(const Duration(seconds: 1));
+  await tester.pumpAndSettle();
+}
 
 Future<void> _pumpGrid(
   WidgetTester tester, {
@@ -66,6 +96,11 @@ Future<void> _pumpGrid(
 }
 
 void main() {
+  group(
+    'the home screen shows the student, not the platform',
+    _theirOwnNumbers,
+  );
+
   group('the grid is colourful, not blue', () {
     testWidgets('renders every feature the app knows', (tester) async {
       await _pumpGrid(tester);
@@ -229,5 +264,43 @@ void main() {
       expect(find.byTooltip('Menu'), findsOneWidget);
       expect(find.byTooltip('Notifications'), findsOneWidget);
     });
+  });
+}
+
+/// ===========================================================================
+/// THE HOME SCREEN SHOWS THE STUDENT, NOT THE PLATFORM.
+///
+/// It used to lead with "100 questions live" and "5 notes & videos" — the size
+/// of the bank. That is a sales figure: identical for every student, identical
+/// tomorrow, and nothing they can act on. These hold the replacement.
+/// ===========================================================================
+void _theirOwnNumbers() {
+  testWidgets('the platform question count is gone from the home screen', (
+    tester,
+  ) async {
+    await pumpDashboard(tester);
+    expect(find.text('questions live'), findsNothing);
+    expect(find.text('notes & videos'), findsNothing);
+  });
+
+  testWidgets('their accuracy, sittings and best streak are there instead', (
+    tester,
+  ) async {
+    await pumpDashboard(tester);
+    expect(find.text('your accuracy'), findsOneWidget);
+    expect(find.text('68%'), findsOneWidget);
+    expect(find.text('sittings done'), findsOneWidget);
+    expect(find.text('best streak'), findsOneWidget);
+    expect(find.text('12'), findsOneWidget);
+  });
+
+  testWidgets('what the plan says to do today names a next action', (
+    tester,
+  ) async {
+    await pumpDashboard(tester);
+    expect(
+      find.text('3 tasks from your study plan are waiting'),
+      findsOneWidget,
+    );
   });
 }

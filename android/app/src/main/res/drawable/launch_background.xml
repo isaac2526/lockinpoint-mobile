@@ -1,12 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Modify this file to customize your launch splash screen -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@android:color/white" />
+<!--
+  THE MARK, CENTRED, ON THE APP'S OWN BACKGROUND.
 
-    <!-- You can insert your own image assets here -->
-    <!-- <item>
+  This file shipped as the Flutter template left it: a white rectangle with
+  the bitmap commented out. Nothing was centred on it because nothing was on
+  it. android:gravity="center" is what actually puts the mark in the middle of
+  the window, at every screen size, before a single line of Dart has run.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/lipSurface" />
+    <item>
         <bitmap
             android:gravity="center"
-            android:src="@mipmap/launch_image" />
-    </item> -->
+            android:src="@drawable/launch_image" />
+    </item>
 </layer-list>

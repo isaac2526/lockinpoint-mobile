@@ -14,6 +14,7 @@ import '../../design/tokens.dart';
 import '../../design/typography.dart';
 import '../../design/wordmark.dart';
 import '../../app/theme_controller.dart';
+import '../plan/plan_screen.dart';
 import '../activation/activation_screen.dart';
 import '../auth/auth_controller.dart';
 import '../content/content_repository.dart';
@@ -191,7 +192,9 @@ class _Content extends ConsumerWidget {
     }
 
     final student = (data['student'] as Map).cast<String, dynamic>();
-    final counts = (data['counts'] as Map).cast<String, dynamic>();
+    /* `counts` is the size of the platform and no longer leads this screen —
+       see the note on the stat row below. `you` is this student's own state. */
+    final you = ((data['you'] as Map?) ?? const {}).cast<String, dynamic>();
     final resume = data['resume'] as Map?;
 
     final name = student['name'] as String? ?? 'Champion';
@@ -261,20 +264,32 @@ class _Content extends ConsumerWidget {
           const SizedBox(height: Gap.lg),
         ],
 
-        // ---- the live numbers ----------------------------------------
+        /* ---- YOUR numbers, not the platform's ------------------------
+
+           This row led with "40.1k questions live" and "820 notes & videos":
+           the size of the bank. That is a figure for a sales page. It is the
+           same for every student, it is the same tomorrow, and there is
+           nothing a student can do about it — so it was the first thing on
+           their home screen and the least useful thing on it.
+
+           What is here now is theirs. Accuracy over their last forty sittings
+           rather than all time, because a student who was at 40% in September
+           and is at 70% now should see 70. Sittings done. And what their own
+           study plan says to do TODAY, which is the one number on this screen
+           that names a next action. */
         Row(
           children: [
             Expanded(
               child: LipStat(
-                value: _compact(counts['questions']),
-                label: 'questions live',
+                value: '${you['accuracy'] ?? 0}%',
+                label: 'your accuracy',
                 tone: ChipTone.brand,
               ),
             ),
             const SizedBox(width: Gap.sm),
             Expanded(
               child: LipStat(
-                value: '${counts['attempts'] ?? 0}',
+                value: '${you['sittings'] ?? 0}',
                 label: 'sittings done',
                 tone: ChipTone.success,
               ),
@@ -282,13 +297,20 @@ class _Content extends ConsumerWidget {
             const SizedBox(width: Gap.sm),
             Expanded(
               child: LipStat(
-                value: _compact(counts['notes']),
-                label: 'notes & videos',
+                // A best streak beats a live one here: the live one is already
+                // the badge beside the greeting, and repeating it wastes a
+                // third of the row.
+                value: '${you['bestStreak'] ?? 0}',
+                label: 'best streak',
                 tone: ChipTone.gold,
               ),
             ),
           ],
         ),
+        if (((you['dueToday'] as num?)?.toInt() ?? 0) > 0) ...[
+          const SizedBox(height: Gap.md),
+          _DueToday(count: (you['dueToday'] as num).toInt()),
+        ],
         const SizedBox(height: Gap.xl),
 
         // ---- everything LockInPoint does, in colour -------------------
@@ -307,14 +329,6 @@ class _Content extends ConsumerWidget {
         _Footer(email: student['email'] as String? ?? ''),
       ],
     );
-  }
-
-  /// 40,132 becomes 40.1k — a dashboard number should be read, not counted.
-  static String _compact(Object? v) {
-    final n = (v as num?)?.toInt() ?? 0;
-    if (n < 1000) return '$n';
-    if (n < 10000) return '${(n / 1000).toStringAsFixed(1)}k';
-    return '${(n / 1000).round()}k';
   }
 }
 
@@ -734,6 +748,48 @@ class _BellButton extends ConsumerWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// ===========================================================================
+/// WHAT THE PLAN SAYS TO DO TODAY.
+///
+/// One line, and the only thing on this screen that names a next action. It
+/// appears only when there is something overdue or due — a card that says
+/// "nothing due" is a card that trains a student to stop reading this spot.
+/// ===========================================================================
+class _DueToday extends StatelessWidget {
+  const _DueToday({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.lip;
+    return GlassSurface(
+      hue: c.hues.amber,
+      padding: const EdgeInsets.all(Gap.md),
+      onTap: () => Navigator.of(context)
+          .push(MaterialPageRoute<void>(builder: (_) => const PlanScreen())),
+      child: Row(
+        children: [
+          Icon(
+            Icons.event_available_rounded,
+            size: 20,
+            color: c.hues.amber.ink,
+          ),
+          const SizedBox(width: Gap.md),
+          Expanded(
+            child: Text(
+              count == 1
+                  ? 'One task from your study plan is waiting'
+                  : '$count tasks from your study plan are waiting',
+              style: LipType.body.copyWith(color: c.text1),
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, size: 18, color: c.text3),
+        ],
       ),
     );
   }

@@ -72,100 +72,123 @@ class _LipSplashState extends State<LipSplash> with TickerProviderStateMixin {
     final motto = _in(0.45, 0.9);
     final foot = _in(0.6, 1);
 
+    /* GENUINELY CENTRED.
+
+       This was a Column of Spacer(flex: 3) … content … Spacer(flex: 4) …
+       footer. Two things followed. The uneven flexes pushed the mark above
+       the middle, and the footer took real height BELOW the second spacer, so
+       the block a student actually looks at sat noticeably high — worse on a
+       short screen, where the footer is a larger share of the page.
+
+       A Stack fixes both. The mark and the wordmark are centred against the
+       WHOLE screen, and the footer is pinned to the bottom where it belongs,
+       taking no part in the centring at all. */
     return Scaffold(
       backgroundColor: c.bgBase,
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            const Spacer(flex: 3),
-
-            // ---- the mark, arriving inside a turning ring ----------------
-            AnimatedBuilder(
-              animation: Listenable.merge([_c, _ring]),
-              builder: (context, child) => SizedBox(
-                width: 132,
-                height: 132,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    CustomPaint(
-                      size: const Size(132, 132),
-                      painter: _RingPainter(
-                        sweep: _ring.value,
-                        arrival: mark.value,
-                        color: c.brand,
-                        track: c.glassBorder,
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // ---- the mark, arriving inside a turning ring ----------
+                  AnimatedBuilder(
+                    animation: Listenable.merge([_c, _ring]),
+                    builder: (context, child) => SizedBox(
+                      width: 132,
+                      height: 132,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          CustomPaint(
+                            size: const Size(132, 132),
+                            painter: _RingPainter(
+                              sweep: _ring.value,
+                              arrival: mark.value,
+                              color: c.brand,
+                              track: c.glassBorder,
+                            ),
+                          ),
+                          Transform.scale(
+                            scale: 0.7 + 0.3 * mark.value,
+                            child: Opacity(opacity: mark.value, child: child),
+                          ),
+                        ],
                       ),
                     ),
-                    Transform.scale(
-                      scale: 0.7 + 0.3 * mark.value,
-                      child: Opacity(opacity: mark.value, child: child),
+                    child: const LipLogoMark(size: 76),
+                  ),
+
+                  const SizedBox(height: Gap.xl),
+
+                  _Rise(
+                    t: name,
+                    child: Text(
+                      'LockInPoint',
+                      style: LipType.hero.copyWith(color: c.text1),
+                    ),
+                  ),
+                  const SizedBox(height: Gap.sm),
+                  _Rise(
+                    t: motto,
+                    child: Text(
+                      'Lock in. Pass everything.',
+                      style: LipType.body.copyWith(color: c.text2),
+                    ),
+                  ),
+
+                  if (widget.season != null && widget.season!.isNotEmpty) ...[
+                    const SizedBox(height: Gap.lg),
+                    _Rise(
+                      t: motto,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: Gap.md,
+                          vertical: Gap.xs + 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: c.hues.amber.tint,
+                          borderRadius: BorderRadius.circular(Radii.pill),
+                        ),
+                        child: Text(
+                          widget.season!,
+                          style: LipType.label.copyWith(
+                            color: c.hues.amber.ink,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            // Pinned, and outside the centring: a footer that takes part in
+            // it is a footer that pushes the logo off centre.
+            Positioned(
+              left: Gap.lg,
+              right: Gap.lg,
+              bottom: Gap.xl,
+              child: _Rise(
+                t: foot,
+                child: Column(
+                  children: [
+                    Text(
+                      'JAMB · WAEC · NECO · NABTEB · GCE · Post-UTME',
+                      style: LipType.caption.copyWith(color: c.text3),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: Gap.sm),
+                    Text(
+                      'Built in Nigeria by Noesis Innovations',
+                      style: LipType.caption.copyWith(color: c.text3),
+                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
               ),
-              child: const LipLogoMark(size: 76),
             ),
-
-            const SizedBox(height: Gap.xl),
-
-            _Rise(
-              t: name,
-              child: Text(
-                'LockInPoint',
-                style: LipType.hero.copyWith(color: c.text1),
-              ),
-            ),
-            const SizedBox(height: Gap.sm),
-            _Rise(
-              t: motto,
-              child: Text(
-                'Lock in. Pass everything.',
-                style: LipType.body.copyWith(color: c.text2),
-              ),
-            ),
-
-            if (widget.season != null && widget.season!.isNotEmpty) ...[
-              const SizedBox(height: Gap.lg),
-              _Rise(
-                t: motto,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: Gap.md,
-                    vertical: Gap.xs + 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: c.hues.amber.tint,
-                    borderRadius: BorderRadius.circular(Radii.pill),
-                  ),
-                  child: Text(
-                    widget.season!,
-                    style: LipType.label.copyWith(color: c.hues.amber.ink),
-                  ),
-                ),
-              ),
-            ],
-
-            const Spacer(flex: 4),
-
-            _Rise(
-              t: foot,
-              child: Column(
-                children: [
-                  Text(
-                    'JAMB · WAEC · NECO · NABTEB · GCE · Post-UTME',
-                    style: LipType.caption.copyWith(color: c.text3),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: Gap.sm),
-                  Text(
-                    'Built in Nigeria by Noesis Innovations',
-                    style: LipType.caption.copyWith(color: c.text3),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: Gap.xl),
           ],
         ),
       ),
