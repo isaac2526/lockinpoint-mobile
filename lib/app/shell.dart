@@ -23,6 +23,7 @@ import '../features/notifications/notifications_screen.dart';
 import '../features/plan/plan_screen.dart';
 import '../features/practice/practice_flow_screen.dart';
 import '../features/profile/profile_screen.dart';
+import '../features/referrals/referrals_screen.dart';
 import '../features/rounds/rounds_screen.dart';
 import '../features/progress/analysis_screen.dart';
 import '../features/progress/results_screen.dart';
@@ -378,6 +379,13 @@ class _LipDrawer extends ConsumerWidget {
                   title: 'Your activity',
                   subtitle: 'Everything you have done here',
                   onTap: () => go(const ActivityScreen()),
+                ),
+                _Row(
+                  icon: Icons.card_giftcard_rounded,
+                  hue: FeatureHue.green,
+                  title: 'Refer a friend',
+                  subtitle: 'Your code, and what it has earned',
+                  onTap: () => go(const ReferralsScreen()),
                 ),
                 /* SIGN OUT BELONGS WHERE A STUDENT LOOKS FOR IT. There was
                    no way out of the app from anywhere except the profile tab,
