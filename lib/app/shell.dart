@@ -13,6 +13,7 @@ import '../features/activity/activity_screen.dart';
 import '../features/career/career_screen.dart';
 import '../features/classroom/classroom_screen.dart';
 import '../features/games/games_screen.dart';
+import '../features/gram/gram_screen.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/content/content_repository.dart';
 import '../features/home/dashboard_screen.dart';
@@ -288,6 +289,13 @@ class _LipDrawer extends ConsumerWidget {
                   title: 'Games arena',
                   subtitle: 'Blitz, Survival, The Climb',
                   onTap: () => go(const GamesScreen()),
+                ),
+                _Row(
+                  icon: Icons.forum_rounded,
+                  hue: FeatureHue.pink,
+                  title: 'Pointgram',
+                  subtitle: 'Study rooms and the Tutor Line',
+                  onTap: () => go(const GramScreen()),
                 ),
                 _Row(
                   icon: Icons.school_rounded,
