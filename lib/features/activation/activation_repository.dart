@@ -47,6 +47,57 @@ class BankAccount {
   Future<void> copy() => Clipboard.setData(ClipboardData(text: accountNumber));
 }
 
+/// Which ways to pay this build may offer, decided by the BACKEND.
+///
+/// A "Buy on Google Play" button that cannot complete a purchase is worse
+/// than no button: the student taps it, nothing happens, and they conclude
+/// the app is broken rather than that a key is missing. So a store counts as
+/// available only when its credentials AND its product id are saved in
+/// Admin → Settings, and the app renders exactly what it is told.
+class PayWays {
+  const PayWays({
+    required this.card,
+    required this.transfer,
+    required this.key,
+    required this.play,
+    required this.appStore,
+    required this.playProduct,
+    required this.appStoreProduct,
+  });
+
+  final bool card;
+  final bool transfer;
+  final bool key;
+  final bool play;
+  final bool appStore;
+  final String playProduct;
+  final String appStoreProduct;
+
+  static const none = PayWays(
+    card: true,
+    transfer: false,
+    key: true,
+    play: false,
+    appStore: false,
+    playProduct: '',
+    appStoreProduct: '',
+  );
+
+  static PayWays from(Object? methods, Object? products) {
+    final m = methods is Map ? methods : const {};
+    final p = products is Map ? products : const {};
+    return PayWays(
+      card: m['card'] != false,
+      transfer: m['transfer'] == true,
+      key: m['key'] != false,
+      play: m['play'] == true,
+      appStore: m['appstore'] == true,
+      playProduct: p['play'] as String? ?? '',
+      appStoreProduct: p['appstore'] as String? ?? '',
+    );
+  }
+}
+
 class ActivationOffer {
   const ActivationOffer({
     required this.activated,
@@ -55,6 +106,7 @@ class ActivationOffer {
     required this.currency,
     required this.note,
     required this.accounts,
+    required this.ways,
   });
 
   final bool activated;
@@ -66,6 +118,7 @@ class ActivationOffer {
   final String currency;
   final String note;
   final List<BankAccount> accounts;
+  final PayWays ways;
 
   bool get hasPrice => amount != null;
 
@@ -100,6 +153,7 @@ class ActivationOffer {
           .whereType<Map>()
           .map((m) => BankAccount.from(m.cast<String, dynamic>()))
           .toList(),
+      ways: PayWays.from(j['methods'], j['products']),
     );
   }
 }
@@ -118,4 +172,59 @@ Future<String> redeemKey(Api api, String code) async {
   final res = await api.post('/api/activate/key', body: {'code': code.trim()});
   return (res['message'] as String?) ??
       (res['ok'] == true ? 'Activated!' : 'That key did not work.');
+}
+
+/// ===========================================================================
+/// PAYING WITHOUT LEAVING THE APP.
+///
+/// Uploading a transfer receipt used to mean opening the browser and signing
+/// in again to send a screenshot the phone already had — three steps and a
+/// second login for the payment path most Nigerian students actually use.
+///
+/// Two requests, in order, exactly as the website does it:
+///   1. the image to /api/upload-proof, which returns the stored path;
+///   2. that path to /api/activate/transfer, which files the claim.
+///
+/// The order matters: the transfer route REFUSES a proof it did not store
+/// itself, matched against this student's own id, so a crafted request cannot
+/// plant a link in the admin review queue.
+/// ===========================================================================
+Future<String> sendTransferProof(
+  Api api, {
+  required String imagePath,
+  String note = '',
+}) async {
+  final up = await api.upload(
+    '/api/upload-proof',
+    filePath: imagePath,
+    fieldName: 'file',
+  );
+  final stored = up['url'] as String? ?? '';
+  if (stored.isEmpty) {
+    throw ApiFailure(
+      'The screenshot uploaded but the server did not say where it went. '
+      'Try again in a moment.',
+    );
+  }
+  final claim = await api.post(
+    '/api/activate/transfer',
+    body: {'proof_path': stored, 'note': note},
+  );
+  return claim['message'] as String? ??
+      'Noted. An admin will confirm your transfer and activate you.';
+}
+
+/// Hands a store receipt to the backend, which is the only thing that decides
+/// whether it means anything — the app never grants itself access.
+Future<String> redeemStorePurchase(
+  Api api, {
+  required String store,
+  required String productId,
+  required String token,
+}) async {
+  final res = await api.post(
+    '/api/mobile/store-purchase',
+    body: {'store': store, 'productId': productId, 'token': token},
+  );
+  return res['message'] as String? ?? 'You are activated. Welcome in.';
 }

@@ -132,6 +132,35 @@ class Api {
     ),
   );
 
+  /// Sends a FILE the way a browser's form does — the same multipart shape
+  /// /api/upload-proof already parses, so the app and the website reach one
+  /// endpoint rather than two.
+  ///
+  /// It goes through [_request] like everything else, which means it gets the
+  /// same 401-refresh-and-retry: a receipt uploaded the moment an access token
+  /// expired must not be lost, because the student would have to find the
+  /// screenshot and start again.
+  Future<Map<String, dynamic>> upload(
+    String path, {
+    required String filePath,
+    required String fieldName,
+    Map<String, dynamic>? fields,
+  }) => _request('POST', path, (token, url) async {
+    /* FormData is rebuilt on every attempt rather than captured once: its
+       file stream can only be read a single time, so a retry after a refresh
+       would send an EMPTY body — and the failure would look like a corrupt
+       upload instead of a spent stream. */
+    final form = FormData.fromMap({
+      ...?fields,
+      fieldName: await MultipartFile.fromFile(filePath),
+    });
+    return _dio.post(
+      url,
+      data: form,
+      options: Options(headers: _authHeader(token)),
+    );
+  });
+
   /// The token read itself must never sink a request: a phone whose secure
   /// storage throws should send the request signed out, not crash the screen.
   Future<String?> _readToken() async {

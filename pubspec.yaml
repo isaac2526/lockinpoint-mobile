@@ -53,6 +53,17 @@ dependencies:
   flutter_math_fork: ^0.7.4
   cached_network_image: ^3.4.1
 
+  # ---- paying, from inside the app ---------------------------------------
+  # A transfer receipt used to mean leaving for the browser and signing in
+  # again to upload a screenshot the phone already has. image_picker reads it
+  # from the gallery or the camera; the upload goes to the same
+  # /api/upload-proof the website posts to.
+  image_picker: ^1.1.2
+  # Google Play and App Store billing. The buttons only appear when the
+  # BACKEND says that store is configured — a purchase button that cannot
+  # complete a purchase is worse than no button.
+  in_app_purchase: ^3.2.0
+
   # ---- polish -------------------------------------------------------------
   # NOTE: google_fonts was removed deliberately. It fetched Space Grotesk,
   # Inter and JetBrains Mono over the network on first launch — three round

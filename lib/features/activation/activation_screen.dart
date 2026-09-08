@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api.dart';
@@ -10,6 +11,7 @@ import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
 import 'activation_repository.dart';
+import 'store_purchase.dart';
 
 /// ===========================================================================
 /// ACTIVATION
@@ -24,9 +26,16 @@ import 'activation_repository.dart';
 ///          screen says transfer is not set up rather than pretending.
 ///   KEY — the seven digit key an agent sells.
 ///
-/// The store buttons (Google Play, Apple) are deliberately absent until their
-/// credentials exist on the server. A button that always fails is worse than
-/// no button.
+///   STORE — Google Play or the App Store, which both REQUIRE in-app purchase
+///          for digital goods on their own platforms. The button appears only
+///          when the backend says that store's credentials AND its product id
+///          are saved: a purchase button that cannot complete a purchase is
+///          worse than none, because the student concludes the app is broken.
+///
+/// AND THE RECEIPT IS SENT FROM HERE. Uploading a transfer screenshot used to
+/// mean opening the browser and signing in a second time to send an image the
+/// phone already had — three steps, on the payment path most students here
+/// actually use.
 /// ===========================================================================
 class ActivationScreen extends ConsumerStatefulWidget {
   const ActivationScreen({super.key});
@@ -41,11 +50,98 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
   bool _ok = false;
   bool _busy = false;
   String _copied = '';
+  StorePurchase? _store;
+
+  @override
+  void initState() {
+    super.initState();
+    /* Listening starts before any button is pressed. The purchase stream also
+       delivers purchases that completed while the app was closed, so a student
+       who paid and then lost signal is activated the next time they open it
+       without having to do anything at all. */
+    if (StorePurchase.platformHasStore) {
+      _store = StorePurchase(ref.read(apiProvider))
+        ..listen(
+          onDone: (m) {
+            if (!mounted) return;
+            setState(() {
+              _message = m;
+              _ok = true;
+              _busy = false;
+            });
+            ref.invalidate(activationOfferProvider);
+          },
+          onProblem: (m) {
+            if (!mounted) return;
+            setState(() {
+              _message = m;
+              _ok = false;
+              _busy = false;
+            });
+          },
+        );
+    }
+  }
 
   @override
   void dispose() {
     _key.dispose();
+    _store?.dispose();
     super.dispose();
+  }
+
+  /// The transfer receipt, sent without leaving the app.
+  Future<void> _sendReceipt() async {
+    final api = ref.read(apiProvider);
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      // The route refuses anything over 4MB, and a modern phone camera makes
+      // files well past that. Shrinking here means a student is never told
+      // their own screenshot is too big.
+      maxWidth: 1600,
+      imageQuality: 82,
+    );
+    if (picked == null) return;
+    if (!mounted) return;
+    setState(() {
+      _busy = true;
+      _message = '';
+    });
+    try {
+      final m = await sendTransferProof(api, imagePath: picked.path);
+      if (!mounted) return;
+      setState(() {
+        _message = m;
+        _ok = true;
+      });
+      ref.invalidate(activationOfferProvider);
+    } on ApiFailure catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _message = e.message;
+        _ok = false;
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _buyFromStore(String productId) async {
+    setState(() {
+      _busy = true;
+      _message = '';
+    });
+    final problem = await _store?.buy(productId);
+    if (!mounted) return;
+    if (problem != null) {
+      setState(() {
+        _message = problem;
+        _ok = false;
+        _busy = false;
+      });
+    }
+    // Otherwise the purchase stream answers — including much later, and even
+    // after the app has been closed and reopened.
   }
 
   Future<void> _redeem() async {
@@ -162,6 +258,49 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                     ),
                     const SizedBox(height: Gap.lg),
 
+                    // ---- the stores -------------------------------------
+                    // Rendered only when the SERVER says that store can
+                    // complete a purchase. See PayWays.
+                    if (o.ways.play && StorePurchase.platformHasStore) ...[
+                      LipButton(
+                        icon: Icons.shop_rounded,
+                        label: 'Buy on Google Play',
+                        busy: _busy,
+                        onPressed: _busy
+                            ? null
+                            : () => _buyFromStore(o.ways.playProduct),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: Gap.xs),
+                        child: Text(
+                          'Charged to the account already on this phone. '
+                          'Activates everywhere, website included.',
+                          textAlign: TextAlign.center,
+                          style: LipType.caption.copyWith(color: c.text3),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => _store?.restore(),
+                        child: const Text('I already paid · restore it'),
+                      ),
+                      const SizedBox(height: Gap.lg),
+                    ] else if (o.ways.appStore &&
+                        StorePurchase.platformHasStore) ...[
+                      LipButton(
+                        icon: Icons.shop_rounded,
+                        label: 'Buy on the App Store',
+                        busy: _busy,
+                        onPressed: _busy
+                            ? null
+                            : () => _buyFromStore(o.ways.appStoreProduct),
+                      ),
+                      TextButton(
+                        onPressed: () => _store?.restore(),
+                        child: const Text('I already paid · restore it'),
+                      ),
+                      const SizedBox(height: Gap.lg),
+                    ],
+
                     // ---- transfer ---------------------------------------
                     const LipLabel('Direct bank transfer'),
                     const SizedBox(height: Gap.sm),
@@ -250,12 +389,13 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                       ),
                       const SizedBox(height: Gap.sm),
                       OutlinedButton.icon(
-                        onPressed: () => launchUrl(
-                          Uri.parse('${AppConfig.apiBase}/activate'),
-                          mode: LaunchMode.externalApplication,
-                        ),
+                        onPressed: _busy ? null : _sendReceipt,
                         icon: const Icon(Icons.upload_file_rounded, size: 18),
-                        label: const Text('I have sent it · upload my receipt'),
+                        label: Text(
+                          _busy
+                              ? 'Sending…'
+                              : 'I have sent it · upload my receipt',
+                        ),
                       ),
                     ],
                     const SizedBox(height: Gap.lg),
