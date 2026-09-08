@@ -27,6 +27,7 @@ import '../features/progress/analysis_screen.dart';
 import '../features/progress/results_screen.dart';
 import '../features/saved/saved_screen.dart';
 import '../features/search/search_screen.dart';
+import '../features/theory/theory_screen.dart';
 import '../features/tutor/tutor_screen.dart';
 import '../features/vault/vault_screen.dart';
 import '../core/vault/connectivity.dart';
@@ -257,6 +258,23 @@ class _LipDrawer extends ConsumerWidget {
                   title: 'Classroom',
                   subtitle: 'Notes, videos and files',
                   onTap: () => go(const ClassroomScreen()),
+                ),
+                /* THE OTHER HALF OF THE PAPER. Every WAEC, NECO and NABTEB
+                   sitting has a written section, and until now a student
+                   preparing here practised only the objectives. */
+                _Row(
+                  icon: Icons.edit_note_rounded,
+                  hue: FeatureHue.orange,
+                  title: 'Theory',
+                  subtitle: 'Written questions and their marking schemes',
+                  onTap: () => go(const TheoryScreen()),
+                ),
+                _Row(
+                  icon: Icons.science_rounded,
+                  hue: FeatureHue.teal,
+                  title: 'Practical',
+                  subtitle: 'Apparatus, observations and readings',
+                  onTap: () => go(const TheoryScreen(kind: 'practical')),
                 ),
                 _Row(
                   icon: Icons.bookmark_rounded,
