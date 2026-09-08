@@ -105,24 +105,16 @@ void main() {
     expect(find.text('Not activated yet'), findsOneWidget);
   });
 
-  testWidgets('tapping the referral banner copies the signup link', (
-    tester,
-  ) async {
-    String? copied;
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method == 'Clipboard.setData') {
-          copied = (call.arguments as Map)['text'] as String?;
-        }
-        return null;
-      },
-    );
-
+  testWidgets('the referral banner names no amount of its own', (tester) async {
+    /* It used to read "Refer and earn ₦500" and copy a link. The reward is a
+       row an admin edits — change it to 750 and the app went on promising 500,
+       in naira, to a student in Ghana. The real figure, in the student's own
+       currency, is on the screen this now opens, where it comes from the
+       server. */
     await _pump(tester);
-    await tester.tap(find.text('Refer and earn ₦500'));
-    await tester.pump();
-    expect(copied, contains('/signup?ref=AB2CD'));
+    expect(find.text('Refer and earn'), findsOneWidget);
+    expect(find.textContaining('₦500'), findsNothing);
+    expect(find.textContaining('Tap to see your balance'), findsOneWidget);
   });
 
   /// The test surface is shorter than a phone, and a ListView only builds
@@ -137,7 +129,7 @@ void main() {
     expect(find.text(text), findsOneWidget);
   }
 
-  testWidgets('holds every door: appearance, guardian, contacts, log out', (
+  testWidgets('holds every door: appearance, guardian, contacts, sign out', (
     tester,
   ) async {
     await _pump(tester);
@@ -145,7 +137,30 @@ void main() {
     await see(tester, 'Light');
     await see(tester, 'Dark');
     await see(tester, 'Guardian Portal');
-    await see(tester, 'Log out');
+    await see(tester, 'Sign out');
+  });
+
+  testWidgets('signing out asks first, and says what is NOT lost', (
+    tester,
+  ) async {
+    /* It was a bare TextButton at the foot of a long scroll with nothing
+       behind it. Signing out is the one action on this page a student cannot
+       undo with another tap — and on a shared phone it is also the one they
+       most want to find. */
+    await _pump(tester);
+    await see(tester, 'Sign out');
+    await tester.tap(find.text('Sign out').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Sign out?'), findsOneWidget);
+    expect(
+      find.textContaining('stays on this phone'),
+      findsOneWidget,
+      reason: 'a student must know their downloads survive it',
+    );
+    // And it can be backed out of.
+    await tester.tap(find.text('Stay'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sign out?'), findsNothing);
   });
 
   testWidgets('support contacts are the BACKEND\'s, not the app\'s', (
@@ -186,7 +201,7 @@ void main() {
   ) async {
     await _pump(tester, contacts: const []);
     await see(tester, 'Guardian Portal');
-    await see(tester, 'Log out');
+    await see(tester, 'Sign out');
   });
 
   testWidgets('the Product Key is shown, explained and copyable', (

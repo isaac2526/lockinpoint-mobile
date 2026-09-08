@@ -7,6 +7,7 @@ import '../../app/theme_controller.dart';
 import '../../core/api.dart';
 import '../../core/config.dart';
 import '../../design/components.dart';
+import '../referrals/referrals_screen.dart';
 import '../../design/glass.dart';
 import '../../design/motion_widgets.dart';
 import '../../design/theme.dart';
@@ -155,13 +156,13 @@ class _Content extends ConsumerWidget {
             index: 1,
             child: GlassSurface(
               tier: GlassTier.raised,
-              onTap: () => _copy(
-                context,
-                '${AppConfig.apiBase}/signup?ref=$code',
-                'Your invite link is copied. Send it to a friend!',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const ReferralsScreen(),
+                ),
               ),
               semanticLabel:
-                  'Refer and earn 500 naira. Tap to copy your invite link.',
+                  'Refer and earn. Open your code, balance and payouts.',
               child: Row(
                 children: [
                   Container(
@@ -182,20 +183,26 @@ class _Content extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        /* NO FIGURE HERE. This said "Refer and earn ₦500",
+                           and the reward is a row an admin edits — change it
+                           to 750 and the app went on promising 500, in naira,
+                           to a student in Ghana. The real amount, in the
+                           student's own currency, is on the screen this
+                           opens, where it comes from the server. */
                         Text(
-                          'Refer and earn ₦500',
+                          'Refer and earn',
                           style: LipType.smallStrong.copyWith(color: c.text1),
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'Every friend who joins with your link and '
-                          'activates pays you. Tap to copy your link.',
+                          'Every friend who joins with your code and '
+                          'activates pays you. Tap to see your balance.',
                           style: LipType.caption.copyWith(color: c.text3),
                         ),
                       ],
                     ),
                   ),
-                  Icon(Icons.copy_rounded, size: 18, color: c.text3),
+                  Icon(Icons.chevron_right_rounded, size: 18, color: c.text3),
                 ],
               ),
             ),
@@ -299,11 +306,68 @@ class _Content extends ConsumerWidget {
         Entrance(index: 5, child: _ContactCard()),
         const SizedBox(height: Gap.xl),
 
-        // ---- the exit ------------------------------------------------
-        TextButton.icon(
-          onPressed: () => ref.read(authControllerProvider.notifier).logOut(),
-          icon: const Icon(Icons.logout_rounded, size: 17),
-          label: const Text('Log out'),
+        /* ---- the exit ------------------------------------------------
+
+           A bare TextButton at the very bottom of a long scroll, with no
+           confirmation behind it. Signing out is the one action on this page
+           a student cannot undo with another tap — and on a shared phone it
+           is also the one they most want to find. It is a row now, with the
+           weight of one, and it says what does NOT get lost. */
+        const LipLabel('This device'),
+        const SizedBox(height: Gap.sm),
+        Entrance(
+          index: 6,
+          child: GlassSurface(
+            tier: GlassTier.raised,
+            padding: const EdgeInsets.all(Gap.md),
+            onTap: () async {
+              final yes = await showDialog<bool>(
+                context: context,
+                builder: (d) => AlertDialog(
+                  title: const Text('Sign out?'),
+                  content: const Text(
+                    'Everything you have downloaded stays on this phone and '
+                    'will be here when you sign back in.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(d).pop(false),
+                      child: const Text('Stay'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.of(d).pop(true),
+                      child: const Text('Sign out'),
+                    ),
+                  ],
+                ),
+              );
+              if (yes == true) {
+                await ref.read(authControllerProvider.notifier).logOut();
+              }
+            },
+            child: Row(
+              children: [
+                Icon(Icons.logout_rounded, size: 20, color: c.hues.rose.ink),
+                const SizedBox(width: Gap.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Sign out',
+                        style: LipType.bodyStrong.copyWith(color: c.text1),
+                      ),
+                      Text(
+                        'Your downloads stay on this phone',
+                        style: LipType.caption.copyWith(color: c.text3),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, size: 18, color: c.text3),
+              ],
+            ),
+          ),
         ),
       ],
     );
