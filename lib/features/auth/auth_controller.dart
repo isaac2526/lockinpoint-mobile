@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/api.dart';
 import '../../core/session_store.dart';
+import '../gram/gram_gate.dart';
 
 /// Where the student stands with the app.
 sealed class AuthState {
@@ -206,6 +207,11 @@ class AuthController extends AsyncNotifier<AuthState> {
   Future<void> _forget() async {
     await _store.clear();
     await _forgetName();
+    /* THE POINTGRAM ROOM CODE GOES WITH THE SESSION. It is a shared code
+       rather than a credential, but the next person to sign in on this phone
+       has not been given it, and inheriting a locked room from whoever used
+       the phone before is not how a lock is meant to work. */
+    await ref.read(gramGateProvider.notifier).forget();
   }
 
   Future<void> _forgetName() async =>

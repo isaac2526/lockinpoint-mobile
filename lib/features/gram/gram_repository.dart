@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
+import 'gram_gate.dart';
 
 /// ===========================================================================
 /// POINTGRAM · the rooms, on the phone.
@@ -70,6 +71,8 @@ class GramMessage {
     required this.deleted,
     required this.at,
     this.type = 'text',
+    this.options = const [],
+    this.mediaUrl = '',
   });
 
   factory GramMessage.from(
@@ -86,6 +89,12 @@ class GramMessage {
     deleted: m['deleted'] == true,
     type: m['type'] as String? ?? 'text',
     at: DateTime.tryParse('${m['at'] ?? ''}'),
+    options:
+        ((m['meta'] as Map?)?['options'] as List?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        const [],
+    mediaUrl: m['media_url'] as String? ?? '',
   );
 
   final String id;
@@ -96,6 +105,14 @@ class GramMessage {
   final bool deleted;
   final String type;
   final DateTime? at;
+
+  /// A poll's choices, in the order the tutor wrote them. Empty for every
+  /// other kind of message. The website has always sent these inside `meta`
+  /// and the app dropped them, so a poll arrived as an empty grey bubble.
+  final List<String> options;
+
+  /// Anything with a URL — an image, a voice note. Empty when there is none.
+  final String mediaUrl;
 }
 
 class GramFeed {
@@ -103,6 +120,13 @@ class GramFeed {
     required this.messages,
     required this.canPost,
     required this.blockedBecause,
+    this.reactions = const {},
+    this.myReactions = const {},
+    this.votes = const {},
+    this.myVotes = const {},
+    this.typing = const [],
+    this.online = 0,
+    this.memberCount = 0,
   });
 
   final List<GramMessage> messages;
@@ -111,6 +135,27 @@ class GramFeed {
   /// The server's own sentence — "Class mode is on. Only the tutors can speak
   /// for now." Never guessed at from a status code.
   final String blockedBecause;
+
+  /// message id -> icon -> how many people chose it.
+  final Map<String, Map<String, int>> reactions;
+
+  /// message id -> the icon I chose, so tapping it again takes it back rather
+  /// than adding a second.
+  final Map<String, String> myReactions;
+
+  /// poll message id -> option index -> how many votes.
+  final Map<String, Map<int, int>> votes;
+
+  /// poll message id -> the option I chose.
+  final Map<String, int> myVotes;
+
+  /// Who is typing or recording right now, in their own words from the
+  /// server: "ada is typing".
+  final List<({String username, String state})> typing;
+
+  /// How many are alive in this room, and how many belong to it.
+  final int online;
+  final int memberCount;
 }
 
 class GramLobby {
@@ -132,6 +177,21 @@ class GramLobby {
 }
 
 final gramLobbyProvider = FutureProvider<GramLobby>((ref) async {
+  /* THE GATE IS AWAITED FIRST, AND NOT ONLY FOR ITS ANSWER.
+     Reading it is what puts the remembered room code onto the client. Asking
+     for the rooms before that resolves sends a request with no code, which a
+     locked Pointgram refuses — and the student is then asked to type a code
+     they gave last week. */
+  final gate = await ref.watch(gramGateProvider.future);
+  if (!gate.open) {
+    return GramLobby(
+      rooms: const [],
+      dmUnread: 0,
+      open: gate.enabled,
+      locked: gate.locked,
+    );
+  }
+
   final api = ref.read(apiProvider);
   try {
     final res = await api.get('/api/gram/groups');
@@ -145,9 +205,11 @@ final gramLobbyProvider = FutureProvider<GramLobby>((ref) async {
       locked: false,
     );
   } on ApiFailure catch (e) {
-    /* "gate" is the server's word for "the rooms are locked or switched off".
-       Told apart from a real failure, because one is a door and the other is
-       a fault, and a student deserves to know which. */
+    /* THE OLD GUESS, KEPT AS A BACKSTOP. This used to look for the word
+       "gate" inside a failure message to decide whether the rooms were shut —
+       a guess that broke the moment the sentence was reworded. The gate above
+       now states it outright; this only catches a lock switched on between
+       the two requests. */
     if (e.message.contains('gate')) {
       return const GramLobby(rooms: [], dmUnread: 0, open: false, locked: true);
     }
@@ -165,6 +227,32 @@ Future<GramFeed> loadRoom(
     '/api/gram/messages',
     query: {'group': ?groupId, if (dm) 'dm': '1'},
   );
+  /* REACTIONS AND VOTES ARRIVE AS FLAT ROWS — one per person per message —
+     and are folded here rather than on every rebuild. A room with two hundred
+     messages and a thousand reactions would otherwise walk that list once per
+     bubble, sixty times a second, on the cheapest phone we sell to. */
+  final reactions = <String, Map<String, int>>{};
+  final myReactions = <String, String>{};
+  for (final r in ((res['reactions'] as List?) ?? const []).whereType<Map>()) {
+    final mid = r['message_id'] as String? ?? '';
+    final icon = r['icon'] as String? ?? '';
+    if (mid.isEmpty || icon.isEmpty) continue;
+    reactions.putIfAbsent(mid, () => {});
+    reactions[mid]![icon] = (reactions[mid]![icon] ?? 0) + 1;
+    if (myId != null && r['user_id'] == myId) myReactions[mid] = icon;
+  }
+
+  final votes = <String, Map<int, int>>{};
+  final myVotes = <String, int>{};
+  for (final v in ((res['votes'] as List?) ?? const []).whereType<Map>()) {
+    final mid = v['message_id'] as String? ?? '';
+    final idx = (v['option_index'] as num?)?.toInt();
+    if (mid.isEmpty || idx == null) continue;
+    votes.putIfAbsent(mid, () => {});
+    votes[mid]![idx] = (votes[mid]![idx] ?? 0) + 1;
+    if (myId != null && v['user_id'] == myId) myVotes[mid] = idx;
+  }
+
   return GramFeed(
     messages: ((res['messages'] as List?) ?? const [])
         .whereType<Map>()
@@ -172,6 +260,21 @@ Future<GramFeed> loadRoom(
         .toList(),
     canPost: res['canPost'] != false,
     blockedBecause: res['postBlock'] as String? ?? '',
+    reactions: reactions,
+    myReactions: myReactions,
+    votes: votes,
+    myVotes: myVotes,
+    typing: ((res['typing'] as List?) ?? const [])
+        .whereType<Map>()
+        .map(
+          (m) => (
+            username: m['username'] as String? ?? 'someone',
+            state: m['state'] as String? ?? 'typing',
+          ),
+        )
+        .toList(),
+    online: (res['online'] as num?)?.toInt() ?? 0,
+    memberCount: (res['memberCount'] as num?)?.toInt() ?? 0,
   );
 }
 
@@ -207,6 +310,76 @@ Future<String?> joinRoom(Api api, String groupId) async {
       body: {'op': 'join'},
     );
     return res['message'] as String?;
+  } on ApiFailure catch (e) {
+    return e.message;
+  }
+}
+
+/// ===========================================================================
+/// THE REST OF WHAT A ROOM DOES
+///
+/// Three routes the website has used since Pointgram shipped and the app had
+/// never called once: the heartbeat that puts a student in everyone else's
+/// Online list, the six reactions, and the poll vote. A room where nobody
+/// appears online, nothing can be reacted to and a poll cannot be answered is
+/// a message list, not a room.
+/// ===========================================================================
+
+/// I am here, in this room. Called every few seconds while a room is open.
+///
+/// Fire and forget in the strongest sense: a heartbeat that fails changes
+/// nothing a student can see except a name missing from a list for forty-five
+/// seconds, and it must never interrupt reading or typing.
+Future<void> gramPing(
+  Api api, {
+  String? groupId,
+  String state = 'online',
+}) async {
+  try {
+    await api.post('/api/gram/ping', body: {'group': ?groupId, 'state': state});
+  } catch (_) {
+    // See above.
+  }
+}
+
+/// The six, and only the six. The server refuses anything else, so the app
+/// offers nothing else — a picker showing an icon that will be rejected is
+/// worse than a shorter picker.
+const gramReactionIcons = <String>[
+  'fire',
+  'star',
+  'check',
+  'trophy',
+  'diamond',
+  'robot',
+];
+
+/// Tap an icon to add it; tap the same one again to take it back; tap another
+/// to switch. One per person per message — the server enforces that, and the
+/// app must not pretend otherwise by showing two of mine.
+Future<String?> reactToGram(Api api, String messageId, String icon) async {
+  try {
+    final res = await api.post(
+      '/api/gram/messages/$messageId/react',
+      body: {'icon': icon},
+    );
+    return res['ok'] == false
+        ? (res['message'] as String? ?? 'Not that one.')
+        : null;
+  } on ApiFailure catch (e) {
+    return e.message;
+  }
+}
+
+/// One vote per person per poll. Changing your mind moves it rather than
+/// adding a second.
+Future<String?> voteInGram(Api api, String messageId, int option) async {
+  try {
+    final res = await api.post(
+      '/api/gram/messages/$messageId/vote',
+      body: {'option': option},
+    );
+    return res['ok'] == false ? 'That vote did not go through.' : null;
   } on ApiFailure catch (e) {
     return e.message;
   }

@@ -221,8 +221,25 @@ class Api {
     }
   }
 
-  Map<String, String> _authHeader(String? token) =>
-      token == null ? {} : {'Authorization': 'Bearer $token'};
+  /// THE POINTGRAM ROOM CODE.
+  ///
+  /// A shared code an admin sets, and changing it relocks everyone at once —
+  /// which is the point of it. A browser keeps it in a cookie; this client
+  /// has no cookie jar against that domain, so it presents the same secret as
+  /// a header and the server checks it exactly as it checks the cookie.
+  ///
+  /// It is NOT a credential: it identifies nobody, grants nothing on its own,
+  /// and is worthless without a session. It rides on every request rather
+  /// than only the gram ones because the alternative is a second header path
+  /// through the retry, the refresh and the redirect follow — three places
+  /// for it to be dropped, and being dropped means a locked-out student with
+  /// no way to tell why.
+  String? gramPin;
+
+  Map<String, String> _authHeader(String? token) => {
+    if (token != null) 'Authorization': 'Bearer $token',
+    if (gramPin != null && gramPin!.isNotEmpty) 'x-gram-pin': gramPin!,
+  };
 
   Future<Map<String, dynamic>> _request(
     String method,

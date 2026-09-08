@@ -9,6 +9,7 @@ import '../../design/glass.dart';
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
+import 'gram_gate.dart';
 import 'gram_repository.dart';
 
 /// ===========================================================================
@@ -32,6 +33,15 @@ class GramScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.lip;
     final lobby = ref.watch(gramLobbyProvider);
+    final gate = ref.watch(gramGateProvider).value;
+
+    /* A LOCKED ROOM IS A DOOR, NOT A WALL. The app used to answer a lock with
+       "ask in class" and no way to act on it, because /api/gram/gate had
+       never been called from here. A student who HAS the code could not use
+       it. */
+    if (gate != null && gate.enabled && gate.locked && !gate.passed) {
+      return const _Knock();
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Pointgram')),
@@ -198,10 +208,23 @@ class _GramRoomScreenState extends ConsumerState<GramRoomScreen> {
   String _problem = '';
   bool _busy = false;
   Timer? _poll;
+  Timer? _beat;
+
+  /* THE CLIENT IS HELD, NOT LOOKED UP LATE.
+     dispose() sends one last heartbeat to say this student has left the room
+     — and reading a provider there throws outright:
+
+       Bad state: Using "ref" when a widget is about to or has been unmounted
+
+     which is not a test artefact. It would have fired on a real phone every
+     single time a student backed out of a room. Read once while mounted,
+     used everywhere after. */
+  late final Api _api;
 
   @override
   void initState() {
     super.initState();
+    _api = ref.read(apiProvider);
     _load();
     /* POLLED, NOT PUSHED. A socket on a Nigerian mobile connection spends
        more of its life reconnecting than connected, and every reconnection
@@ -211,11 +234,44 @@ class _GramRoomScreenState extends ConsumerState<GramRoomScreen> {
       const Duration(seconds: 12),
       (_) => _load(quiet: true),
     );
+
+    /* THE HEARTBEAT. /api/gram/ping is what puts this student in everyone
+       else's Online list and drives the "someone is typing" line — and no
+       client on a phone had ever called it, so an app user was invisible in
+       a room they were sitting in. The server counts a heartbeat fresh for
+       twenty seconds, so fifteen keeps a name from flickering out between
+       beats without doubling the traffic. */
+    gramPing(_api, groupId: widget.room?.id);
+    _beat = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => gramPing(_api, groupId: widget.room?.id),
+    );
+  }
+
+  /// Adds or removes my reaction, then re-reads the room so the count shown
+  /// is the server's rather than one the phone guessed at.
+  Future<void> _react(String messageId, String icon) async {
+    final said = await reactToGram(_api, messageId, icon);
+    if (!mounted) return;
+    if (said != null) setState(() => _problem = said);
+    await _load(quiet: true);
+  }
+
+  Future<void> _vote(String messageId, int option) async {
+    final said = await voteInGram(_api, messageId, option);
+    if (!mounted) return;
+    if (said != null) setState(() => _problem = said);
+    await _load(quiet: true);
   }
 
   @override
   void dispose() {
     _poll?.cancel();
+    _beat?.cancel();
+    /* LEAVING THE ROOM IS ITSELF A STATE. Without this the student stays in
+       everyone else's Online list for another forty-five seconds after they
+       have gone. */
+    gramPing(_api, state: 'away');
     _input.dispose();
     _scroll.dispose();
     super.dispose();
@@ -223,10 +279,17 @@ class _GramRoomScreenState extends ConsumerState<GramRoomScreen> {
 
   Future<void> _load({bool quiet = false}) async {
     try {
+      /* MY OWN MESSAGES WERE NEVER MINE. loadRoom decides which side of the
+         room a bubble sits on by comparing the message's user_id against the
+         reader's, and this call had never passed one — so every line a
+         student wrote came back looking like a classmate's, on the left, in
+         the wrong colour. The identity comes from the gate, which is the one
+         place the server states it. */
       final f = await loadRoom(
-        ref.read(apiProvider),
+        _api,
         groupId: widget.room?.id,
         dm: widget.dm,
+        myId: ref.read(gramGateProvider).value?.myUid,
       );
       if (!mounted) return;
       setState(() {
@@ -248,7 +311,7 @@ class _GramRoomScreenState extends ConsumerState<GramRoomScreen> {
       _problem = '';
     });
     final refusal = await sendGram(
-      ref.read(apiProvider),
+      _api,
       groupId: widget.room?.id,
       dm: widget.dm,
       body: text,
@@ -297,6 +360,33 @@ class _GramRoomScreenState extends ConsumerState<GramRoomScreen> {
                   style: LipType.caption.copyWith(color: c.hues.orange.ink),
                 ),
               ),
+            /* WHO IS HERE, AND WHO IS TYPING. Both have ridden in this
+               route's response since Pointgram shipped and neither had ever
+               been read by the app, so a room with eleven people in it looked
+               identical to an empty one. */
+            if (feed != null &&
+                !widget.dm &&
+                (feed.typing.isNotEmpty || feed.online > 0))
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Gap.lg,
+                  vertical: 4,
+                ),
+                child: Text(
+                  feed.typing.isNotEmpty
+                      ? feed.typing.length == 1
+                            ? '${feed.typing.first.username} is '
+                                  '${feed.typing.first.state}…'
+                            : '${feed.typing.length} people are typing…'
+                      : feed.memberCount > 0
+                      ? '${feed.online} here now · ${feed.memberCount} in this room'
+                      : '${feed.online} here now',
+                  style: LipType.label.copyWith(
+                    color: feed.typing.isNotEmpty ? c.brand : c.text3,
+                  ),
+                ),
+              ),
             Expanded(
               child: feed == null
                   ? const Padding(
@@ -320,7 +410,18 @@ class _GramRoomScreenState extends ConsumerState<GramRoomScreen> {
                         Gap.lg,
                       ),
                       itemCount: feed.messages.length,
-                      itemBuilder: (_, i) => _Line(m: feed.messages[i]),
+                      itemBuilder: (_, i) {
+                        final m = feed.messages[i];
+                        return _Line(
+                          m: m,
+                          reactions: feed.reactions[m.id] ?? const {},
+                          myReaction: feed.myReactions[m.id],
+                          votes: feed.votes[m.id] ?? const {},
+                          myVote: feed.myVotes[m.id],
+                          onReact: (icon) => _react(m.id, icon),
+                          onVote: (opt) => _vote(m.id, opt),
+                        );
+                      },
                     ),
             ),
             if (_problem.isNotEmpty)
@@ -383,8 +484,23 @@ class _GramRoomScreenState extends ConsumerState<GramRoomScreen> {
 }
 
 class _Line extends StatelessWidget {
-  const _Line({required this.m});
+  const _Line({
+    required this.m,
+    this.reactions = const {},
+    this.myReaction,
+    this.votes = const {},
+    this.myVote,
+    this.onReact,
+    this.onVote,
+  });
+
   final GramMessage m;
+  final Map<String, int> reactions;
+  final String? myReaction;
+  final Map<int, int> votes;
+  final int? myVote;
+  final void Function(String icon)? onReact;
+  final void Function(int option)? onVote;
 
   @override
   Widget build(BuildContext context) {
@@ -440,16 +556,339 @@ class _Line extends StatelessWidget {
                         ],
                       ],
                     ),
-                  SelectableText(
-                    m.body,
-                    style: LipType.body.copyWith(color: c.text1, height: 1.4),
-                  ),
+                  if (m.body.isNotEmpty)
+                    SelectableText(
+                      m.body,
+                      style: LipType.body.copyWith(color: c.text1, height: 1.4),
+                    ),
+                  /* A POLL IS ANSWERABLE NOW. Its options ride in `meta` and
+                     the app used to drop them, so a poll was an empty grey
+                     bubble with nothing in it and nothing to do. */
+                  if (m.type == 'poll' &&
+                      m.options.isNotEmpty &&
+                      onVote != null)
+                    GramPoll(
+                      options: m.options,
+                      counts: votes,
+                      mine: myVote,
+                      onVote: onVote!,
+                    ),
+                  if (m.type != 'text' &&
+                      m.type != 'poll' &&
+                      m.mediaUrl.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        m.type == 'voice'
+                            ? 'Voice note — open in the browser to play'
+                            : 'Attachment — open in the browser to view',
+                        style: LipType.label.copyWith(color: c.text3),
+                      ),
+                    ),
+                  if (onReact != null) ...[
+                    const SizedBox(height: 4),
+                    GramReactions(
+                      counts: reactions,
+                      mine: myReaction,
+                      onTap: onReact!,
+                    ),
+                  ],
                 ],
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// ===========================================================================
+/// THE DOOR
+///
+/// Shown only when the server itself says the rooms are locked and this
+/// client has not presented the code. The website has always had this box;
+/// the app answered the same lock with a sentence and no field, so a student
+/// holding the right code could not get in from their phone.
+/// ===========================================================================
+class _Knock extends ConsumerStatefulWidget {
+  const _Knock();
+
+  @override
+  ConsumerState<_Knock> createState() => _KnockState();
+}
+
+class _KnockState extends ConsumerState<_Knock> {
+  final _pin = TextEditingController();
+  bool _busy = false;
+  String _refusal = '';
+
+  @override
+  void dispose() {
+    _pin.dispose();
+    super.dispose();
+  }
+
+  Future<void> _try() async {
+    setState(() {
+      _busy = true;
+      _refusal = '';
+    });
+    final said = await ref.read(gramGateProvider.notifier).knock(_pin.text);
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _refusal = said ?? '';
+    });
+    // The door opened: the lobby behind it is stale by definition.
+    if (said == null) ref.invalidate(gramLobbyProvider);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.lip;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Pointgram')),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.huge, Gap.lg, Gap.lg),
+          children: [
+            Icon(Icons.lock_rounded, size: 44, color: c.hues.orange.ink),
+            const SizedBox(height: Gap.lg),
+            Text(
+              'The rooms are locked',
+              textAlign: TextAlign.center,
+              style: LipType.subheading.copyWith(color: c.text1),
+            ),
+            const SizedBox(height: Gap.sm),
+            Text(
+              'The tutors set a room code. Type it once and this phone '
+              'remembers it until the code is changed.',
+              textAlign: TextAlign.center,
+              style: LipType.small.copyWith(color: c.text2),
+            ),
+            const SizedBox(height: Gap.lg),
+            TextField(
+              controller: _pin,
+              enabled: !_busy,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              onSubmitted: (_) => _try(),
+              decoration: const InputDecoration(labelText: 'Room code'),
+            ),
+            if (_refusal.isNotEmpty) ...[
+              const SizedBox(height: Gap.md),
+              LipFormError(message: _refusal),
+            ],
+            const SizedBox(height: Gap.lg),
+            LipButton(
+              label: 'Go in',
+              expand: true,
+              busy: _busy,
+              onPressed: _try,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The six icons, drawn. The set is the server's — it refuses anything else —
+/// so this map exists to render exactly those and nothing more.
+IconData gramReactionIcon(String name) => switch (name) {
+  'fire' => Icons.local_fire_department_rounded,
+  'star' => Icons.star_rounded,
+  'check' => Icons.check_circle_rounded,
+  'trophy' => Icons.emoji_events_rounded,
+  'diamond' => Icons.diamond_rounded,
+  _ => Icons.smart_toy_rounded,
+};
+
+/// The reactions already on a message, plus a way to add one. Tapping the
+/// icon you already chose takes it back — the server's rule, mirrored here so
+/// the app never shows two of mine.
+class GramReactions extends StatelessWidget {
+  const GramReactions({
+    super.key,
+    required this.counts,
+    required this.mine,
+    required this.onTap,
+  });
+
+  final Map<String, int> counts;
+  final String? mine;
+  final void Function(String icon) onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.lip;
+    return Wrap(
+      spacing: Gap.sm,
+      runSpacing: 4,
+      children: [
+        for (final icon in gramReactionIcons)
+          if ((counts[icon] ?? 0) > 0 || icon == mine)
+            InkWell(
+              onTap: () => onTap(icon),
+              borderRadius: BorderRadius.circular(Radii.pill),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: icon == mine ? c.brandSoft : c.glassDeep,
+                  borderRadius: BorderRadius.circular(Radii.pill),
+                  border: Border.all(
+                    color: icon == mine ? c.brand : c.glassBorder,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      gramReactionIcon(icon),
+                      size: 13,
+                      color: icon == mine ? c.brand : c.text3,
+                    ),
+                    if ((counts[icon] ?? 0) > 0) ...[
+                      const SizedBox(width: 3),
+                      Text(
+                        '${counts[icon]}',
+                        style: LipType.label.copyWith(
+                          color: icon == mine ? c.brand : c.text3,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+        // The way in when nothing has been reacted to yet.
+        InkWell(
+          onTap: () => _pick(context),
+          borderRadius: BorderRadius.circular(Radii.pill),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            child: Icon(Icons.add_reaction_outlined, size: 14, color: c.text3),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _pick(BuildContext context) async {
+    final chosen = await showModalBottomSheet<String>(
+      context: context,
+      builder: (sheet) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(Gap.lg),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              for (final icon in gramReactionIcons)
+                IconButton(
+                  iconSize: 26,
+                  icon: Icon(gramReactionIcon(icon)),
+                  onPressed: () => Navigator.of(sheet).pop(icon),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (chosen != null) onTap(chosen);
+  }
+}
+
+/// A poll, with its bars and its vote. The website has always sent a poll's
+/// options inside `meta`; the app dropped them, so a poll arrived as an empty
+/// grey bubble that could not be answered.
+class GramPoll extends StatelessWidget {
+  const GramPoll({
+    super.key,
+    required this.options,
+    required this.counts,
+    required this.mine,
+    required this.onVote,
+  });
+
+  final List<String> options;
+  final Map<int, int> counts;
+  final int? mine;
+  final void Function(int option) onVote;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.lip;
+    final total = counts.values.fold<int>(0, (a, b) => a + b);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < options.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: InkWell(
+              onTap: () => onVote(i),
+              borderRadius: BorderRadius.circular(Radii.sm),
+              child: Stack(
+                children: [
+                  // The bar behind the words, so a share is read at a glance
+                  // rather than counted.
+                  Positioned.fill(
+                    child: FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: total == 0 ? 0 : (counts[i] ?? 0) / total,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: i == mine ? c.brandSoft : c.glassDeep,
+                          borderRadius: BorderRadius.circular(Radii.sm),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: Gap.sm,
+                      vertical: 6,
+                    ),
+                    child: Row(
+                      children: [
+                        if (i == mine) ...[
+                          Icon(
+                            Icons.check_circle_rounded,
+                            size: 13,
+                            color: c.brand,
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                        Expanded(
+                          child: Text(
+                            options[i],
+                            style: LipType.small.copyWith(
+                              color: c.text1,
+                              fontWeight: i == mine
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '${counts[i] ?? 0}',
+                          style: LipType.label.copyWith(color: c.text3),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        const SizedBox(height: 4),
+        Text(
+          total == 1 ? 'One vote' : '$total votes',
+          style: LipType.label.copyWith(color: c.text3),
+        ),
+      ],
     );
   }
 }
