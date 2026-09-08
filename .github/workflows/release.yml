@@ -1,11 +1,19 @@
 # =============================================================================
 # RELEASE ARTIFACTS · run by hand from the Actions tab.
 #
-# android-bundle · the .aab Google Play ingests. Until a Play upload keystore
-#   is created and stored as repository secrets, the bundle is signed with the
-#   debug key: fine for inspection, refused by the Play Console. Creating the
-#   real key is a one time step done together deliberately, because losing it
-#   or changing it strands every installed copy.
+# android-bundle · the .aab Google Play ingests, and the APKs beside it. Both
+#   are signed with the PERMANENT release key: android-signing/lip-release.jks
+#   .enc, decrypted by the two repository secrets ANDROID_KEYSTORE_PASSPHRASE
+#   and ANDROID_KEYSTORE_PASSWORD. Before this, `flutter build` fell through to
+#   signingConfigs.debug, and the debug keystore is generated fresh on every
+#   runner — so no two builds this repo produced could update each other.
+#   If the secrets are missing the build still runs and says loudly in the job
+#   summary that the signature is throwaway.
+#
+# release · publishes everything to a GitHub Release, because Actions artifacts
+#   are only reachable through a redirect that a good many networks refuse.
+#   A release asset is a plain URL anyone can open. Runs only when the `release`
+#   input is ticked.
 #
 # ios-unsigned · Runner.app zipped into an .ipa with no code signature.
 #   Enough to inspect and to sideload through tools that re-sign; distributing
@@ -32,8 +40,20 @@ name: release
 
 on:
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish the artifacts to a GitHub Release"
+        type: boolean
+        default: false
+      version:
+        description: "Release tag, e.g. v1.1.0 (defaults to the pubspec version)"
+        type: string
+        default: ""
   push:
     tags: ["v*"]
+
+permissions:
+  contents: write
 
 jobs:
   android-bundle:
@@ -51,20 +71,36 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Release signing key
+        id: signing
+        uses: ./.github/actions/sign
+        with:
+          passphrase: ${{ secrets.ANDROID_KEYSTORE_PASSPHRASE }}
+          password: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       - name: Build app bundle
-        run: flutter build appbundle --release
+        run: flutter build appbundle --release --split-debug-info=build/symbols
       - name: Build release APK
-        run: flutter build apk --release
+        run: flutter build apk --release --split-debug-info=build/symbols
+      # ONE APK PER PROCESSOR AS WELL AS THE UNIVERSAL ONE. The universal APK
+      # carries machine code for three processors and a phone runs exactly
+      # one: most of the download is padding the student cannot use, paid for
+      # out of a data bundle. arm64-v8a is every Android phone sold in years.
+      - name: Build one APK per processor
+        run: flutter build apk --release --split-per-abi --split-debug-info=build/symbols
+      - name: Say what was actually signed
+        run: |
+          echo "### Android build" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "signed with the release key: ${{ steps.signing.outputs.signed }}" >> $GITHUB_STEP_SUMMARY
+          ls -la build/app/outputs/flutter-apk/*.apk build/app/outputs/bundle/release/*.aab | \
+            awk '{print "- " $NF " — " $5 " bytes"}' >> $GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@v4
         with:
-          name: lockinpoint-aab
-          path: build/app/outputs/bundle/release/app-release.aab
-          retention-days: 30
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        with:
-          name: lockinpoint-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: lockinpoint-android
+          path: |
+            build/app/outputs/bundle/release/app-release.aab
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/flutter-apk/app-*-release.apk
           retention-days: 30
           if-no-files-found: error
 
@@ -248,3 +284,50 @@ jobs:
             lockinpoint_*_amd64.deb
           retention-days: 30
           if-no-files-found: error
+
+  # ==========================================================================
+  # PUBLISH.
+  #
+  # GitHub Actions artifacts download through a redirect to a storage host
+  # that plenty of networks — and this project's own build environment — will
+  # not reach. A release asset is an ordinary URL. So everything the six jobs
+  # above produced is collected here and attached to a real release, with a
+  # SHA256SUMS.txt beside it so anyone can check what they downloaded.
+  #
+  # The tag is created by this job using the runner's own token, because a
+  # branch-scoped token cannot push tags.
+  # ==========================================================================
+  release:
+    needs: [android-bundle, ios-unsigned, web, windows, macos-desktop, linux]
+    if: github.event_name == 'workflow_dispatch' && inputs.release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: incoming
+      - name: Gather and checksum
+        id: gather
+        run: |
+          V="${{ inputs.version }}"
+          if [ -z "$V" ]; then
+            V="v$(grep -m1 '^version:' pubspec.yaml | sed 's/version: *//' | cut -d+ -f1)"
+          fi
+          echo "tag=$V" >> $GITHUB_OUTPUT
+          mkdir -p out
+          # Flatten: the artifact names are directories, the files inside them
+          # already carry meaningful names.
+          find incoming -type f -exec cp -n {} out/ \;
+          cd out
+          sha256sum * > SHA256SUMS.txt
+          ls -la
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.gather.outputs.tag }}" out/* \
+            --target "$GITHUB_SHA" \
+            --title "LockInPoint ${{ steps.gather.outputs.tag }}" \
+            --notes "Android APK and AAB signed with the permanent release key. iOS .ipa is UNSIGNED. Windows, macOS and Linux desktop builds are unsigned and will show an unrecognised-app warning on first open. Checksums in SHA256SUMS.txt."
+
