@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.io.FileInputStream
 
 plugins {
     id("com.android.application")
@@ -6,29 +7,30 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// ---------------------------------------------------------------------------
-// ONE SIGNATURE, FOR EVER.
-//
-// This file used to say `signingConfig = signingConfigs.getByName("debug")`
-// under `release`, which is the Flutter template's own placeholder. The debug
-// keystore is GENERATED FRESH on every CI runner, so no two release builds
-// this repository ever produced shared a signature — and Android refuses to
-// install an update signed by a different key. Every new build meant
-// "uninstall the old one first", which throws away everything the student had
-// downloaded. Play is stricter still: the first upload fixes the key for the
-// life of the listing.
-//
-// The real key is read from android/key.properties, which CI writes after
-// decrypting android-signing/lip-release.jks.enc. That file is never
-// committed. If it is absent — a contributor building locally, or a fork with
-// no secrets — the build falls back to debug and SAYS SO in the build log,
-// because a silent fallback is exactly how this went unnoticed.
-// ---------------------------------------------------------------------------
-val keyProps = Properties().apply {
+/* ============================================================================
+   THE UPLOAD KEY.
+
+   android/key.properties is git-ignored and holds four lines:
+
+       storeFile=/absolute/path/to/upload-keystore.jks
+       storePassword=…
+       keyAlias=upload
+       keyPassword=…
+
+   CI writes that file from repository secrets before building; a developer
+   creates it once by hand. When it is absent — a fresh clone, a contributor,
+   `flutter run --release` on a laptop — the build still works and signs with
+   the debug key, because a release build that cannot be run locally is a
+   release build nobody tests.
+
+   Google Play REFUSES a debug-signed bundle, so the artifact tells you which
+   it got rather than leaving you to find out at upload time.
+   ============================================================================ */
+val keystoreProperties = Properties().apply {
     val f = rootProject.file("key.properties")
-    if (f.exists()) f.inputStream().use { load(it) }
+    if (f.exists()) load(FileInputStream(f))
 }
-val hasReleaseKey = keyProps.getProperty("storeFile") != null
+val hasUploadKey = keystoreProperties.getProperty("storeFile") != null
 
 android {
     namespace = "com.lockinpoint.app"
@@ -43,39 +45,45 @@ android {
     defaultConfig {
         // The listing on Google Play is this id. It does not change, ever.
         applicationId = "com.lockinpoint.app"
+        // You can update the following values to match your application needs.
+        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
-        // Uses the version code from pubspec.yaml. When using split APKs,
-        // 1000 * ABI_VERSION is added automatically by Flutter.
+        // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
+        // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
+        // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
+        // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
     signingConfigs {
-        if (hasReleaseKey) {
-            create("release") {
-                // storeFile is written ABSOLUTE by CI on purpose: file()
-                // inside android { } resolves a relative path against
-                // android/app/, not android/, so a bare filename would look
-                // in the wrong directory and fall back to debug in silence.
-                storeFile = file(keyProps.getProperty("storeFile"))
-                storePassword = keyProps.getProperty("storePassword")
-                keyAlias = keyProps.getProperty("keyAlias")
-                keyPassword = keyProps.getProperty("keyPassword")
+        if (hasUploadKey) {
+            create("upload") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
             }
         }
     }
 
     buildTypes {
         release {
-            if (hasReleaseKey) {
-                signingConfig = signingConfigs.getByName("release")
+            // The real key when there is one, the debug key when there is not.
+            // Never silently: the build prints which, so a debug-signed bundle
+            // is discovered here rather than by the Play Console.
+            signingConfig = if (hasUploadKey) {
+                signingConfigs.getByName("upload")
             } else {
-                println("WARNING: android/key.properties is missing. This release " +
-                        "build is signed with the DEBUG key. It installs, but it " +
-                        "cannot update an existing install and Play will refuse it.")
-                signingConfig = signingConfigs.getByName("debug")
+                logger.lifecycle("[lockinpoint] No android/key.properties — signing the release with the DEBUG key. Google Play will refuse this bundle.")
+                signingConfigs.getByName("debug")
             }
+            /* Shrink and obfuscate. A release carrying every unreachable
+               class is a download a student pays for out of a data bundle,
+               and the Flutter engine's own classes are reached from native
+               code where R8 cannot see the references — hence the keep rules
+               beside this file. */
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

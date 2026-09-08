@@ -42,3 +42,84 @@ jobs:
 
       - name: Test
         run: flutter test --reporter expanded
+
+      # -----------------------------------------------------------------------
+      # THE WEB VAULT OPENER IMPORTS NOTHING NATIVE.
+      #
+      # Every native drift backend — its in-memory one included — reaches for
+      # dart:ffi, which a browser cannot compile. Importing one here does not
+      # disable the vault on the web; it breaks the entire web build.
+      #
+      # This assertion used to live in the WEBSITE repository's trace script,
+      # which read this file across a sibling directory. That works on a
+      # machine with both repositories cloned side by side and fails with
+      # ENOENT on every deployment, because Vercel clones the website alone.
+      # It belongs here, where the file it is about actually is.
+      # -----------------------------------------------------------------------
+      - name: The web vault opener imports nothing native
+        run: |
+          F=lib/core/vault/vault_open_web.dart
+          test -f "$F" || { echo "::error::$F is missing"; exit 1; }
+          # Strip comments first: the doc comment above this code explains
+          # drift/native at length, and grepping the prose is how a check
+          # ends up failing on its own explanation.
+          CODE=$(sed 's|//.*||' "$F")
+          if grep -qE "drift/native|dart:ffi|sqlite3" <<<"$CODE"; then
+            echo "::error::$F imports a native backend; the web build cannot compile dart:ffi"
+            exit 1
+          fi
+          echo "ok — the web opener imports nothing native"
+
+      # And the web target really does compile, which is the guarantee the
+      # grep above is a fast proxy for.
+      - name: The web build compiles
+        run: flutter build web --release
+
+  # ===========================================================================
+  # THE OFFLINE VAULT, ON A REAL DEVICE, WITH THE NETWORK REALLY GONE.
+  #
+  # The unit tests above use an in-memory database and an Api that throws.
+  # That proves the repository's logic and nothing else. This runs the REAL
+  # app binary on the Linux desktop against a REAL HTTP server, then KILLS
+  # that server mid-run — which is how the vault's promise is actually kept
+  # or broken. It already caught one bug a mock could never have seen: on a
+  # minimal Linux image the vault could not open at all.
+  #
+  # Separate job because it needs the desktop toolchain, and a typo fix must
+  # not wait for GTK to install.
+  # ===========================================================================
+  offline-vault:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the Linux desktop toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config \
+                                  libgtk-3-dev liblzma-dev libsecret-1-dev \
+                                  libjsoncpp-dev xvfb
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.2"
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      # A display, because the integration test runs the real windowed app.
+      - name: Prove the vault works with no network
+        run: xvfb-run -a ./scripts/offline-vault-check.sh linux
+
+      # ---------------------------------------------------------------------
+      # THE ACCEPTANCE DRIVE.
+      #
+      # Twelve student journeys, TAPPED on the real binary. The release that
+      # shipped with a menu that would not open passed a clean analyzer and
+      # 198 unit tests, because none of them tapped anything. This is the job
+      # that would have caught it, so it runs on every push.
+      # ---------------------------------------------------------------------
+      - name: Drive the app as a student
+        run: xvfb-run -a ./scripts/acceptance-drive.sh linux
