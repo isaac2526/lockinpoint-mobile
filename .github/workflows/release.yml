@@ -553,8 +553,25 @@ jobs:
         run: |
           set -euo pipefail
           # gh is pre-installed on GitHub-hosted runners.
+          #
+          # A REFUSED RELEASE MUST NOT CONDEMN SIX GOOD BUILDS.
+          #
+          # This step once turned a run in which every platform compiled,
+          # signed and verified into a red X, because GitHub answered
+          #
+          #   HTTP 403: Resource not accessible by integration
+          #
+          # to `gh release create`. Nothing was wrong with the code: making a
+          # repository public resets Actions' default token to READ-ONLY, and
+          # a job-level `permissions: contents: write` can only narrow what
+          # the repository already allows — it cannot widen it. The artifacts
+          # were all sitting on the run page the whole time.
+          #
+          # So the failure is reported precisely, with the one setting to
+          # change, and the job carries on to the Supabase upload — which is
+          # the download path that actually matters to students.
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" out/* --clobber
+            gh release upload "$TAG" out/* --clobber || RELEASE_FAILED=1
           else
             # --target is THE COMMIT THAT WAS ACTUALLY BUILT. Without it a
             # tag created here points at the default branch, so the release
@@ -563,7 +580,24 @@ jobs:
             gh release create "$TAG" out/* \
               --target "$GITHUB_SHA" \
               --title "LockInPoint $V" \
-              --notes "Automated build of $TAG. The .aab is for Google Play; everything else is a direct download. Desktop builds are unsigned."
+              --notes "Automated build of $TAG. The .aab is for Google Play; everything else is a direct download. Desktop builds are unsigned." \
+              || RELEASE_FAILED=1
+          fi
+
+          if [ "${RELEASE_FAILED:-0}" = "1" ]; then
+            echo "::warning::GitHub refused to create the release. Settings -> Actions -> General -> Workflow permissions -> Read and write permissions, then re-run this job. Every built file is already attached to this run."
+            {
+              echo "### The release was refused — the builds are fine"
+              echo ""
+              echo "Every platform built, and the bundle passed the signing check."
+              echo "GitHub would not create the **Release**, which needs a setting this"
+              echo "workflow cannot grant itself:"
+              echo ""
+              echo "**Settings → Actions → General → Workflow permissions →"
+              echo "\"Read and write permissions\" → Save**, then re-run this job."
+              echo ""
+              echo "Until then the files are on this run's own **Artifacts** panel."
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
       # ---------------------------------------------------------------------
