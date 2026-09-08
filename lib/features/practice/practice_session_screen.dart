@@ -12,7 +12,7 @@ import '../../design/tokens.dart';
 import '../../design/typography.dart';
 import '../home/dashboard_screen.dart';
 import 'practice_repository.dart';
-import 'question_html.dart';
+import '../../design/rich_text.dart';
 import 'review_screen.dart';
 
 /// ===========================================================================

@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lockinpoint/design/theme.dart';
 import 'package:lockinpoint/features/practice/practice_repository.dart';
 import 'package:lockinpoint/features/practice/practice_session_screen.dart';
-import 'package:lockinpoint/features/practice/question_html.dart';
+import 'package:lockinpoint/design/rich_text.dart';
 
 /// ===========================================================================
 /// THE PRACTICE ROOM, PROVEN

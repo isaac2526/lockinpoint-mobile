@@ -10,7 +10,7 @@ import '../../design/motion_widgets.dart';
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
-import '../practice/question_html.dart';
+import '../../design/rich_text.dart';
 
 /// One hit from /api/search. The answer and explanation come with it, because
 /// search is a study tool for a signed in student, not a question feed.

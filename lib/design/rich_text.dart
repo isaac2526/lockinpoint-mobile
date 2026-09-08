@@ -2,10 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 
-import '../../design/theme.dart';
+import 'theme.dart';
 
 /// ===========================================================================
-/// HOW QUESTION CONTENT IS DRAWN ON THE PHONE
+/// HOW RICH CONTENT IS DRAWN ON THE PHONE
+///
+/// This lived under features/practice, so only practice, search and review
+/// used it. Everything ELSE that carries markup drew it as stripped plain
+/// text — the classroom's notes ran the HTML through a regex that deleted
+/// every tag, which turns H<sub>2</sub>O into H2O and x<sup>2</sup> into x2:
+/// wrong in chemistry and wrong in every index. It belongs in the design
+/// system, where any screen can reach it.
 ///
 /// The server serves question text as sanitised HTML — a deliberately small
 /// tag set (bold, italics, sup/sub, lists, tables) with LaTeX left INSIDE the

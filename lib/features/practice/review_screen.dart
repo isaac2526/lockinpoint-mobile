@@ -7,7 +7,7 @@ import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
 import 'practice_repository.dart';
-import 'question_html.dart';
+import '../../design/rich_text.dart';
 
 /// ===========================================================================
 /// THE REVIEW · where the learning actually happens

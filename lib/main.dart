@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app/theme_controller.dart';
+import 'core/presence.dart';
 import 'design/theme.dart';
 import 'design/tokens.dart';
 import 'features/auth/auth_controller.dart';
@@ -61,7 +62,9 @@ class _Gate extends ConsumerWidget {
       duration: Motion.slow,
       switchInCurve: Motion.glide,
       child: switch (auth) {
-        AsyncData(value: SignedIn()) => const AppShell(key: ValueKey('home')),
+        AsyncData(value: SignedIn()) => const _Present(
+          child: AppShell(key: ValueKey('home')),
+        ),
         AsyncData(value: SignedOut(:final message)) => WelcomeScreen(
           key: const ValueKey('welcome'),
           notice: message,
@@ -71,4 +74,38 @@ class _Gate extends ConsumerWidget {
       },
     );
   }
+}
+
+/// Starts the presence heartbeat for as long as a student is signed in, and
+/// stops it the moment they are not. Wrapping the shell rather than living in
+/// main() is deliberate: a signed-out app has nothing to say to /api/session,
+/// and starting the observer anyway would ping on every resume of the welcome
+/// screen for ever.
+class _Present extends ConsumerStatefulWidget {
+  const _Present({required this.child});
+  final Widget child;
+
+  @override
+  ConsumerState<_Present> createState() => _PresentState();
+}
+
+class _PresentState extends ConsumerState<_Present> {
+  Presence? _presence;
+
+  @override
+  void initState() {
+    super.initState();
+    final p = ref.read(presenceProvider);
+    _presence = p;
+    p.start();
+  }
+
+  @override
+  void dispose() {
+    _presence?.stop();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

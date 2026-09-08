@@ -2,33 +2,39 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/config.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
+import '../../design/rich_text.dart';
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
 import 'classroom_repository.dart';
 
 /// ===========================================================================
-/// THE CLASSROOM
+/// THE CLASSROOM · one question per screen.
 ///
-/// Exam, then subject, then the shelf: notes to read, videos to watch, files
-/// to keep. Violet throughout, because the classroom owns violet the way
-/// practice owns blue — a student should know which room they are in before
-/// they read a single word.
+/// This was a single page: a horizontal strip of exam chips at the top and
+/// every subject in the exam below it, so choosing WAEC and choosing Chemistry
+/// happened in the same breath and the room you were in was a chip you might
+/// have scrolled past. On a phone that reads as one undifferentiated wall.
+///
+/// It is now the walk the rest of the platform uses, and the walk a student
+/// actually takes:
+///
+///     which examination  →  which subject  →  what is on the shelf
+///
+/// Each on its own screen, each with the back button that gets you to the
+/// previous decision. Violet throughout, because the classroom owns violet
+/// the way practice owns blue — a student should know which room they are in
+/// before they read a single word.
 /// ===========================================================================
-class ClassroomScreen extends ConsumerStatefulWidget {
+class ClassroomScreen extends ConsumerWidget {
   const ClassroomScreen({super.key});
 
   @override
-  ConsumerState<ClassroomScreen> createState() => _ClassroomScreenState();
-}
-
-class _ClassroomScreenState extends ConsumerState<ClassroomScreen> {
-  String _exam = '';
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
     final exams = ref.watch(classroomExamsProvider);
 
     return Scaffold(
@@ -39,9 +45,11 @@ class _ClassroomScreenState extends ConsumerState<ClassroomScreen> {
             padding: EdgeInsets.all(Gap.lg),
             child: Column(
               children: [
-                LipSkeleton(height: 44),
+                LipSkeleton(height: 78),
                 SizedBox(height: Gap.md),
-                LipSkeleton(height: 120),
+                LipSkeleton(height: 78),
+                SizedBox(height: Gap.md),
+                LipSkeleton(height: 78),
               ],
             ),
           ),
@@ -49,105 +57,120 @@ class _ClassroomScreenState extends ConsumerState<ClassroomScreen> {
             message: '$e',
             onRetry: () => ref.invalidate(classroomExamsProvider),
           ),
-          data: (list) {
-            if (list.isEmpty) {
-              return const LipEmpty(
-                icon: Icons.auto_stories_rounded,
-                title: 'No exams yet',
-                message: 'The tutors have not opened a room yet.',
-              );
-            }
-            final exam = _exam.isEmpty ? list.first.slug : _exam;
-            return Column(
-              children: [
-                SizedBox(
-                  height: 52,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: Gap.lg),
-                    itemCount: list.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: Gap.sm),
-                    itemBuilder: (_, i) => Center(
-                      child: LipChip(
-                        list[i].name,
-                        selected: list[i].slug == exam,
-                        onTap: () => setState(() => _exam = list[i].slug),
-                      ),
-                    ),
+          data: (list) => list.isEmpty
+              ? const LipEmpty(
+                  icon: Icons.auto_stories_rounded,
+                  title: 'No examination room is open yet',
+                  message: 'The tutors have not opened a room yet.',
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(
+                    Gap.lg,
+                    Gap.lg,
+                    Gap.lg,
+                    Gap.huge,
                   ),
+                  children: [
+                    Text(
+                      'Which examination room?',
+                      style: LipType.title.copyWith(color: c.text1),
+                    ),
+                    const SizedBox(height: Gap.xs),
+                    Text(
+                      'Notes to read, video lessons, and files to keep — '
+                      'filed the way the papers are.',
+                      style: LipType.small.copyWith(color: c.text3),
+                    ),
+                    const SizedBox(height: Gap.lg),
+                    for (final e in list)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: Gap.md),
+                        child: _BigRow(
+                          icon: Icons.auto_stories_rounded,
+                          hue: c.hues.violet,
+                          title: e.name,
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => ClassroomSubjectsScreen(exam: e),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                Expanded(child: _Subjects(examSlug: exam)),
-              ],
-            );
-          },
         ),
       ),
     );
   }
 }
 
-class _Subjects extends ConsumerWidget {
-  const _Subjects({required this.examSlug});
-  final String examSlug;
+/// Step two: which subject, inside the examination already chosen.
+class ClassroomSubjectsScreen extends ConsumerWidget {
+  const ClassroomSubjectsScreen({super.key, required this.exam});
+  final ExamRef exam;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.lip;
-    final subjects = ref.watch(classroomSubjectsProvider(examSlug));
+    final subjects = ref.watch(classroomSubjectsProvider(exam.slug));
 
-    return subjects.when(
-      loading: () => const Padding(
-        padding: EdgeInsets.all(Gap.lg),
-        child: LipSkeleton(height: 200),
-      ),
-      error: (e, _) => LipError(
-        message: '$e',
-        onRetry: () => ref.invalidate(classroomSubjectsProvider(examSlug)),
-      ),
-      data: (list) => list.isEmpty
-          ? const LipEmpty(
-              icon: Icons.auto_stories_rounded,
-              title: 'Nothing in this room yet',
-              message:
-                  'Notes and videos appear here as the tutors upload them.',
-            )
-          : GridView.builder(
-              padding: const EdgeInsets.fromLTRB(
-                Gap.lg,
-                Gap.sm,
-                Gap.lg,
-                Gap.huge,
-              ),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: Gap.md,
-                crossAxisSpacing: Gap.md,
-                childAspectRatio: 2.1,
-              ),
-              itemCount: list.length,
-              itemBuilder: (_, i) => GlassSurface(
-                hue: c.hues.violet,
-                padding: const EdgeInsets.all(Gap.md),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => _ShelfScreen(subject: list[i]),
+    return Scaffold(
+      appBar: AppBar(title: Text(exam.name)),
+      body: SafeArea(
+        child: subjects.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.all(Gap.lg),
+            child: LipSkeleton(height: 220),
+          ),
+          error: (e, _) => LipError(
+            message: '$e',
+            onRetry: () => ref.invalidate(classroomSubjectsProvider(exam.slug)),
+          ),
+          data: (list) => list.isEmpty
+              ? const LipEmpty(
+                  icon: Icons.auto_stories_rounded,
+                  title: 'Nothing in this room yet',
+                  message:
+                      'Notes and videos appear here as the tutors upload them.',
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(
+                    Gap.lg,
+                    Gap.lg,
+                    Gap.lg,
+                    Gap.huge,
                   ),
+                  children: [
+                    Text(
+                      'Which subject?',
+                      style: LipType.title.copyWith(color: c.text1),
+                    ),
+                    const SizedBox(height: Gap.lg),
+                    for (final s in list)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: Gap.md),
+                        child: _BigRow(
+                          icon: Icons.menu_book_rounded,
+                          hue: c.hues.violet,
+                          title: s.name,
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => ClassroomShelfScreen(subject: s),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    list[i].name,
-                    style: LipType.subheading.copyWith(color: c.text1),
-                  ),
-                ),
-              ),
-            ),
+        ),
+      ),
     );
   }
 }
 
-class _ShelfScreen extends ConsumerWidget {
-  const _ShelfScreen({required this.subject});
+/// Step three: the shelf itself — notes, videos and files for one subject.
+class ClassroomShelfScreen extends ConsumerWidget {
+  const ClassroomShelfScreen({super.key, required this.subject});
   final SubjectRef subject;
 
   @override
@@ -194,7 +217,7 @@ class _ShelfScreen extends ConsumerWidget {
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute<void>(
                               builder: (_) =>
-                                  _NoteScreen(id: m.id, title: m.title),
+                                  ClassroomNoteScreen(id: m.id, title: m.title),
                             ),
                           ),
                         ),
@@ -224,13 +247,27 @@ class _ShelfScreen extends ConsumerWidget {
                       const SizedBox(height: Gap.sm),
                       ...s.documents.map(
                         (m) => _Row(
-                          icon: Icons.description_rounded,
+                          icon: m.kind == 'slides'
+                              ? Icons.slideshow_rounded
+                              : Icons.description_rounded,
                           hue: c.hues.amber,
                           title: m.title,
+                          subtitle: 'Opens with your name on every page',
                           onTap: m.url.isEmpty
                               ? null
                               : () => launchUrl(
-                                  Uri.parse(m.url),
+                                  /* The server hands back a path on its own
+                                     domain — /api/doc/<id> — because that is
+                                     the gate that checks activation and burns
+                                     the reader's name across the pages. It
+                                     used to hand back a public storage URL
+                                     for a bucket that does not exist, so
+                                     every file 404'd. */
+                                  Uri.parse(
+                                    m.url.startsWith('http')
+                                        ? m.url
+                                        : '${AppConfig.apiBase}${m.url}',
+                                  ),
                                   mode: LaunchMode.externalApplication,
                                 ),
                         ),
@@ -244,48 +281,9 @@ class _ShelfScreen extends ConsumerWidget {
   }
 }
 
-class _Row extends StatelessWidget {
-  const _Row({
-    required this.icon,
-    required this.hue,
-    required this.title,
-    this.onTap,
-  });
-
-  final IconData icon;
-  final LipHue hue;
-  final String title;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.lip;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: Gap.sm),
-      child: GlassSurface(
-        tier: GlassTier.raised,
-        padding: const EdgeInsets.all(Gap.md),
-        onTap: onTap,
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: hue.ink),
-            const SizedBox(width: Gap.md),
-            Expanded(
-              child: Text(
-                title.isEmpty ? 'Untitled' : title,
-                style: LipType.body.copyWith(color: c.text1),
-              ),
-            ),
-            Icon(Icons.chevron_right_rounded, size: 18, color: c.text3),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _NoteScreen extends ConsumerWidget {
-  const _NoteScreen({required this.id, required this.title});
+/// One note, read inside the app.
+class ClassroomNoteScreen extends ConsumerWidget {
+  const ClassroomNoteScreen({super.key, required this.id, required this.title});
   final String id;
   final String title;
 
@@ -321,14 +319,17 @@ class _NoteScreen extends ConsumerWidget {
                   style: LipType.title.copyWith(color: c.text1),
                 ),
                 const SizedBox(height: Gap.md),
-                /* The body is stored as HTML by the admin editor. Rendering it
-                   as rich text needs a renderer the app does not ship; showing
-                   the tags would be worse than showing none. Stripped, spaced
-                   and set at reading size — honest plain text beats a broken
-                   attempt at formatting. */
-                Text(
-                  _readable(n['body'] ?? ''),
-                  style: LipType.body.copyWith(color: c.text2, height: 1.6),
+                /* THE BODY IS HTML, AND IT IS NOW DRAWN AS HTML.
+                   It used to go through a regex that deleted every tag: which
+                   turns H<sub>2</sub>O into H2O and x<sup>2</sup> into x2 —
+                   wrong in chemistry, wrong in every index — and threw away
+                   bold, underline, lists, tables and every formula. The
+                   renderer for exactly this content already existed for
+                   practice questions; it now lives in the design system where
+                   any screen can use it. */
+                LipHtml(
+                  n['body'] ?? '',
+                  baseStyle: LipType.body.copyWith(color: c.text2, height: 1.6),
                 ),
               ],
             ),
@@ -339,15 +340,101 @@ class _NoteScreen extends ConsumerWidget {
   }
 }
 
-String _readable(String html) => html
-    .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
-    .replaceAll(RegExp(r'</(p|div|li|h[1-6])>', caseSensitive: false), '\n\n')
-    .replaceAll(RegExp(r'<li[^>]*>', caseSensitive: false), '• ')
-    .replaceAll(RegExp(r'<[^>]+>'), '')
-    .replaceAll('&nbsp;', ' ')
-    .replaceAll('&amp;', '&')
-    .replaceAll('&lt;', '<')
-    .replaceAll('&gt;', '>')
-    .replaceAll('&quot;', '"')
-    .replaceAll(RegExp(r'\n{3,}'), '\n\n')
-    .trim();
+/// A tall row for a decision: examination, subject. Big enough to be the only
+/// thing on the screen worth tapping.
+class _BigRow extends StatelessWidget {
+  const _BigRow({
+    required this.icon,
+    required this.hue,
+    required this.title,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final LipHue hue;
+  final String title;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.lip;
+    return GlassSurface(
+      hue: hue,
+      padding: const EdgeInsets.all(Gap.lg),
+      onTap: onTap,
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: hue.tint,
+              borderRadius: BorderRadius.circular(Radii.sm),
+            ),
+            child: Icon(icon, size: 22, color: hue.ink),
+          ),
+          const SizedBox(width: Gap.md),
+          Expanded(
+            child: Text(
+              title,
+              style: LipType.subheading.copyWith(color: c.text1),
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, size: 20, color: c.text3),
+        ],
+      ),
+    );
+  }
+}
+
+class _Row extends StatelessWidget {
+  const _Row({
+    required this.icon,
+    required this.hue,
+    required this.title,
+    this.subtitle,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final LipHue hue;
+  final String title;
+  final String? subtitle;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.lip;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Gap.sm),
+      child: GlassSurface(
+        tier: GlassTier.raised,
+        padding: const EdgeInsets.all(Gap.md),
+        onTap: onTap,
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: hue.ink),
+            const SizedBox(width: Gap.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title.isEmpty ? 'Untitled' : title,
+                    style: LipType.body.copyWith(color: c.text1),
+                  ),
+                  if (subtitle != null)
+                    Text(
+                      subtitle!,
+                      style: LipType.caption.copyWith(color: c.text3),
+                    ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, size: 18, color: c.text3),
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -155,13 +155,6 @@ class _LipDrawer extends ConsumerWidget {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
     }
 
-    void soon(String what) {
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$what arrives in the next build.')),
-      );
-    }
-
     return Drawer(
       backgroundColor: c.bgBase,
       child: SafeArea(
@@ -284,12 +277,6 @@ class _LipDrawer extends ConsumerWidget {
                     subtitle: 'Practise with no signal',
                     onTap: () => go(const VaultScreen()),
                   ),
-                _Row(
-                  icon: Icons.auto_stories_rounded,
-                  hue: FeatureHue.violet,
-                  title: 'Classroom',
-                  onTap: () => soon('Classroom'),
-                ),
               ],
             ),
 
@@ -308,11 +295,44 @@ class _LipDrawer extends ConsumerWidget {
                   title: 'Notifications',
                   onTap: () => go(const NotificationsScreen()),
                 ),
+                /* SIGN OUT BELONGS WHERE A STUDENT LOOKS FOR IT. There was
+                   no way out of the app from anywhere except the profile tab,
+                   and two rows here — a second Classroom and a second
+                   Activation — answered a tap with "arrives in the next
+                   build" while the real rows sat a few lines above them. A
+                   menu that lies about what it can do is worse than a shorter
+                   menu. */
                 _Row(
-                  icon: Icons.account_balance_wallet_rounded,
-                  hue: FeatureHue.green,
-                  title: 'Activation',
-                  onTap: () => soon('Activation'),
+                  icon: Icons.logout_rounded,
+                  hue: FeatureHue.rose,
+                  title: 'Sign out',
+                  subtitle: 'Your downloads stay on this phone',
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    final yes = await showDialog<bool>(
+                      context: context,
+                      builder: (d) => AlertDialog(
+                        title: const Text('Sign out?'),
+                        content: const Text(
+                          'Everything you have downloaded stays on this phone '
+                          'and will be here when you sign back in.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(d).pop(false),
+                            child: const Text('Stay'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.of(d).pop(true),
+                            child: const Text('Sign out'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (yes == true) {
+                      await ref.read(authControllerProvider.notifier).logOut();
+                    }
+                  },
                 ),
               ],
             ),
