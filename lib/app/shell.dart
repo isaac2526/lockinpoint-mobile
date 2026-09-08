@@ -30,6 +30,8 @@ import '../features/search/search_screen.dart';
 import '../features/tutor/tutor_screen.dart';
 import '../features/vault/vault_screen.dart';
 import '../core/vault/connectivity.dart';
+import '../core/vault/essential_download.dart';
+import '../features/vault/essential_screen.dart';
 import '../core/vault/vault_repository.dart';
 import '../design/components.dart';
 
@@ -59,6 +61,21 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell> {
   int _tab = 0;
 
+  /// The student has chosen to carry on while the text pack downloads. NOT a
+  /// skip: the run keeps going and the bar follows them to the top of the
+  /// screen. There is deliberately no way to decline the download — an app
+  /// that lets someone say no and then fails them on a bus with no signal has
+  /// not respected their choice, it has moved the failure to a worse moment.
+  bool _carryOn = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(essentialDownloadProvider.notifier).check();
+    });
+  }
+
   static const _tabs = [
     (icon: Icons.home_rounded, off: Icons.home_outlined, label: 'Home'),
     (
@@ -82,6 +99,20 @@ class _AppShellState extends ConsumerState<AppShell> {
   Widget build(BuildContext context) {
     final c = context.lip;
 
+    /* THE FIRST LAUNCH. Held here rather than in a route so that choosing to
+       carry on does not push a screen the back button can undo. */
+    final essential = ref.watch(essentialDownloadProvider);
+    final mustDownload =
+        !_carryOn &&
+        (essential.phase == EssentialPhase.needed ||
+            essential.phase == EssentialPhase.running ||
+            essential.phase == EssentialPhase.paused);
+    if (mustDownload) {
+      return EssentialDownloadScreen(
+        onContinue: () => setState(() => _carryOn = true),
+      );
+    }
+
     return Scaffold(
       drawer: const _LipDrawer(),
       body: Column(
@@ -90,6 +121,8 @@ class _AppShellState extends ConsumerState<AppShell> {
              no network, and it says something DIFFERENT when the student has
              downloads — because "no connection" is the wrong sentence for a
              phone holding a thousand questions. */
+          // The download that is still running, following the student.
+          const EssentialProgressBar(),
           Consumer(
             builder: (context, ref, _) {
               final online = ref.watch(isOnlineProvider);

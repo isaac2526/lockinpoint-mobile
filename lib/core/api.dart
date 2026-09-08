@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -131,6 +133,54 @@ class Api {
       options: Options(headers: _authHeader(token)),
     ),
   );
+
+  /// Fetches BYTES rather than JSON — a watermarked PDF, an image. Goes
+  /// through [_request] like everything else, so it inherits the same
+  /// 401-refresh-and-retry: a download that started the moment an access
+  /// token expired must not be lost, because on a metered bundle the student
+  /// pays twice for the retry they have to start themselves.
+  ///
+  /// The bytes are returned rather than the envelope, so this is deliberately
+  /// NOT _request: that one parses JSON and would choke on a PDF.
+  Future<Uint8List> download(String url) async {
+    final token = await _readToken();
+    Future<Response<dynamic>> once(String? t) => _dio.get<List<int>>(
+      url,
+      options: Options(
+        headers: _authHeader(t),
+        responseType: ResponseType.bytes,
+      ),
+    );
+    var res = await _guard('GET $url', () => once(token));
+
+    if (res.statusCode == 401 && token != null) {
+      switch (await _refresher.refresh()) {
+        case RefreshedSession(:final access):
+          res = await _guard('GET $url', () => once(access));
+        case RefreshRefused(:final why):
+          throw ApiFailure(why, unauthorised: true);
+        case RefreshUnreachable():
+          throw ApiFailure(
+            'No connection. Try again in a moment.',
+            offline: true,
+          );
+      }
+    }
+
+    final code = res.statusCode ?? 0;
+    if (code < 200 || code >= 300) {
+      throw ApiFailure(
+        code == 403
+            ? 'Activate your account to keep study materials.'
+            : 'That file could not be downloaded right now.',
+        detail: 'GET $url → $code',
+        unauthorised: code == 401,
+      );
+    }
+    final data = res.data;
+    if (data is List<int>) return Uint8List.fromList(data);
+    throw ApiFailure('That file came back empty.');
+  }
 
   /// Sends a FILE the way a browser's form does — the same multipart shape
   /// /api/upload-proof already parses, so the app and the website reach one

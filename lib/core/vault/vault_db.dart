@@ -77,6 +77,41 @@ class VaultPassages extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// ONE SAVED MATERIAL · a note read offline, or a document kept on the phone.
+///
+/// THE SECOND TIER, and the reason it is a separate table rather than more
+/// columns on Packs: a subject's QUESTIONS are a few hundred kilobytes and
+/// everybody gets them; a subject's PDFs are tens of megabytes and only some
+/// are ever wanted. Mixing the two would mean either forcing the PDFs on
+/// everyone or making the questions optional, and both are wrong.
+///
+/// A NOTE'S BODY LIVES HERE. A DOCUMENT'S BYTES DO NOT — `path` points at a
+/// real file on disk instead. A 40MB PDF inside a SQLite row is a 40MB read
+/// every time the row is touched, and on a 1GB phone that is how an app gets
+/// killed for opening its own library.
+class VaultMaterials extends Table {
+  TextColumn get id => text()();
+
+  /// 'note' | 'document'
+  TextColumn get kind => text()();
+  TextColumn get subjectId => text()();
+  TextColumn get title => text()();
+
+  /// The note's HTML. Null for a document.
+  TextColumn get body => text().nullable()();
+
+  /// Where the file was written. Null for a note.
+  TextColumn get path => text().nullable()();
+
+  /// What it actually cost, so the vault screen can tell a student what
+  /// deleting it would give back.
+  IntColumn get bytes => integer().withDefault(const Constant(0))();
+  DateTimeColumn get savedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// A sitting taken with no signal, waiting its turn to reach the server.
 class PendingResults extends Table {
   TextColumn get localId => text()();
@@ -98,7 +133,15 @@ class PendingResults extends Table {
   Set<Column> get primaryKey => {localId};
 }
 
-@DriftDatabase(tables: [Packs, VaultQuestions, VaultPassages, PendingResults])
+@DriftDatabase(
+  tables: [
+    Packs,
+    VaultQuestions,
+    VaultPassages,
+    VaultMaterials,
+    PendingResults,
+  ],
+)
 class VaultDb extends _$VaultDb {
   VaultDb() : super(openVault());
 
@@ -107,7 +150,75 @@ class VaultDb extends _$VaultDb {
   VaultDb.forTesting(super.e);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  /* VERSION 2 ADDS SAVED MATERIALS.
+     Created rather than recreated: an upgrade must not touch packs,
+     questions or pending results, because a student who has downloaded forty
+     subjects and has three unsent sittings on a phone with no signal would
+     lose all of it to a table that could simply have been added beside
+     them. */
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (m) => m.createAll(),
+    onUpgrade: (m, from, to) async {
+      if (from < 2) await m.createTable(vaultMaterials);
+    },
+  );
+
+  // ----------------------------------------------------- saved materials ---
+  //
+  // TIER TWO. The questions are fetched once for everybody; these are opted
+  // into one at a time, because a past-paper PDF is tens of megabytes and
+  // nobody's data bundle should be spent on one they did not ask for.
+
+  /// Biggest first — the order a student wants when they are looking for
+  /// space to free.
+  Future<List<VaultMaterial>> savedMaterials() =>
+      (select(vaultMaterials)..orderBy([
+            (t) => OrderingTerm(expression: t.bytes, mode: OrderingMode.desc),
+          ]))
+          .get();
+
+  Future<List<VaultMaterial>> materialsFor(String subjectId) => (select(
+    vaultMaterials,
+  )..where((t) => t.subjectId.equals(subjectId))).get();
+
+  Future<VaultMaterial?> material(String id) =>
+      (select(vaultMaterials)..where((t) => t.id.equals(id))).getSingleOrNull();
+
+  /// Upsert, so saving something already held refreshes it rather than
+  /// failing — which is what "Update" on the shelf has to do.
+  Future<void> saveMaterial({
+    required String id,
+    required String kind,
+    required String subjectId,
+    required String title,
+    String? body,
+    String? path,
+    int bytes = 0,
+  }) => into(vaultMaterials).insertOnConflictUpdate(
+    VaultMaterialsCompanion.insert(
+      id: id,
+      kind: kind,
+      subjectId: subjectId,
+      title: title,
+      body: Value(body),
+      path: Value(path),
+      bytes: Value(bytes),
+      savedAt: DateTime.now(),
+    ),
+  );
+
+  Future<void> removeMaterial(String id) =>
+      (delete(vaultMaterials)..where((t) => t.id.equals(id))).go();
+
+  /// What the saved materials actually cost, for the line on the vault screen
+  /// that tells a student what deleting them would give back.
+  Future<int> materialBytes() async {
+    final rows = await select(vaultMaterials).get();
+    return rows.fold<int>(0, (a, m) => a + m.bytes);
+  }
 
   // ------------------------------------------------------------- reading ---
 

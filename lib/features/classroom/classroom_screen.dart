@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/api.dart';
 import '../../core/config.dart';
+import '../../core/vault/materials.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
 import '../../design/rich_text.dart';
@@ -214,6 +216,12 @@ class ClassroomShelfScreen extends ConsumerWidget {
                           icon: Icons.article_rounded,
                           hue: c.hues.teal,
                           title: m.title,
+                          keep: _Keep(
+                            id: m.id,
+                            subjectId: subject.id,
+                            title: m.title,
+                            kind: 'note',
+                          ),
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute<void>(
                               builder: (_) =>
@@ -252,6 +260,13 @@ class ClassroomShelfScreen extends ConsumerWidget {
                               : Icons.description_rounded,
                           hue: c.hues.amber,
                           title: m.title,
+                          keep: _Keep(
+                            id: m.id,
+                            subjectId: subject.id,
+                            title: m.title,
+                            kind: 'document',
+                            url: m.url,
+                          ),
                           subtitle: 'Opens with your name on every page',
                           onTap: m.url.isEmpty
                               ? null
@@ -394,6 +409,7 @@ class _Row extends StatelessWidget {
     required this.title,
     this.subtitle,
     this.onTap,
+    this.keep,
   });
 
   final IconData icon;
@@ -401,6 +417,11 @@ class _Row extends StatelessWidget {
   final String title;
   final String? subtitle;
   final VoidCallback? onTap;
+
+  /// The per-item download button. TIER TWO of the offline vault: questions
+  /// are fetched once for everybody, but a note or a PDF is kept only when
+  /// this particular student asks for this particular file.
+  final Widget? keep;
 
   @override
   Widget build(BuildContext context) {
@@ -431,9 +452,82 @@ class _Row extends StatelessWidget {
                 ],
               ),
             ),
+            ?keep,
             Icon(Icons.chevron_right_rounded, size: 18, color: c.text3),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// ===========================================================================
+/// KEEP THIS ONE · the second tier's button, per file.
+///
+/// Three states and each says something different: not here, working, here.
+/// A button that looks the same before and after a 30MB download is a button
+/// a student presses twice.
+/// ===========================================================================
+class _Keep extends ConsumerWidget {
+  const _Keep({
+    required this.id,
+    required this.subjectId,
+    required this.title,
+    required this.kind,
+    this.url = '',
+  });
+
+  final String id;
+  final String subjectId;
+  final String title;
+  final String kind;
+  final String url;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
+    final saved = ref.watch(materialSavedProvider(id)).value ?? false;
+
+    Future<void> act() async {
+      final vault = ref.read(materialVaultProvider);
+      final messenger = ScaffoldMessenger.of(context);
+      try {
+        if (saved) {
+          await vault.forget(id);
+          messenger.showSnackBar(
+            const SnackBar(content: Text('Removed from this phone')),
+          );
+        } else {
+          messenger.showSnackBar(SnackBar(content: Text('Keeping "$title"…')));
+          if (kind == 'note') {
+            await vault.saveNote(id: id, subjectId: subjectId, title: title);
+          } else {
+            await vault.saveDocument(
+              id: id,
+              subjectId: subjectId,
+              title: title,
+              url: url,
+            );
+          }
+          messenger.showSnackBar(
+            const SnackBar(content: Text('Kept. It opens with no signal now.')),
+          );
+        }
+      } on ApiFailure catch (e) {
+        messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      } finally {
+        ref.invalidate(materialSavedProvider(id));
+        ref.invalidate(savedMaterialsProvider);
+      }
+    }
+
+    return IconButton(
+      tooltip: saved ? 'On this phone · tap to remove' : 'Keep on this phone',
+      onPressed: act,
+      icon: Icon(
+        saved ? Icons.offline_pin_rounded : Icons.download_for_offline_outlined,
+        size: 20,
+        color: saved ? c.hues.green.ink : c.text3,
       ),
     );
   }

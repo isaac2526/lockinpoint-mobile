@@ -1408,6 +1408,505 @@ class VaultPassagesCompanion extends UpdateCompanion<VaultPassage> {
   }
 }
 
+class $VaultMaterialsTable extends VaultMaterials
+    with TableInfo<$VaultMaterialsTable, VaultMaterial> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $VaultMaterialsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _subjectIdMeta = const VerificationMeta(
+    'subjectId',
+  );
+  @override
+  late final GeneratedColumn<String> subjectId = GeneratedColumn<String>(
+    'subject_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _bodyMeta = const VerificationMeta('body');
+  @override
+  late final GeneratedColumn<String> body = GeneratedColumn<String>(
+    'body',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _pathMeta = const VerificationMeta('path');
+  @override
+  late final GeneratedColumn<String> path = GeneratedColumn<String>(
+    'path',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _bytesMeta = const VerificationMeta('bytes');
+  @override
+  late final GeneratedColumn<int> bytes = GeneratedColumn<int>(
+    'bytes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _savedAtMeta = const VerificationMeta(
+    'savedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> savedAt = GeneratedColumn<DateTime>(
+    'saved_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    kind,
+    subjectId,
+    title,
+    body,
+    path,
+    bytes,
+    savedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'vault_materials';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<VaultMaterial> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_kindMeta);
+    }
+    if (data.containsKey('subject_id')) {
+      context.handle(
+        _subjectIdMeta,
+        subjectId.isAcceptableOrUnknown(data['subject_id']!, _subjectIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_subjectIdMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('body')) {
+      context.handle(
+        _bodyMeta,
+        body.isAcceptableOrUnknown(data['body']!, _bodyMeta),
+      );
+    }
+    if (data.containsKey('path')) {
+      context.handle(
+        _pathMeta,
+        path.isAcceptableOrUnknown(data['path']!, _pathMeta),
+      );
+    }
+    if (data.containsKey('bytes')) {
+      context.handle(
+        _bytesMeta,
+        bytes.isAcceptableOrUnknown(data['bytes']!, _bytesMeta),
+      );
+    }
+    if (data.containsKey('saved_at')) {
+      context.handle(
+        _savedAtMeta,
+        savedAt.isAcceptableOrUnknown(data['saved_at']!, _savedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_savedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  VaultMaterial map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return VaultMaterial(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      subjectId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}subject_id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      body: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}body'],
+      ),
+      path: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}path'],
+      ),
+      bytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}bytes'],
+      )!,
+      savedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}saved_at'],
+      )!,
+    );
+  }
+
+  @override
+  $VaultMaterialsTable createAlias(String alias) {
+    return $VaultMaterialsTable(attachedDatabase, alias);
+  }
+}
+
+class VaultMaterial extends DataClass implements Insertable<VaultMaterial> {
+  final String id;
+
+  /// 'note' | 'document'
+  final String kind;
+  final String subjectId;
+  final String title;
+
+  /// The note's HTML. Null for a document.
+  final String? body;
+
+  /// Where the file was written. Null for a note.
+  final String? path;
+
+  /// What it actually cost, so the vault screen can tell a student what
+  /// deleting it would give back.
+  final int bytes;
+  final DateTime savedAt;
+  const VaultMaterial({
+    required this.id,
+    required this.kind,
+    required this.subjectId,
+    required this.title,
+    this.body,
+    this.path,
+    required this.bytes,
+    required this.savedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['kind'] = Variable<String>(kind);
+    map['subject_id'] = Variable<String>(subjectId);
+    map['title'] = Variable<String>(title);
+    if (!nullToAbsent || body != null) {
+      map['body'] = Variable<String>(body);
+    }
+    if (!nullToAbsent || path != null) {
+      map['path'] = Variable<String>(path);
+    }
+    map['bytes'] = Variable<int>(bytes);
+    map['saved_at'] = Variable<DateTime>(savedAt);
+    return map;
+  }
+
+  VaultMaterialsCompanion toCompanion(bool nullToAbsent) {
+    return VaultMaterialsCompanion(
+      id: Value(id),
+      kind: Value(kind),
+      subjectId: Value(subjectId),
+      title: Value(title),
+      body: body == null && nullToAbsent ? const Value.absent() : Value(body),
+      path: path == null && nullToAbsent ? const Value.absent() : Value(path),
+      bytes: Value(bytes),
+      savedAt: Value(savedAt),
+    );
+  }
+
+  factory VaultMaterial.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return VaultMaterial(
+      id: serializer.fromJson<String>(json['id']),
+      kind: serializer.fromJson<String>(json['kind']),
+      subjectId: serializer.fromJson<String>(json['subjectId']),
+      title: serializer.fromJson<String>(json['title']),
+      body: serializer.fromJson<String?>(json['body']),
+      path: serializer.fromJson<String?>(json['path']),
+      bytes: serializer.fromJson<int>(json['bytes']),
+      savedAt: serializer.fromJson<DateTime>(json['savedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'kind': serializer.toJson<String>(kind),
+      'subjectId': serializer.toJson<String>(subjectId),
+      'title': serializer.toJson<String>(title),
+      'body': serializer.toJson<String?>(body),
+      'path': serializer.toJson<String?>(path),
+      'bytes': serializer.toJson<int>(bytes),
+      'savedAt': serializer.toJson<DateTime>(savedAt),
+    };
+  }
+
+  VaultMaterial copyWith({
+    String? id,
+    String? kind,
+    String? subjectId,
+    String? title,
+    Value<String?> body = const Value.absent(),
+    Value<String?> path = const Value.absent(),
+    int? bytes,
+    DateTime? savedAt,
+  }) => VaultMaterial(
+    id: id ?? this.id,
+    kind: kind ?? this.kind,
+    subjectId: subjectId ?? this.subjectId,
+    title: title ?? this.title,
+    body: body.present ? body.value : this.body,
+    path: path.present ? path.value : this.path,
+    bytes: bytes ?? this.bytes,
+    savedAt: savedAt ?? this.savedAt,
+  );
+  VaultMaterial copyWithCompanion(VaultMaterialsCompanion data) {
+    return VaultMaterial(
+      id: data.id.present ? data.id.value : this.id,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      subjectId: data.subjectId.present ? data.subjectId.value : this.subjectId,
+      title: data.title.present ? data.title.value : this.title,
+      body: data.body.present ? data.body.value : this.body,
+      path: data.path.present ? data.path.value : this.path,
+      bytes: data.bytes.present ? data.bytes.value : this.bytes,
+      savedAt: data.savedAt.present ? data.savedAt.value : this.savedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VaultMaterial(')
+          ..write('id: $id, ')
+          ..write('kind: $kind, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('title: $title, ')
+          ..write('body: $body, ')
+          ..write('path: $path, ')
+          ..write('bytes: $bytes, ')
+          ..write('savedAt: $savedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, kind, subjectId, title, body, path, bytes, savedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is VaultMaterial &&
+          other.id == this.id &&
+          other.kind == this.kind &&
+          other.subjectId == this.subjectId &&
+          other.title == this.title &&
+          other.body == this.body &&
+          other.path == this.path &&
+          other.bytes == this.bytes &&
+          other.savedAt == this.savedAt);
+}
+
+class VaultMaterialsCompanion extends UpdateCompanion<VaultMaterial> {
+  final Value<String> id;
+  final Value<String> kind;
+  final Value<String> subjectId;
+  final Value<String> title;
+  final Value<String?> body;
+  final Value<String?> path;
+  final Value<int> bytes;
+  final Value<DateTime> savedAt;
+  final Value<int> rowid;
+  const VaultMaterialsCompanion({
+    this.id = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.subjectId = const Value.absent(),
+    this.title = const Value.absent(),
+    this.body = const Value.absent(),
+    this.path = const Value.absent(),
+    this.bytes = const Value.absent(),
+    this.savedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  VaultMaterialsCompanion.insert({
+    required String id,
+    required String kind,
+    required String subjectId,
+    required String title,
+    this.body = const Value.absent(),
+    this.path = const Value.absent(),
+    this.bytes = const Value.absent(),
+    required DateTime savedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       kind = Value(kind),
+       subjectId = Value(subjectId),
+       title = Value(title),
+       savedAt = Value(savedAt);
+  static Insertable<VaultMaterial> custom({
+    Expression<String>? id,
+    Expression<String>? kind,
+    Expression<String>? subjectId,
+    Expression<String>? title,
+    Expression<String>? body,
+    Expression<String>? path,
+    Expression<int>? bytes,
+    Expression<DateTime>? savedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (kind != null) 'kind': kind,
+      if (subjectId != null) 'subject_id': subjectId,
+      if (title != null) 'title': title,
+      if (body != null) 'body': body,
+      if (path != null) 'path': path,
+      if (bytes != null) 'bytes': bytes,
+      if (savedAt != null) 'saved_at': savedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  VaultMaterialsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? kind,
+    Value<String>? subjectId,
+    Value<String>? title,
+    Value<String?>? body,
+    Value<String?>? path,
+    Value<int>? bytes,
+    Value<DateTime>? savedAt,
+    Value<int>? rowid,
+  }) {
+    return VaultMaterialsCompanion(
+      id: id ?? this.id,
+      kind: kind ?? this.kind,
+      subjectId: subjectId ?? this.subjectId,
+      title: title ?? this.title,
+      body: body ?? this.body,
+      path: path ?? this.path,
+      bytes: bytes ?? this.bytes,
+      savedAt: savedAt ?? this.savedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (subjectId.present) {
+      map['subject_id'] = Variable<String>(subjectId.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (body.present) {
+      map['body'] = Variable<String>(body.value);
+    }
+    if (path.present) {
+      map['path'] = Variable<String>(path.value);
+    }
+    if (bytes.present) {
+      map['bytes'] = Variable<int>(bytes.value);
+    }
+    if (savedAt.present) {
+      map['saved_at'] = Variable<DateTime>(savedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VaultMaterialsCompanion(')
+          ..write('id: $id, ')
+          ..write('kind: $kind, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('title: $title, ')
+          ..write('body: $body, ')
+          ..write('path: $path, ')
+          ..write('bytes: $bytes, ')
+          ..write('savedAt: $savedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $PendingResultsTable extends PendingResults
     with TableInfo<$PendingResultsTable, PendingResult> {
   @override
@@ -1989,6 +2488,7 @@ abstract class _$VaultDb extends GeneratedDatabase {
   late final $PacksTable packs = $PacksTable(this);
   late final $VaultQuestionsTable vaultQuestions = $VaultQuestionsTable(this);
   late final $VaultPassagesTable vaultPassages = $VaultPassagesTable(this);
+  late final $VaultMaterialsTable vaultMaterials = $VaultMaterialsTable(this);
   late final $PendingResultsTable pendingResults = $PendingResultsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -1998,6 +2498,7 @@ abstract class _$VaultDb extends GeneratedDatabase {
     packs,
     vaultQuestions,
     vaultPassages,
+    vaultMaterials,
     pendingResults,
   ];
 }
@@ -2715,6 +3216,263 @@ typedef $$VaultPassagesTableProcessedTableManager =
       VaultPassage,
       PrefetchHooks Function()
     >;
+typedef $$VaultMaterialsTableCreateCompanionBuilder =
+    VaultMaterialsCompanion Function({
+      required String id,
+      required String kind,
+      required String subjectId,
+      required String title,
+      Value<String?> body,
+      Value<String?> path,
+      Value<int> bytes,
+      required DateTime savedAt,
+      Value<int> rowid,
+    });
+typedef $$VaultMaterialsTableUpdateCompanionBuilder =
+    VaultMaterialsCompanion Function({
+      Value<String> id,
+      Value<String> kind,
+      Value<String> subjectId,
+      Value<String> title,
+      Value<String?> body,
+      Value<String?> path,
+      Value<int> bytes,
+      Value<DateTime> savedAt,
+      Value<int> rowid,
+    });
+
+class $$VaultMaterialsTableFilterComposer
+    extends Composer<_$VaultDb, $VaultMaterialsTable> {
+  $$VaultMaterialsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get body => $composableBuilder(
+    column: $table.body,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get path => $composableBuilder(
+    column: $table.path,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get bytes => $composableBuilder(
+    column: $table.bytes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get savedAt => $composableBuilder(
+    column: $table.savedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$VaultMaterialsTableOrderingComposer
+    extends Composer<_$VaultDb, $VaultMaterialsTable> {
+  $$VaultMaterialsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get body => $composableBuilder(
+    column: $table.body,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get path => $composableBuilder(
+    column: $table.path,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get bytes => $composableBuilder(
+    column: $table.bytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get savedAt => $composableBuilder(
+    column: $table.savedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$VaultMaterialsTableAnnotationComposer
+    extends Composer<_$VaultDb, $VaultMaterialsTable> {
+  $$VaultMaterialsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get subjectId =>
+      $composableBuilder(column: $table.subjectId, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get body =>
+      $composableBuilder(column: $table.body, builder: (column) => column);
+
+  GeneratedColumn<String> get path =>
+      $composableBuilder(column: $table.path, builder: (column) => column);
+
+  GeneratedColumn<int> get bytes =>
+      $composableBuilder(column: $table.bytes, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get savedAt =>
+      $composableBuilder(column: $table.savedAt, builder: (column) => column);
+}
+
+class $$VaultMaterialsTableTableManager
+    extends
+        RootTableManager<
+          _$VaultDb,
+          $VaultMaterialsTable,
+          VaultMaterial,
+          $$VaultMaterialsTableFilterComposer,
+          $$VaultMaterialsTableOrderingComposer,
+          $$VaultMaterialsTableAnnotationComposer,
+          $$VaultMaterialsTableCreateCompanionBuilder,
+          $$VaultMaterialsTableUpdateCompanionBuilder,
+          (
+            VaultMaterial,
+            BaseReferences<_$VaultDb, $VaultMaterialsTable, VaultMaterial>,
+          ),
+          VaultMaterial,
+          PrefetchHooks Function()
+        > {
+  $$VaultMaterialsTableTableManager(_$VaultDb db, $VaultMaterialsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$VaultMaterialsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$VaultMaterialsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$VaultMaterialsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<String> subjectId = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String?> body = const Value.absent(),
+                Value<String?> path = const Value.absent(),
+                Value<int> bytes = const Value.absent(),
+                Value<DateTime> savedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => VaultMaterialsCompanion(
+                id: id,
+                kind: kind,
+                subjectId: subjectId,
+                title: title,
+                body: body,
+                path: path,
+                bytes: bytes,
+                savedAt: savedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String kind,
+                required String subjectId,
+                required String title,
+                Value<String?> body = const Value.absent(),
+                Value<String?> path = const Value.absent(),
+                Value<int> bytes = const Value.absent(),
+                required DateTime savedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => VaultMaterialsCompanion.insert(
+                id: id,
+                kind: kind,
+                subjectId: subjectId,
+                title: title,
+                body: body,
+                path: path,
+                bytes: bytes,
+                savedAt: savedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$VaultMaterialsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$VaultDb,
+      $VaultMaterialsTable,
+      VaultMaterial,
+      $$VaultMaterialsTableFilterComposer,
+      $$VaultMaterialsTableOrderingComposer,
+      $$VaultMaterialsTableAnnotationComposer,
+      $$VaultMaterialsTableCreateCompanionBuilder,
+      $$VaultMaterialsTableUpdateCompanionBuilder,
+      (
+        VaultMaterial,
+        BaseReferences<_$VaultDb, $VaultMaterialsTable, VaultMaterial>,
+      ),
+      VaultMaterial,
+      PrefetchHooks Function()
+    >;
 typedef $$PendingResultsTableCreateCompanionBuilder =
     PendingResultsCompanion Function({
       required String localId,
@@ -3005,6 +3763,8 @@ class $VaultDbManager {
       $$VaultQuestionsTableTableManager(_db, _db.vaultQuestions);
   $$VaultPassagesTableTableManager get vaultPassages =>
       $$VaultPassagesTableTableManager(_db, _db.vaultPassages);
+  $$VaultMaterialsTableTableManager get vaultMaterials =>
+      $$VaultMaterialsTableTableManager(_db, _db.vaultMaterials);
   $$PendingResultsTableTableManager get pendingResults =>
       $$PendingResultsTableTableManager(_db, _db.pendingResults);
 }
