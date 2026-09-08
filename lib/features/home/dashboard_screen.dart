@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api.dart';
+import '../../core/update_check.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
 import '../../design/motion_widgets.dart';
@@ -205,6 +206,13 @@ class _Content extends ConsumerWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.lg, Gap.lg, Gap.huge),
       children: [
+        /* A NEWER BUILD, IF THERE IS ONE. Most installs are sideloaded from a
+           link, and nothing watches those for updates — a student stays on
+           whatever APK they happened to download, and last night's fix never
+           reaches them. Silent when there is nothing newer, and silent when
+           the check fails. */
+        const _UpdateBanner(),
+
         // ---- the bar: menu, mark, bell -------------------------------
         Entrance(
           child: Row(
@@ -790,6 +798,67 @@ class _DueToday extends StatelessWidget {
           ),
           Icon(Icons.chevron_right_rounded, size: 18, color: c.text3),
         ],
+      ),
+    );
+  }
+}
+
+/// One line at the top of the home screen when a newer build is published,
+/// and nothing at all otherwise. It is a link rather than an installer: on
+/// Android an APK must be installed by the phone's own package installer,
+/// and on every desktop the download is a file the person unpacks. Pretending
+/// otherwise would be a button that silently does nothing.
+class _UpdateBanner extends ConsumerWidget {
+  const _UpdateBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final update = ref.watch(updateCheckProvider).value;
+    if (update == null || !update.available) return const SizedBox.shrink();
+
+    final c = context.lip;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Gap.md),
+      child: GlassSurface(
+        tier: GlassTier.raised,
+        hue: c.hues.green,
+        onTap: () => launchUrl(
+          Uri.parse(update.url),
+          mode: LaunchMode.externalApplication,
+        ),
+        semanticLabel: 'Version ${update.version} is out. Tap to download it.',
+        child: Row(
+          children: [
+            Icon(
+              Icons.system_update_rounded,
+              color: c.hues.green.ink,
+              size: 22,
+            ),
+            const SizedBox(width: Gap.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Version ${update.version} is out',
+                    style: LipType.bodyStrong.copyWith(color: c.text1),
+                  ),
+                  if (update.notes.trim().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        update.notes.trim(),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: LipType.small.copyWith(color: c.text2),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Icon(Icons.download_rounded, color: c.text3, size: 20),
+          ],
+        ),
       ),
     );
   }

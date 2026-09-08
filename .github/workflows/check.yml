@@ -47,6 +47,23 @@ jobs:
       - name: Every Android resource reference resolves
         run: dart tool/check_android_res.dart
 
+      # scripts/verify.sh has carried this check from the beginning and no
+      # workflow has ever run the script, so it never fired: AppConfig said
+      # 1.0.13 while the app was 2.0.1, and every request from every phone
+      # named a build that had not existed for months.
+      - name: The app agrees with itself about its own version
+        run: |
+          set -euo pipefail
+          PUBSPEC_V=$(grep -m1 '^version:' pubspec.yaml | sed 's/version: *//;s/+.*//')
+          PUBSPEC_B=$(grep -m1 '^version:' pubspec.yaml | sed 's/.*+//')
+          CONFIG_V=$(grep -m1 "appVersion = " lib/core/config.dart | sed "s/.*'\(.*\)'.*/\1/")
+          CONFIG_B=$(grep -m1 "buildNumber = " lib/core/config.dart | sed 's/[^0-9]//g')
+          if [ "$PUBSPEC_V" != "$CONFIG_V" ] || [ "$PUBSPEC_B" != "$CONFIG_B" ]; then
+            echo "::error::VERSION DRIFT — pubspec says $PUBSPEC_V+$PUBSPEC_B, AppConfig says $CONFIG_V+$CONFIG_B"
+            exit 1
+          fi
+          echo "pubspec and AppConfig agree: $PUBSPEC_V+$PUBSPEC_B"
+
       - name: Test
         run: flutter test --reporter expanded
 

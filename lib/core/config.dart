@@ -23,11 +23,21 @@ class AppConfig {
     defaultValue: 'https://www.lockinpoint.com',
   );
 
-  /// How the app names itself on every request. Kept in step with the
-  /// pubspec version by `scripts/verify.sh`, which fails if the two drift.
-  static const appVersion = '1.0.13';
+  /// How the app names itself on every request.
+  ///
+  /// IT HAD DRIFTED TO 1.0.13 WHILE THE APP WAS 2.0.1. scripts/verify.sh has
+  /// always carried a check for exactly this — and no workflow ran that
+  /// script, so the guard never fired once. Every request from every phone
+  /// named a build that had not existed for months, which makes a server log
+  /// worse than useless: it points confidently at the wrong version. The
+  /// check now runs in `check` on every push.
+  static const appVersion = '2.0.1';
 
-  static const userAgent = 'LockInPoint/$appVersion (Android; Flutter)';
+  /// The build number, which is what an update check compares. Names are for
+  /// people; only this ever increases, and only this can be ordered.
+  static const buildNumber = 16;
+
+  static const userAgent = 'LockInPoint/$appVersion+$buildNumber (Flutter)';
 
   /* THE APP NO LONGER KNOWS A PHONE NUMBER OR AN ADDRESS.
      A WhatsApp channel and a support email used to live here as constants,
