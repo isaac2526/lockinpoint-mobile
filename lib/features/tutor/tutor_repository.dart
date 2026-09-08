@@ -7,8 +7,12 @@ import '../../core/api.dart';
 /// activation gate, same model ladder configured in Admin → AI. The app adds
 /// nothing to the conversation and takes nothing away.
 ///
-/// HISTORY IS SENT, TRIMMED. The server keeps the last six turns; sending
-/// more would be paid-for tokens the server discards anyway.
+/// HISTORY COMES FROM THE SERVER NOW. Once a conversation has an id, the
+/// turns are rows — so the app sends the id rather than the transcript, the
+/// tutor remembers past the session, and a student who switches between the
+/// phone and a browser carries on mid sentence. `history` stays for the one
+/// case that has no chat: asking Lumi from inside a practice question, which
+/// is a nudge about the question in front of them and not a conversation.
 /// ===========================================================================
 
 class Turn {
@@ -43,17 +47,22 @@ Future<LumiReply> askLumi(
   String question, {
   List<Turn> history = const [],
   String? questionId,
+  String? chatId,
 }) async {
   try {
     final res = await api.post(
       '/api/ai/ask',
       body: {
         'question': question,
-        'history': history.map((t) => t.wire).toList(),
+        // Sent only when there is no chat to read the history from. With a
+        // chatId the server has the real transcript and this would be paid-for
+        // tokens it discards.
+        if (chatId == null) 'history': history.map((t) => t.wire).toList(),
         // Null-aware entry: the key vanishes when there is no question
         // to attach, rather than sending an explicit null the server
         // would have to defend against.
         'questionId': ?questionId,
+        'chatId': ?chatId,
       },
     );
     if (res['ok'] == true) {

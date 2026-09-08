@@ -1,15 +1,19 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
 import '../../design/components.dart';
+import '../../design/lumi_markdown.dart';
+import '../../design/rich_text.dart';
 import '../../design/glass.dart';
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
 import '../activation/activation_screen.dart';
+import 'chats_repository.dart';
 import 'tutor_repository.dart';
 
 /// ===========================================================================
@@ -48,11 +52,111 @@ class _TutorScreenState extends ConsumerState<TutorScreen> {
   int _cool = 0;
   Timer? _coolTimer;
 
+  /// The conversation these turns belong to. Null while Lumi is opened from
+  /// inside a question — that is a nudge about the question in front of the
+  /// student, not a conversation worth keeping in their list of fifteen.
+  String? _chatId;
+  String _chatTitle = '';
+  String _notice = '';
+
   @override
   void initState() {
     super.initState();
     final opening = widget.opening?.trim();
     if (opening != null && opening.isNotEmpty) _input.text = opening;
+    // Opened on its own, Lumi picks up the last conversation. "Where they
+    // stopped" is not a feature that needs a feature — it is opening the
+    // right chat.
+    if (widget.questionId == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openLast());
+    }
+  }
+
+  Future<void> _openLast() async {
+    final api = ref.read(apiProvider);
+    try {
+      final list = await api.get('/api/ai/chats');
+      final chats = ((list['chats'] as List?) ?? const [])
+          .whereType<Map>()
+          .toList();
+      if (chats.isEmpty || !mounted) return;
+      await _open(LumiChat.from(chats.first));
+    } on ApiFailure {
+      /* A tutor that refuses to open because it could not fetch a list of old
+         conversations would be a worse tutor. The new-chat path still works. */
+    }
+  }
+
+  Future<void> _open(LumiChat chat) async {
+    final api = ref.read(apiProvider);
+    try {
+      final msgs = await loadChat(api, chat.id);
+      if (!mounted) return;
+      setState(() {
+        _chatId = chat.id;
+        _chatTitle = chat.title;
+        _notice = '';
+        _turns
+          ..clear()
+          ..addAll(msgs.map((m) => Turn(m.role, m.text)));
+      });
+      _toBottom();
+    } on ApiFailure catch (e) {
+      if (mounted) setState(() => _notice = e.message);
+    }
+  }
+
+  Future<void> _newChat() async {
+    final api = ref.read(apiProvider);
+    try {
+      final c = await newChat(api);
+      if (!mounted) return;
+      setState(() {
+        _chatId = c.id;
+        _chatTitle = c.title;
+        _notice = '';
+        _turns.clear();
+      });
+      ref.invalidate(lumiChatsProvider);
+    } on ApiFailure catch (e) {
+      // The server's sentence names the oldest conversation, so the student
+      // knows exactly what to delete.
+      if (mounted) setState(() => _notice = e.message);
+    }
+  }
+
+  Future<void> _chatsSheet() async {
+    final api = ref.read(apiProvider);
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheet) => _ChatsSheet(
+        onOpen: (c) {
+          Navigator.of(sheet).pop();
+          _open(c);
+        },
+        onNew: () {
+          Navigator.of(sheet).pop();
+          _newChat();
+        },
+        onRename: (c, title) async {
+          await renameChat(api, c.id, title);
+          if (mounted && c.id == _chatId) setState(() => _chatTitle = title);
+        },
+        onDelete: (c) async {
+          await deleteChat(api, c.id);
+          if (!mounted) return;
+          if (c.id == _chatId) {
+            setState(() {
+              _chatId = null;
+              _chatTitle = '';
+              _turns.clear();
+            });
+          }
+        },
+      ),
+    );
   }
 
   @override
@@ -90,11 +194,37 @@ class _TutorScreenState extends ConsumerState<TutorScreen> {
     });
     _toBottom();
 
+    /* A conversation is created on the FIRST message, not when the screen
+       opens, so a student who opens Lumi and changes their mind has not spent
+       one of their fifteen on an empty chat. Never for a question-side ask. */
+    var id = _chatId;
+    if (id == null && widget.questionId == null) {
+      try {
+        final c = await newChat(api);
+        id = c.id;
+        if (mounted) {
+          setState(() {
+            _chatId = c.id;
+            _chatTitle = c.title;
+          });
+        }
+      } on ApiFailure catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _busy = false;
+          _notice = e.message;
+          _turns.removeLast();
+        });
+        return;
+      }
+    }
+
     final reply = await askLumi(
       api,
       text,
       history: history,
       questionId: widget.questionId,
+      chatId: id,
     );
     if (!mounted) return;
 
@@ -103,6 +233,7 @@ class _TutorScreenState extends ConsumerState<TutorScreen> {
       _needActivation = reply.needActivation;
       _turns.add(Turn('model', reply.text));
     });
+    if (id != null) ref.invalidate(lumiChatsProvider);
     if (reply.coolSeconds != null) _startCooldown(reply.coolSeconds!);
     _toBottom();
   }
@@ -123,10 +254,48 @@ class _TutorScreenState extends ConsumerState<TutorScreen> {
     final c = context.lip;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Ask Lumi')),
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Ask Lumi'),
+            if (_chatTitle.isNotEmpty)
+              Text(
+                _chatTitle,
+                style: LipType.caption.copyWith(color: context.lip.text3),
+                overflow: TextOverflow.ellipsis,
+              ),
+          ],
+        ),
+        actions: [
+          // Only when Lumi is a conversation. Opened from a question she is a
+          // nudge about that question, and a chat list would be noise.
+          if (widget.questionId == null) ...[
+            IconButton(
+              tooltip: 'New conversation',
+              icon: const Icon(Icons.add_comment_outlined),
+              onPressed: _newChat,
+            ),
+            IconButton(
+              tooltip: 'Your conversations',
+              icon: const Icon(Icons.forum_outlined),
+              onPressed: _chatsSheet,
+            ),
+          ],
+        ],
+      ),
       body: SafeArea(
         child: Column(
           children: [
+            /* The server's own sentence — "you have 15 conversations, delete
+               one to start another; your oldest is …". Named rather than a
+               generic refusal, so the student knows what to do about it. */
+            if (_notice.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.lg, 0),
+                child: LipFormError(message: _notice),
+              ),
             Expanded(
               child: _turns.isEmpty
                   ? const LipEmpty(
@@ -247,16 +416,227 @@ class _Bubble extends StatelessWidget {
                     const LipLabel('Lumi'),
                     const SizedBox(height: Gap.xs),
                   ],
-                  SelectableText(
-                    turn.text,
-                    style: LipType.body.copyWith(
-                      color: mine ? c.text1 : c.text2,
-                      height: 1.5,
+                  /* LUMI WRITES MARKDOWN WITH LATEX IN IT, and this drew it
+                     as plain text — so a student read literal **bold**,
+                     literal ## Step 1, and every formula as raw
+                     \frac{-b}{2a} source. Their own messages ARE plain text
+                     and stay that way. */
+                  if (mine)
+                    SelectableText(
+                      turn.text,
+                      style: LipType.body.copyWith(color: c.text1, height: 1.5),
+                    )
+                  else ...[
+                    LipHtml(
+                      lumiToHtml(turn.text),
+                      baseStyle: LipType.body.copyWith(
+                        color: c.text2,
+                        height: 1.5,
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: Gap.sm),
+                    Row(
+                      children: [
+                        InkWell(
+                          onTap: () {
+                            /* The MARKDOWN is copied, not the rendered text: a
+                               student pasting into their notes wants the bold
+                               and the formulae, and a copy that silently drops
+                               them is worse than no button. */
+                            Clipboard.setData(ClipboardData(text: turn.text));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Copied'),
+                                duration: Duration(milliseconds: 900),
+                              ),
+                            );
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 2,
+                              horizontal: 4,
+                            ),
+                            child: Text(
+                              'Copy',
+                              style: LipType.caption.copyWith(color: c.text3),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// ===========================================================================
+/// THE FIFTEEN CONVERSATIONS.
+///
+/// The cap is the SERVER's, so this sheet never has to guess: it asks for a
+/// new chat and is told, in a sentence naming the oldest, when the list is
+/// full. Nothing is deleted on a student's behalf — a conversation someone
+/// was relying on must not vanish because they started another.
+/// ===========================================================================
+class _ChatsSheet extends ConsumerWidget {
+  const _ChatsSheet({
+    required this.onOpen,
+    required this.onNew,
+    required this.onRename,
+    required this.onDelete,
+  });
+
+  final void Function(LumiChat) onOpen;
+  final VoidCallback onNew;
+  final Future<void> Function(LumiChat, String) onRename;
+  final Future<void> Function(LumiChat) onDelete;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
+    final list = ref.watch(lumiChatsProvider);
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.lg),
+        child: list.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.all(Gap.lg),
+            child: LipSkeleton(height: 160),
+          ),
+          error: (e, _) => Padding(
+            padding: const EdgeInsets.all(Gap.lg),
+            child: Text('$e', style: LipType.small.copyWith(color: c.danger)),
+          ),
+          data: (l) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Your conversations',
+                      style: LipType.subheading.copyWith(color: c.text1),
+                    ),
+                  ),
+                  Text(
+                    '${l.chats.length} of ${l.max}',
+                    style: LipType.caption.copyWith(color: c.text3),
+                  ),
+                ],
+              ),
+              const SizedBox(height: Gap.sm),
+              LipButton(
+                label: l.isFull
+                    ? 'Delete one to start another'
+                    : 'New conversation',
+                onPressed: l.isFull ? null : onNew,
+              ),
+              const SizedBox(height: Gap.md),
+              if (l.chats.isEmpty)
+                Text(
+                  'Nothing yet. Ask Lumi anything and it starts here.',
+                  style: LipType.small.copyWith(color: c.text3),
+                )
+              else
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: l.chats.length,
+                    itemBuilder: (_, i) {
+                      final chat = l.chats[i];
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(
+                          chat.title,
+                          style: LipType.body.copyWith(color: c.text1),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onTap: () => onOpen(chat),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: 'Rename',
+                              icon: const Icon(Icons.edit_outlined, size: 18),
+                              onPressed: () async {
+                                final name = await _ask(context, chat.title);
+                                if (name == null || name.trim().isEmpty) return;
+                                await onRename(chat, name.trim());
+                                ref.invalidate(lumiChatsProvider);
+                              },
+                            ),
+                            IconButton(
+                              tooltip: 'Delete',
+                              icon: Icon(
+                                Icons.delete_outline_rounded,
+                                size: 18,
+                                color: c.danger,
+                              ),
+                              onPressed: () async {
+                                final yes = await showDialog<bool>(
+                                  context: context,
+                                  builder: (d) => AlertDialog(
+                                    title: const Text(
+                                      'Delete this conversation?',
+                                    ),
+                                    content: Text(
+                                      '"${chat.title}" and everything in it. '
+                                      'This cannot be undone.',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.of(d).pop(false),
+                                        child: const Text('Keep'),
+                                      ),
+                                      FilledButton(
+                                        onPressed: () =>
+                                            Navigator.of(d).pop(true),
+                                        child: const Text('Delete'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (yes != true) return;
+                                await onDelete(chat);
+                                ref.invalidate(lumiChatsProvider);
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static Future<String?> _ask(BuildContext context, String current) {
+    final ctrl = TextEditingController(text: current);
+    return showDialog<String>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('Name this conversation'),
+        content: TextField(controller: ctrl, autofocus: true, maxLength: 80),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(d).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(d).pop(ctrl.text),
+            child: const Text('Save'),
           ),
         ],
       ),
