@@ -13,4 +13,26 @@
 -->
 <resources>
     <color name="lipSurface">#F6F8FC</color>
+
+    <!--
+      THE COLOUR BEHIND THE LAUNCHER ICON, and it must never leave this file.
+
+      mipmap-anydpi-v26/ic_launcher.xml draws the adaptive icon's background
+      from it. Adding lipSurface here REPLACED it rather than joining it, and
+      that broke `flutter build appbundle` outright:
+
+        error: resource color/ic_launcher_background not found
+        error: failed linking file resources
+
+      Nothing caught it. flutter analyze does not read Android resources, no
+      test touches them, and this is the only build in the project that links
+      them at all — so the app compiled, analysed and tested perfectly while
+      being impossible to ship. The two release runs after that change died on
+      Actions billing before Gradle started, which hid it for a second time.
+
+      It is deliberately NOT given a values-night variant. A launcher icon
+      does not follow the phone's theme; a home screen with two different
+      LockInPoint marks depending on the hour is not a dark mode feature.
+    -->
+    <color name="ic_launcher_background">#0F2C86</color>
 </resources>

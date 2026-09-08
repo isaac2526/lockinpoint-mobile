@@ -40,6 +40,13 @@ jobs:
       - name: Analyse
         run: flutter analyze --fatal-infos
 
+      # analyze does not read android/. A reference to a resource that does
+      # not exist passes every check in this job and then fails aapt2 four
+      # minutes into the release build — which is exactly how a deleted
+      # colour shipped as a green tree that could not be built.
+      - name: Every Android resource reference resolves
+        run: dart tool/check_android_res.dart
+
       - name: Test
         run: flutter test --reporter expanded
 

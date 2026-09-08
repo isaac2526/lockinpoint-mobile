@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api.dart';
+import '../../core/progress_mark.dart';
 import '../../core/config.dart';
 import '../../core/vault/materials.dart';
 import '../../design/components.dart';
@@ -242,10 +243,13 @@ class ClassroomShelfScreen extends ConsumerWidget {
                           title: m.title,
                           onTap: m.url.isEmpty
                               ? null
-                              : () => launchUrl(
-                                  Uri.parse(m.url),
-                                  mode: LaunchMode.externalApplication,
-                                ),
+                              : () {
+                                  ref.read(progressMarkerProvider).video(m.id);
+                                  launchUrl(
+                                    Uri.parse(m.url),
+                                    mode: LaunchMode.externalApplication,
+                                  );
+                                },
                         ),
                       ),
                       const SizedBox(height: Gap.lg),
@@ -270,21 +274,26 @@ class ClassroomShelfScreen extends ConsumerWidget {
                           subtitle: 'Opens with your name on every page',
                           onTap: m.url.isEmpty
                               ? null
-                              : () => launchUrl(
-                                  /* The server hands back a path on its own
-                                     domain — /api/doc/<id> — because that is
-                                     the gate that checks activation and burns
-                                     the reader's name across the pages. It
-                                     used to hand back a public storage URL
-                                     for a bucket that does not exist, so
-                                     every file 404'd. */
-                                  Uri.parse(
-                                    m.url.startsWith('http')
-                                        ? m.url
-                                        : '${AppConfig.apiBase}${m.url}',
-                                  ),
-                                  mode: LaunchMode.externalApplication,
-                                ),
+                              : () {
+                                  ref
+                                      .read(progressMarkerProvider)
+                                      .document(m.id);
+                                  launchUrl(
+                                    /* The server hands back a path on its
+                                       own domain — /api/doc/<id> — because
+                                       that is the gate that checks
+                                       activation and burns the reader's name
+                                       across the pages. It used to hand back
+                                       a public storage URL for a bucket that
+                                       does not exist, so every file 404'd. */
+                                    Uri.parse(
+                                      m.url.startsWith('http')
+                                          ? m.url
+                                          : '${AppConfig.apiBase}${m.url}',
+                                    ),
+                                    mode: LaunchMode.externalApplication,
+                                  );
+                                },
                         ),
                       ),
                     ],
@@ -297,13 +306,33 @@ class ClassroomShelfScreen extends ConsumerWidget {
 }
 
 /// One note, read inside the app.
-class ClassroomNoteScreen extends ConsumerWidget {
+class ClassroomNoteScreen extends ConsumerStatefulWidget {
   const ClassroomNoteScreen({super.key, required this.id, required this.title});
   final String id;
   final String title;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ClassroomNoteScreen> createState() =>
+      _ClassroomNoteScreenState();
+}
+
+class _ClassroomNoteScreenState extends ConsumerState<ClassroomNoteScreen> {
+  @override
+  void initState() {
+    super.initState();
+    /* THE PROGRESS RINGS FINALLY HAVE SOMETHING TO COUNT. Opening a note is
+       the moment it is read; the call is fire-and-forget and cannot fail
+       loudly, because a student on a bad connection must still get the note.
+       Deferred one frame so it never competes with the first paint. */
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(progressMarkerProvider).note(widget.id);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final id = widget.id;
+    final title = widget.title;
     final c = context.lip;
     final note = ref.watch(noteProvider(id));
 

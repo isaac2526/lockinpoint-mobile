@@ -728,6 +728,8 @@ void main() {
       'The Challenge': 'The Challenge',
       'Your activity': 'Your activity',
       'Refer a friend': 'Refer a friend',
+      'Question harvest': 'Question harvest',
+      'Receipts': 'Receipts',
     };
     for (final row in rows.keys) {
       await toHome(tester);

@@ -24,6 +24,8 @@ import '../features/plan/plan_screen.dart';
 import '../features/practice/practice_flow_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/referrals/referrals_screen.dart';
+import '../features/receipts/receipts_screen.dart';
+import '../features/harvest/harvest_screen.dart';
 import '../features/rounds/rounds_screen.dart';
 import '../features/progress/analysis_screen.dart';
 import '../features/progress/results_screen.dart';
@@ -346,6 +348,13 @@ class _LipDrawer extends ConsumerWidget {
                   subtitle: 'Competition rounds and past winners',
                   onTap: () => go(const RoundsScreen()),
                 ),
+                _Row(
+                  icon: Icons.volunteer_activism_rounded,
+                  hue: FeatureHue.rose,
+                  title: 'Question harvest',
+                  subtitle: 'Give back the questions you remember',
+                  onTap: () => go(const HarvestScreen()),
+                ),
                 // No device to store packs on means no row offering to.
                 if (!kIsWeb)
                   _Row(
@@ -386,6 +395,13 @@ class _LipDrawer extends ConsumerWidget {
                   title: 'Refer a friend',
                   subtitle: 'Your code, and what it has earned',
                   onTap: () => go(const ReferralsScreen()),
+                ),
+                _Row(
+                  icon: Icons.receipt_rounded,
+                  hue: FeatureHue.teal,
+                  title: 'Receipts',
+                  subtitle: 'Every payment, with its printable receipt',
+                  onTap: () => go(const ReceiptsScreen()),
                 ),
                 /* SIGN OUT BELONGS WHERE A STUDENT LOOKS FOR IT. There was
                    no way out of the app from anywhere except the profile tab,

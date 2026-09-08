@@ -16,6 +16,7 @@ import '../../design/typography.dart';
 import '../auth/auth_controller.dart';
 import '../content/content_repository.dart';
 import '../home/dashboard_screen.dart';
+import 'place_editor.dart';
 
 /// ===========================================================================
 /// THE STUDENT'S PROFILE
@@ -99,6 +100,7 @@ class _Content extends ConsumerWidget {
     final code = student['referralCode'] as String?;
     final productKey = student['productKey'] as String?;
     final state = student['state'] as String?;
+    final school = student['institution'] as String?;
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -259,6 +261,17 @@ class _Content extends ConsumerWidget {
           const SizedBox(height: Gap.md),
         ],
 
+        // ---- where you sit on the board ------------------------------
+        /* THE STATE AND SCHOOL BOARDS RANK BY THESE TWO FIELDS, and until
+           now the app could only ever print them. A student who signed up on
+           the phone had no state, so the one board their classmates are
+           actually on was closed to them for good. */
+        Entrance(
+          index: 3,
+          child: PlaceCard(state: state, institution: school),
+        ),
+        const SizedBox(height: Gap.md),
+
         // ---- the record ----------------------------------------------
         Entrance(
           index: 3,
@@ -275,6 +288,8 @@ class _Content extends ConsumerWidget {
                 ),
                 _DetailRow(label: 'Country', value: country ?? '·'),
                 _DetailRow(label: 'State', value: state ?? '·'),
+                if ((school ?? '').trim().isNotEmpty)
+                  _DetailRow(label: 'School', value: school!),
                 _DetailRow(
                   label: 'Account',
                   value: activated ? 'Activated' : 'Not activated yet',

@@ -62,6 +62,19 @@ jobs:
       - run: flutter pub get
 
       # ---------------------------------------------------------------------
+      # DOES EVERY @resource RESOLVE? One second, before four minutes.
+      #
+      # This job once failed at 4m12s on `error: resource
+      # color/ic_launcher_background not found` — a colour deleted from
+      # colors.xml while mipmap-anydpi-v26/ic_launcher.xml still drew its
+      # background from it. Nothing else in the repository links Android
+      # resources, so analyze was clean and every test passed on a tree that
+      # could not be built at all.
+      # ---------------------------------------------------------------------
+      - name: Every Android resource reference resolves
+        run: dart tool/check_android_res.dart
+
+      # ---------------------------------------------------------------------
       # THE UPLOAD KEY, IF THERE IS ONE.
       #
       # Four repository secrets turn this on. Without them the build still
