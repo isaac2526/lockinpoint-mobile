@@ -15,7 +15,6 @@ import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
 import '../../design/wordmark.dart';
-import '../../app/theme_controller.dart';
 import '../plan/plan_screen.dart';
 import '../activation/activation_screen.dart';
 import '../auth/auth_controller.dart';
@@ -568,32 +567,30 @@ class _Footer extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.lip;
-    final brightness = Theme.of(context).brightness;
+
+    /* LOG OUT AND THE THEME TOGGLE USED TO LIVE HERE, as two bare text
+       buttons under the home screen — which is what "why'll logout and toggle
+       switch be down of the home page" was about. They are gone from here.
+       Both live on the Profile screen, where an account setting belongs, and
+       in the menu; nothing has been lost.
+       
+       AND THE LOG OUT HERE NEVER ASKED. Profile's does. So the easier of the
+       two to hit by accident — sitting at the bottom of the screen a student
+       scrolls every day — was the one that signed them straight out, on a
+       phone where signing back in means finding a password. */
     return Column(
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            TextButton.icon(
-              onPressed: () =>
-                  ref.read(themeControllerProvider.notifier).toggle(brightness),
-              icon: Icon(
-                c.isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                size: 17,
-              ),
-              label: Text(c.isDark ? 'Light mode' : 'Dark mode'),
-            ),
-            const SizedBox(width: Gap.md),
-            TextButton.icon(
-              onPressed: () =>
-                  ref.read(authControllerProvider.notifier).logOut(),
-              icon: const Icon(Icons.logout_rounded, size: 17),
-              label: const Text('Log out'),
-            ),
-          ],
-        ),
-        const SizedBox(height: Gap.sm),
         Text(email, style: LipType.caption.copyWith(color: c.text3)),
+        const SizedBox(height: Gap.xs),
+        TextButton(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const ProfileScreen()),
+          ),
+          child: Text(
+            'Your profile and settings',
+            style: LipType.small.copyWith(color: c.brand),
+          ),
+        ),
       ],
     );
   }

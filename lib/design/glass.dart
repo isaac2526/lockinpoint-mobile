@@ -11,16 +11,24 @@ enum GlassTier { ultra, card, raised, deep, modal }
 /// ===========================================================================
 /// A SURFACE
 ///
-/// Once frosted glass over a drifting aura; now a solid card on a solid page.
-/// The change is deliberate. Glass made every screen look like the same
-/// screen, and a student needs the classroom to look different from the
-/// leaderboard at a glance. Colour does that; translucency cannot.
+/// A fill, a hairline, a SHADOW SIZED BY TIER, and a light sheen along the
+/// top edge. Give it a [hue] and it takes on a feature's identity: the tint
+/// becomes the fill and the ink becomes the border, so the pairing is decided
+/// in the palette rather than guessed here.
 ///
-/// A surface is therefore an opaque fill, a hairline border and — when it is
-/// meant to sit above the page rather than in it — a soft shadow. Give it a
-/// [hue] and it takes on a feature's identity: the tint becomes the fill and
-/// the ink becomes the border, so the pairing is decided in the palette
-/// rather than guessed here.
+/// IT USED TO BE FLAT, AND IN LIGHT MODE IT WAS INVISIBLE.
+///
+/// The shadow rendered only when a caller passed `elevated: true`, and almost
+/// nothing did. glassUltra, glassCard, glassRaised and glassModal were all
+/// #FFFFFF. glassHighlight — the sheen, the one thing that makes a surface
+/// read as glass rather than as paper — was declared, set to fully
+/// transparent, and never read by a single widget. So a card was a white
+/// rectangle on a near-white page with a hairline round it, which is exactly
+/// what "the whole surface ladder is one colour" means.
+///
+/// Depth is a property of the TIER now, not a favour a caller remembers to
+/// ask for. `elevated` still lifts a surface one step further for the rare
+/// thing that must float above its own neighbours.
 ///
 /// [blurred] survives for chrome only — a sheet, a dialog, the overlay Lumi
 /// arrives in. It defaults to FALSE because `BackdropFilter` forces everything
@@ -82,6 +90,44 @@ class GlassSurface extends StatelessWidget {
     GlassTier.modal => Blurs.three,
   };
 
+  /// How far off the page this tier sits. `deep` is RECESSED — a well, not a
+  /// card — so it casts nothing.
+  ///
+  /// These are deliberately modest. A drop shadow per card is cheap; a
+  /// BackdropFilter per card is not, and this app has to stay smooth on a
+  /// ₦45,000 phone. Depth here is painted, not composited.
+  List<BoxShadow> _shadows(LipColors c) {
+    if (tier == GlassTier.deep) return const [];
+    return switch (tier) {
+      GlassTier.ultra => [
+        BoxShadow(color: c.shadow, blurRadius: 10, offset: const Offset(0, 2)),
+      ],
+      GlassTier.card => [
+        BoxShadow(color: c.shadow, blurRadius: 16, offset: const Offset(0, 4)),
+      ],
+      GlassTier.raised => [
+        BoxShadow(
+          color: c.shadowRaised,
+          blurRadius: 26,
+          offset: const Offset(0, 8),
+        ),
+      ],
+      GlassTier.modal => [
+        BoxShadow(
+          color: c.shadowRaised,
+          blurRadius: 40,
+          offset: const Offset(0, 16),
+        ),
+      ],
+      GlassTier.deep => const [],
+    };
+  }
+
+  /// The sheen: light catching the top edge, fading out by a third of the
+  /// way down. It is what separates glass from paper, and it costs one
+  /// gradient — no buffer, no filter, no frame budget.
+  bool get _sheen => tier == GlassTier.raised || tier == GlassTier.modal;
+
   @override
   Widget build(BuildContext context) {
     final c = context.lip;
@@ -100,6 +146,17 @@ class GlassSurface extends StatelessWidget {
                     : tinted.ink.withValues(alpha: c.isDark ? 0.22 : 0.16)),
           width: selected ? 1.6 : 1,
         ),
+        /* THE SHEEN, at last. A tinted surface keeps its own colour — laying
+           white over a feature's tint would wash out the very thing the tint
+           is there to say. */
+        gradient: _sheen && tinted == null
+            ? LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                stops: const [0, 0.34],
+                colors: [c.glassHighlight, _fill(c)],
+              )
+            : null,
       ),
       child: Padding(padding: padding, child: child),
     );
@@ -118,18 +175,23 @@ class GlassSurface extends StatelessWidget {
       surface = ClipRRect(borderRadius: shape, child: surface);
     }
 
-    if (elevated || selected) {
-      surface = DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: shape,
-          boxShadow: [
-            BoxShadow(
-              color: selected ? c.ring : c.shadow,
-              blurRadius: selected ? 18 : 26,
-              offset: const Offset(0, 10),
-            ),
-          ],
+    /* DEPTH IS THE TIER'S, NOT THE CALLER'S. This used to run only when
+       somebody passed `elevated: true`, and almost nobody did — so nearly
+       every card in the app was drawn with no shadow at all. */
+    final shadows = <BoxShadow>[
+      ...(_shadows(c)),
+      if (selected)
+        BoxShadow(color: c.ring, blurRadius: 18, offset: const Offset(0, 6)),
+      if (elevated)
+        BoxShadow(
+          color: c.shadowRaised,
+          blurRadius: 34,
+          offset: const Offset(0, 14),
         ),
+    ];
+    if (shadows.isNotEmpty) {
+      surface = DecoratedBox(
+        decoration: BoxDecoration(borderRadius: shape, boxShadow: shadows),
         child: surface,
       );
     }

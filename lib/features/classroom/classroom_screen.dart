@@ -274,26 +274,7 @@ class ClassroomShelfScreen extends ConsumerWidget {
                           subtitle: 'Opens with your name on every page',
                           onTap: m.url.isEmpty
                               ? null
-                              : () {
-                                  ref
-                                      .read(progressMarkerProvider)
-                                      .document(m.id);
-                                  launchUrl(
-                                    /* The server hands back a path on its
-                                       own domain — /api/doc/<id> — because
-                                       that is the gate that checks
-                                       activation and burns the reader's name
-                                       across the pages. It used to hand back
-                                       a public storage URL for a bucket that
-                                       does not exist, so every file 404'd. */
-                                    Uri.parse(
-                                      m.url.startsWith('http')
-                                          ? m.url
-                                          : '${AppConfig.apiBase}${m.url}',
-                                    ),
-                                    mode: LaunchMode.externalApplication,
-                                  );
-                                },
+                              : () => _openDocument(context, ref, m.id, m.url),
                         ),
                       ),
                     ],
@@ -303,6 +284,46 @@ class ClassroomShelfScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Opens a document through the gate that watermarks it.
+///
+/// THIS USED TO HAND THE URL TO THE PHONE'S BROWSER. That URL is
+/// `/api/doc/<id>` — the gate that checks activation and burns the reader's
+/// name across every page — and a browser has no session against this app.
+/// So the student left the app and arrived at the LOGIN PAGE where their PDF
+/// should have been. Worse, the copy the Keep button had already downloaded
+/// could not be opened either: nothing in the app ever read a saved file.
+///
+/// The opener uses the kept copy when there is one (instant, and works with
+/// no signal), and otherwise fetches through the gate with the session
+/// attached. On the web the browser IS the session, so there it still opens
+/// the URL — the one place the old behaviour was right.
+///
+/// Takes the id and url as plain strings rather than the repository's
+/// `Material` type: that name collides with Flutter's own `Material` widget,
+/// and an ambiguous import in a widget file is a trap for whoever edits it
+/// next.
+Future<void> _openDocument(
+  BuildContext context,
+  WidgetRef ref,
+  String id,
+  String url,
+) async {
+  ref.read(progressMarkerProvider).document(id);
+  final said = await ref.read(documentOpenerProvider).open(id: id, url: url);
+  if (said == null || !context.mounted) return;
+
+  if (said == 'openInBrowser') {
+    await launchUrl(
+      Uri.parse(url.startsWith('http') ? url : '${AppConfig.apiBase}$url'),
+      mode: LaunchMode.externalApplication,
+    );
+    return;
+  }
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(said)));
 }
 
 /// One note, read inside the app.

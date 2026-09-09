@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
+import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../api.dart';
@@ -43,6 +44,97 @@ final savedMaterialsProvider = FutureProvider<List<VaultMaterial>>(
 /// can ask about each row without a query per frame.
 final materialSavedProvider = FutureProvider.family<bool, String>(
   (ref, id) async => await ref.read(vaultDbProvider).material(id) != null,
+);
+
+/// ===========================================================================
+/// OPENING A DOCUMENT — the step that did not exist.
+///
+/// Tapping a file used to hand its URL to the phone's browser. That URL is
+/// `/api/doc/<id>`: the gate that checks activation and floods every page
+/// with the reader's name. The browser has no session, so the student landed
+/// on the LOGIN PAGE where a PDF should have been — and the copy the Keep
+/// button had correctly downloaded could never be opened either, because
+/// nothing in the app ever read a saved file back.
+///
+/// So: use the kept copy when there is one — instant, and works with no
+/// signal — otherwise fetch it through the gate with the session attached,
+/// cache it, and open that. Either way the file the student sees carries
+/// their own name on every page, which is the entire point of the gate.
+/// ===========================================================================
+class DocumentOpener {
+  const DocumentOpener(this._api, this._db);
+
+  final Api _api;
+  final VaultDb _db;
+
+  /// Where a fetched-but-not-kept document lives. Separate from `materials/`
+  /// so clearing the vault does not delete what a student is reading, and
+  /// vice versa.
+  Future<Directory> _cacheDir() async {
+    final dir = Directory(
+      p.join((await getTemporaryDirectory()).path, 'documents'),
+    );
+    await dir.create(recursive: true);
+    return dir;
+  }
+
+  /// Returns null on success, or a sentence to show the student.
+  Future<String?> open({required String id, required String url}) async {
+    if (kIsWeb) {
+      /* On the web the browser IS the session — it carries the cookie — so
+         the original behaviour is correct there and only there. */
+      return 'openInBrowser';
+    }
+
+    try {
+      // 1. Already kept? Open that, and never touch the network.
+      final kept = await _db.material(id);
+      final keptPath = kept?.path;
+      if (keptPath != null && keptPath.isNotEmpty) {
+        final f = File(keptPath);
+        if (await f.exists()) return await _launch(f);
+      }
+
+      // 2. Cached from a previous read?
+      final dir = await _cacheDir();
+      final cached = File(p.join(dir.path, '$id.pdf'));
+      if (await cached.exists() && await cached.length() > 0) {
+        return await _launch(cached);
+      }
+
+      // 3. Through the gate, with the session attached.
+      final bytes = await _api.download(
+        url.startsWith('http') ? url : '${AppConfig.apiBase}$url',
+      );
+      if (bytes.isEmpty) return 'That file is empty.';
+      await cached.writeAsBytes(bytes, flush: true);
+      /* AWAITED, not returned bare: a Future returned out of a try block
+         escapes its own catch, so a platform channel that throws would have
+         surfaced as an unhandled error instead of the sentence below. */
+      return await _launch(cached);
+    } on ApiFailure catch (e) {
+      return e.message;
+    } catch (_) {
+      return 'That file could not be opened.';
+    }
+  }
+
+  Future<String?> _launch(File f) async {
+    final r = await OpenFilex.open(f.path);
+    if (r.type == ResultType.done) return null;
+    /* NO PDF READER ON THE PHONE is a real state on a cheap Android, and it
+       is the student's to fix — so it is said plainly rather than reported as
+       a failure of the app. */
+    if (r.type == ResultType.noAppToOpen) {
+      return 'No app on this phone can open a PDF. Install a PDF reader and '
+          'try again — the file is already downloaded.';
+    }
+    return 'That file could not be opened.';
+  }
+}
+
+final documentOpenerProvider = Provider<DocumentOpener>(
+  (ref) => DocumentOpener(ref.read(apiProvider), ref.read(vaultDbProvider)),
 );
 
 class MaterialVault {

@@ -87,8 +87,28 @@ void openAppMenu() {
   if (st != null && !st.isDrawerOpen) st.openDrawer();
 }
 
-class _AppShellState extends ConsumerState<AppShell> {
-  int _tab = 0;
+class _AppShellState extends ConsumerState<AppShell> with RestorationMixin {
+  /* THE TAB SURVIVES THE PROCESS NOW. It was a plain int, so an app killed
+     for RAM always came back on Home — see the note on restorationScopeId in
+     main.dart for why that line has to exist for this to do anything. */
+  final RestorableInt _tabIndex = RestorableInt(0);
+
+  int get _tab => _tabIndex.value;
+  set _tab(int v) => _tabIndex.value = v;
+
+  @override
+  String get restorationId => 'app_shell';
+
+  @override
+  void restoreState(RestorationBucket? oldBucket, bool initialRestore) {
+    registerForRestoration(_tabIndex, 'tab');
+  }
+
+  @override
+  void dispose() {
+    _tabIndex.dispose();
+    super.dispose();
+  }
 
   /// The student has chosen to carry on while the text pack downloads. NOT a
   /// skip: the run keeps going and the bar follows them to the top of the

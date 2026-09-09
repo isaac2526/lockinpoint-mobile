@@ -229,25 +229,37 @@ class LipColors extends ThemeExtension<LipColors> {
   /// out of it, which is why the page is a hair off-white and the cards are
   /// pure white.
   static const light = LipColors(
-    bgBase: Color(0xFFF6F7FB),
+    /* THE PAGE SITS LOWER THAN IT DID, and it has to.
+       glassUltra, glassCard, glassRaised and glassModal were ALL #FFFFFF —
+       four names for one colour — on a page of #F6F7FB. Five percent of
+       lightness between a card and the page it sits on, with a shadow that
+       only rendered when a caller remembered to ask for one. That is why the
+       app read as flat: there was no surface ladder in light mode, only the
+       vocabulary for one. */
+    bgBase: Color(0xFFEDF0F7),
     bgGradient: [
-      Color(0xFFF6F7FB),
-      Color(0xFFF6F7FB),
-      Color(0xFFF6F7FB),
-      Color(0xFFF6F7FB),
+      Color(0xFFEDF0F7),
+      Color(0xFFEDF0F7),
+      Color(0xFFEDF0F7),
+      Color(0xFFEDF0F7),
     ],
     glowA: Color(0x00000000),
     glowB: Color(0x00000000),
     glowC: Color(0x00000000),
-    glassUltra: Color(0xFFFFFFFF),
+    /* A real ladder: two steps below the page, three above it. */
+    glassUltra: Color(0xFFF8FAFE),
     glassCard: Color(0xFFFFFFFF),
     glassRaised: Color(0xFFFFFFFF),
-    glassDeep: Color(0xFFEFF2F8),
+    glassDeep: Color(0xFFE2E8F3),
     glassModal: Color(0xFFFFFFFF),
-    glassBorder: Color(0xFFE4E8F1),
-    glassBorderStrong: Color(0xFFCFD7E5),
+    glassBorder: Color(0xFFDDE3EE),
+    glassBorderStrong: Color(0xFFC5CEDF),
     glassEdge: Color(0x14101828),
-    glassHighlight: Color(0x00000000),
+    /* THE SHEEN. Declared since the beginning, set to fully transparent, and
+       never read by a single widget — so the one thing that makes a surface
+       look like glass rather than like paper was switched off in code and
+       switched off again in the palette. */
+    glassHighlight: Color(0x99FFFFFF),
     text1: Color(0xFF0B1020),
     text2: Color(0xFF414B63),
     text3: Color(0xFF6C7690),
@@ -264,8 +276,10 @@ class LipColors extends ThemeExtension<LipColors> {
     warning: Color(0xFFB25A09),
     warningSoft: Color(0x1FB25A09),
     ring: Color(0x5C1D4ED8),
-    shadow: Color(0x0F101828),
-    shadowRaised: Color(0x1A101828),
+    /* Deep enough to actually be seen. A 6%-alpha shadow under a white card
+       on a near-white page is a shadow nobody has ever noticed. */
+    shadow: Color(0x14101828),
+    shadowRaised: Color(0x2B101828),
     hues: LipHues.lightSet,
     isDark: false,
   );
@@ -293,7 +307,8 @@ class LipColors extends ThemeExtension<LipColors> {
     glassBorder: Color(0xFF272A31),
     glassBorderStrong: Color(0xFF3A3E48),
     glassEdge: Color(0x14FFFFFF),
-    glassHighlight: Color(0x00000000),
+    // In the dark the sheen is a whisper; any more and it reads as fog.
+    glassHighlight: Color(0x0FFFFFFF),
     text1: Color(0xFFF4F6F9),
     text2: Color(0xFFB9C0CC),
     text3: Color(0xFF8A92A1),

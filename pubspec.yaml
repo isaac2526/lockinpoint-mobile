@@ -72,6 +72,20 @@ dependencies:
   shared_preferences: ^2.5.4
   url_launcher: ^6.3.2
 
+  # OPENING A FILE THE APP DOWNLOADED.
+  #
+  # Documents are fetched through /api/doc/<id> — the gate that checks
+  # activation and burns the reader's name across every page. That gate needs
+  # the session, and the phone's browser does not have one, so launching the
+  # URL externally landed the student on the login page instead of the PDF.
+  # The bytes were already being fetched correctly by api.download() and
+  # written to disk by the Keep button; nothing could open what was saved.
+  #
+  # url_launcher cannot do it: Android refuses a bare file:// URI from another
+  # app, and it has no way to mint the content:// URI that is required. This
+  # plugin ships the FileProvider that does.
+  open_filex: ^4.5.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

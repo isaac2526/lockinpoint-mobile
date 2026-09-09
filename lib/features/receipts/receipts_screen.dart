@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api.dart';
 import '../../core/config.dart';
+import '../../core/vault/materials.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
 import '../../design/motion_widgets.dart';
@@ -230,18 +231,66 @@ class _ReceiptCard extends StatelessWidget {
           ),
           if (r.settled && r.receiptPath.isNotEmpty) ...[
             const SizedBox(height: Gap.sm),
-            LipButton(
-              label: 'Open receipt',
-              icon: Icons.picture_as_pdf_rounded,
-              expand: true,
-              onPressed: () => launchUrl(
-                Uri.parse('${AppConfig.apiBase}${r.receiptPath}'),
-                mode: LaunchMode.externalApplication,
-              ),
-            ),
+            _OpenReceipt(receipt: r),
           ],
         ],
       ),
     );
   }
+}
+
+/// Fetches the receipt through the session and opens it.
+///
+/// IT USED TO LAUNCH THE URL IN THE PHONE'S BROWSER. `/api/receipt-pdf/<ref>`
+/// checks that the reference belongs to the caller and floods every page with
+/// the owner's name — so it needs the session, and the browser has none. An
+/// app-only student got a raw `{"ok":false,"message":"Log in first."}` blob
+/// where their receipt should have been.
+class _OpenReceipt extends ConsumerStatefulWidget {
+  const _OpenReceipt({required this.receipt});
+  final Receipt receipt;
+
+  @override
+  ConsumerState<_OpenReceipt> createState() => _OpenReceiptState();
+}
+
+class _OpenReceiptState extends ConsumerState<_OpenReceipt> {
+  bool _busy = false;
+
+  Future<void> _open() async {
+    setState(() => _busy = true);
+    final r = widget.receipt;
+    final said = await ref
+        .read(documentOpenerProvider)
+        .open(
+          // The reference names the cached file, so re-opening the same receipt
+          // never costs a second download.
+          id: 'receipt-${r.reference}',
+          url: r.receiptPath,
+        );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (said == null) return;
+
+    if (said == 'openInBrowser') {
+      await launchUrl(
+        Uri.parse('${AppConfig.apiBase}${r.receiptPath}'),
+        mode: LaunchMode.externalApplication,
+      );
+      return;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(said)));
+  }
+
+  @override
+  Widget build(BuildContext context) => LipButton(
+    label: 'Open receipt',
+    icon: Icons.picture_as_pdf_rounded,
+    expand: true,
+    busy: _busy,
+    onPressed: _open,
+  );
 }

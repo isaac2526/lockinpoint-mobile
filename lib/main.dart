@@ -43,6 +43,18 @@ class LockInPointApp extends ConsumerWidget {
       theme: LipTheme.light(),
       darkTheme: LipTheme.dark(),
       themeMode: mode,
+      /* COMING BACK TO WHERE YOU WERE.
+      
+         Android kills a backgrounded app to reclaim RAM — routinely, on the
+         cheap phones most of these students carry — and this app had no state
+         restoration at all. Not "some": none. So a student reading a note,
+         who took a call, came back to the Home tab with an empty back stack
+         and had to find their place again from the beginning.
+      
+         Naming a restoration scope is what turns the framework on. Without
+         this one line every RestorableProperty in the app is inert, which is
+         why adding them alone would have changed nothing. */
+      restorationScopeId: 'lockinpoint',
       home: const _Gate(),
     );
   }

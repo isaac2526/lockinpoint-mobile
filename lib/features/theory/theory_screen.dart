@@ -13,8 +13,21 @@ import 'theory_repository.dart';
 /// ===========================================================================
 /// THEORY AND PRACTICAL · the half of the paper that is not multiple choice.
 ///
-/// The same walk as the classroom, because it is the same decision a student
-/// is making: which subject, then which year, then the paper.
+/// THE SAME WALK AS THE CLASSROOM, on separate pages, because that is the
+/// order the decision is actually made in:
+///
+///   which examination  ->  which subject  ->  what is in it  ->  the paper
+///
+/// It used to open on a single flat list of every subject from every board at
+/// once — "everything moded together". The examination step was missing
+/// entirely.
+///
+/// AND IT SHOWS BOTH HALVES NOW. A subject holds two different things and the
+/// app could only ever see one of them: the SESSIONS Tutor Bello writes in
+/// Admin (stored in `notes`) and the PAST PAPERS the PDF importer produces
+/// (stored in `theory_questions`). This room read only the second, so every
+/// session he wrote by hand was live on the website and invisible on the
+/// phone.
 ///
 /// THE MODEL ANSWER IS BEHIND A TAP, always. A theory question with its
 /// marking scheme already on the screen is a passage to read, not a question
@@ -33,19 +46,20 @@ class TheoryScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.lip;
-    final subjects = ref.watch(theorySubjectsProvider(kind));
+    final exams = ref.watch(theoryExamsProvider(kind));
 
     return Scaffold(
       appBar: AppBar(title: Text(_title)),
       body: SafeArea(
-        child: subjects.when(
+        child: exams.when(
           loading: () => const Padding(
             padding: EdgeInsets.all(Gap.lg),
             child: LipSkeleton(height: 220),
           ),
           error: (e, _) => LipError(
-            message: '$e',
-            onRetry: () => ref.invalidate(theorySubjectsProvider(kind)),
+            message: e is ApiFailure ? e.message : '$e',
+            detail: e is ApiFailure ? e.detail : null,
+            onRetry: () => ref.invalidate(theoryExamsProvider(kind)),
           ),
           data: (list) => list.isEmpty
               ? LipEmpty(
@@ -65,20 +79,20 @@ class TheoryScreen extends ConsumerWidget {
                   ),
                   children: [
                     Text(
-                      'Which subject?',
+                      'Which examination?',
                       style: LipType.title.copyWith(color: c.text1),
                     ),
                     const SizedBox(height: Gap.xs),
                     Text(
                       kind == 'practical'
-                          ? 'Apparatus, observations and readings — written out, '
-                                'the way the practical paper asks for them.'
-                          : 'Written questions with their marking schemes. Write '
-                                'your answer first, then compare.',
+                          ? 'Apparatus, observations and readings — written '
+                                'out, the way the practical paper asks.'
+                          : 'Written questions and full sessions from your '
+                                'tutor. Write your answer first, then compare.',
                       style: LipType.small.copyWith(color: c.text3),
                     ),
                     const SizedBox(height: Gap.lg),
-                    for (final s in list)
+                    for (final e in list)
                       Padding(
                         padding: const EdgeInsets.only(bottom: Gap.md),
                         child: GlassSurface(
@@ -87,40 +101,16 @@ class TheoryScreen extends ConsumerWidget {
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute<void>(
                               builder: (_) =>
-                                  TheoryYearsScreen(subject: s, kind: kind),
+                                  TheorySubjectsScreen(exam: e, kind: kind),
                             ),
                           ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      s.name,
-                                      style: LipType.subheading.copyWith(
-                                        color: c.text1,
-                                      ),
-                                    ),
-                                    Text(
-                                      [
-                                        if (s.exam.isNotEmpty) s.exam,
-                                        '${s.questions} question'
-                                            '${s.questions == 1 ? '' : 's'}',
-                                      ].join(' · '),
-                                      style: LipType.caption.copyWith(
-                                        color: c.text3,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Icon(
-                                Icons.chevron_right_rounded,
-                                size: 20,
-                                color: c.text3,
-                              ),
-                            ],
+                          child: _Row(
+                            title: e.name,
+                            subtitle: [
+                              if (e.full.isNotEmpty && e.full != e.name) e.full,
+                              '${e.subjects} subject'
+                                  '${e.subjects == 1 ? '' : 's'}',
+                            ].join(' · '),
                           ),
                         ),
                       ),
@@ -132,41 +122,43 @@ class TheoryScreen extends ConsumerWidget {
   }
 }
 
-class TheoryYearsScreen extends ConsumerWidget {
-  const TheoryYearsScreen({
+/// Step two: which subject, inside the examination just chosen.
+class TheorySubjectsScreen extends ConsumerWidget {
+  const TheorySubjectsScreen({
     super.key,
-    required this.subject,
+    required this.exam,
     required this.kind,
   });
-  final TheorySubject subject;
+
+  final TheoryExam exam;
   final String kind;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.lip;
-    final years = ref.watch(
-      theoryYearsProvider((subject: subject.id, kind: kind)),
-    );
+    final key = (kind: kind, exam: exam.slug);
+    final subjects = ref.watch(theorySubjectsProvider(key));
 
     return Scaffold(
-      appBar: AppBar(title: Text(subject.name)),
+      appBar: AppBar(title: Text(exam.name)),
       body: SafeArea(
-        child: years.when(
+        child: subjects.when(
           loading: () => const Padding(
             padding: EdgeInsets.all(Gap.lg),
-            child: LipSkeleton(height: 160),
+            child: LipSkeleton(height: 200),
           ),
           error: (e, _) => LipError(
-            message: '$e',
-            onRetry: () => ref.invalidate(
-              theoryYearsProvider((subject: subject.id, kind: kind)),
-            ),
+            message: e is ApiFailure ? e.message : '$e',
+            detail: e is ApiFailure ? e.detail : null,
+            onRetry: () => ref.invalidate(theorySubjectsProvider(key)),
           ),
           data: (list) => list.isEmpty
               ? const LipEmpty(
                   icon: Icons.edit_note_rounded,
-                  title: 'No papers filed yet',
-                  message: 'Nothing for this subject has a year on it yet.',
+                  title: 'Nothing here yet',
+                  message:
+                      'No subject under this examination has papers or '
+                      'sessions filed yet.',
                 )
               : ListView(
                   padding: const EdgeInsets.fromLTRB(
@@ -177,34 +169,241 @@ class TheoryYearsScreen extends ConsumerWidget {
                   ),
                   children: [
                     Text(
-                      'Which year?',
+                      'Which subject?',
                       style: LipType.title.copyWith(color: c.text1),
                     ),
                     const SizedBox(height: Gap.lg),
-                    Wrap(
-                      spacing: Gap.sm,
-                      runSpacing: Gap.sm,
-                      children: [
-                        for (final y in list)
-                          LipChip(
-                            '${y.year}',
-                            count: y.n,
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => TheoryPaperScreen(
-                                  subject: subject,
-                                  kind: kind,
-                                  year: y.year,
-                                ),
-                              ),
+                    for (final s in list)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: Gap.md),
+                        child: GlassSurface(
+                          hue: c.hues.orange,
+                          padding: const EdgeInsets.all(Gap.lg),
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) =>
+                                  TheoryShelfScreen(subject: s, kind: kind),
                             ),
                           ),
-                      ],
-                    ),
+                          child: _Row(
+                            title: s.name,
+                            /* BOTH HALVES ARE COUNTED. A subject with three
+                               written sessions and no imported paper used to
+                               read "0 questions" — or not appear at all. */
+                            subtitle: [
+                              if (s.sessions > 0)
+                                '${s.sessions} session'
+                                    '${s.sessions == 1 ? '' : 's'}',
+                              if (s.questions > 0)
+                                '${s.questions} question'
+                                    '${s.questions == 1 ? '' : 's'}',
+                            ].join(' · '),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
         ),
       ),
+    );
+  }
+}
+
+/// Step three: what this subject holds. The tutor's written sessions first —
+/// they are the thing he made by hand — then the past papers by year.
+class TheoryShelfScreen extends ConsumerWidget {
+  const TheoryShelfScreen({
+    super.key,
+    required this.subject,
+    required this.kind,
+  });
+
+  final TheorySubject subject;
+  final String kind;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
+    final key = (subject: subject.id, kind: kind);
+    final shelf = ref.watch(theoryShelfProvider(key));
+
+    return Scaffold(
+      appBar: AppBar(title: Text(subject.name)),
+      body: SafeArea(
+        child: shelf.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.all(Gap.lg),
+            child: LipSkeleton(height: 160),
+          ),
+          error: (e, _) => LipError(
+            message: e is ApiFailure ? e.message : '$e',
+            detail: e is ApiFailure ? e.detail : null,
+            onRetry: () => ref.invalidate(theoryShelfProvider(key)),
+          ),
+          data: (shelf) => shelf.isEmpty
+              ? const LipEmpty(
+                  icon: Icons.edit_note_rounded,
+                  title: 'Nothing filed yet',
+                  message: 'No sessions and no papers for this subject yet.',
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(
+                    Gap.lg,
+                    Gap.lg,
+                    Gap.lg,
+                    Gap.huge,
+                  ),
+                  children: [
+                    if (shelf.sessions.isNotEmpty) ...[
+                      const LipLabel('Sessions from your tutor'),
+                      const SizedBox(height: Gap.sm),
+                      for (final n in shelf.sessions)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: Gap.sm),
+                          child: GlassSurface(
+                            padding: const EdgeInsets.all(Gap.md),
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => TheorySessionScreen(
+                                  id: n.id,
+                                  title: n.title,
+                                ),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.menu_book_rounded,
+                                  size: 20,
+                                  color: c.hues.orange.ink,
+                                ),
+                                const SizedBox(width: Gap.md),
+                                Expanded(
+                                  child: Text(
+                                    n.title,
+                                    style: LipType.body.copyWith(
+                                      color: c.text1,
+                                    ),
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 20,
+                                  color: c.text3,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: Gap.lg),
+                    ],
+                    if (shelf.years.isNotEmpty) ...[
+                      const LipLabel('Past papers'),
+                      const SizedBox(height: Gap.sm),
+                      Wrap(
+                        spacing: Gap.sm,
+                        runSpacing: Gap.sm,
+                        children: [
+                          for (final y in shelf.years)
+                            LipChip(
+                              '${y.year}',
+                              count: y.n,
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => TheoryPaperScreen(
+                                    subject: subject,
+                                    kind: kind,
+                                    year: y.year,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One written session, opened. Its body is the rich HTML the tutor typed,
+/// drawn as HTML — not stripped to plain text, which is what happened to
+/// every other note in this app before LipHtml existed.
+class TheorySessionScreen extends ConsumerWidget {
+  const TheorySessionScreen({super.key, required this.id, required this.title});
+
+  final String id;
+  final String title;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
+    final session = ref.watch(theorySessionProvider(id));
+
+    return Scaffold(
+      appBar: AppBar(title: Text(title)),
+      body: SafeArea(
+        child: session.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.all(Gap.lg),
+            child: LipSkeleton(height: 300),
+          ),
+          error: (e, _) => LipError(
+            message: e is ApiFailure ? e.message : '$e',
+            detail: e is ApiFailure ? e.detail : null,
+            onRetry: () => ref.invalidate(theorySessionProvider(id)),
+          ),
+          data: (n) => SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(
+              Gap.lg,
+              Gap.lg,
+              Gap.lg,
+              Gap.huge,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(n.title, style: LipType.title.copyWith(color: c.text1)),
+                const SizedBox(height: Gap.md),
+                LipHtml(
+                  n.html,
+                  baseStyle: LipType.body.copyWith(color: c.text1, height: 1.6),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One row of the walk: a title, a line under it, a chevron.
+class _Row extends StatelessWidget {
+  const _Row({required this.title, required this.subtitle});
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.lip;
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: LipType.subheading.copyWith(color: c.text1)),
+              if (subtitle.isNotEmpty)
+                Text(subtitle, style: LipType.caption.copyWith(color: c.text3)),
+            ],
+          ),
+        ),
+        Icon(Icons.chevron_right_rounded, size: 20, color: c.text3),
+      ],
     );
   }
 }
