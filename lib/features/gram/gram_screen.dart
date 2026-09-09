@@ -1,11 +1,15 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
+import '../../design/rich_text.dart';
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
@@ -257,6 +261,67 @@ class _GramRoomScreenState extends ConsumerState<GramRoomScreen> {
     await _load(quiet: true);
   }
 
+  /// Long-press your own line to take it back.
+  Future<void> _delete(String messageId) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this message?'),
+        content: const Text(
+          'It comes off the wall for everyone. The tutors can still see what '
+          'was said.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final said = await deleteGram(_api, messageId);
+    if (!mounted) return;
+    if (said != null) setState(() => _problem = said);
+    await _load(quiet: true);
+  }
+
+  /// Sends a picture. The picker is the phone's own, and the file goes
+  /// through /api/gram/upload — a route that has existed since Pointgram
+  /// shipped and that no client on a phone had ever called.
+  Future<void> _sendPicture() async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      // Sent at a size a chat can actually carry: the server refuses over
+      // 4MB, and a modern phone camera clears that in one shot.
+      maxWidth: 1600,
+      imageQuality: 82,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _busy = true;
+      _problem = '';
+    });
+    final said = await sendGramImage(
+      _api,
+      groupId: widget.room?.id,
+      dm: widget.dm,
+      filePath: picked.path,
+      caption: _input.text.trim(),
+    );
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _problem = said ?? '';
+      if (said == null) _input.clear();
+    });
+    if (said == null) await _load(quiet: true);
+  }
+
   Future<void> _vote(String messageId, int option) async {
     final said = await voteInGram(_api, messageId, option);
     if (!mounted) return;
@@ -285,11 +350,20 @@ class _GramRoomScreenState extends ConsumerState<GramRoomScreen> {
          student wrote came back looking like a classmate's, on the left, in
          the wrong colour. The identity comes from the gate, which is the one
          place the server states it. */
+      /* AWAITED, not read. `ref.read(...).value` is whatever the gate holds
+         AT THIS INSTANT, and on the first open of a room that is null — the
+         gate is still in flight. So the very first load, the one a student
+         actually sees, passed no identity at all, and every line they had
+         written came back looking like a classmate's: left-aligned, wrong
+         colour, no way to take it back. Awaiting costs nothing after the
+         first time; the provider is already resolved and hands its value
+         straight back. */
+      final me = await ref.read(gramGateProvider.future);
       final f = await loadRoom(
         _api,
         groupId: widget.room?.id,
         dm: widget.dm,
-        myId: ref.read(gramGateProvider).value?.myUid,
+        myId: me.myUid.isEmpty ? null : me.myUid,
       );
       if (!mounted) return;
       setState(() {
@@ -420,6 +494,7 @@ class _GramRoomScreenState extends ConsumerState<GramRoomScreen> {
                           myVote: feed.myVotes[m.id],
                           onReact: (icon) => _react(m.id, icon),
                           onVote: (opt) => _vote(m.id, opt),
+                          onDelete: () => _delete(m.id),
                         );
                       },
                     ),
@@ -468,6 +543,16 @@ class _GramRoomScreenState extends ConsumerState<GramRoomScreen> {
                         ),
                       ),
                     ),
+                    /* THE PICTURE BUTTON. The composer could send text and
+                       nothing else, so a student saw that pictures existed —
+                       as a grey sentence telling them to open a browser — and
+                       could never send one. */
+                    if (!kIsWeb)
+                      IconButton(
+                        tooltip: 'Send a picture',
+                        onPressed: canPost && !_busy ? _sendPicture : null,
+                        icon: const Icon(Icons.image_outlined),
+                      ),
                     const SizedBox(width: Gap.sm),
                     IconButton.filled(
                       onPressed: canPost && !_busy ? _send : null,
@@ -492,6 +577,7 @@ class _Line extends StatelessWidget {
     this.myVote,
     this.onReact,
     this.onVote,
+    this.onDelete,
   });
 
   final GramMessage m;
@@ -501,6 +587,7 @@ class _Line extends StatelessWidget {
   final int? myVote;
   final void Function(String icon)? onReact;
   final void Function(int option)? onVote;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -522,6 +609,26 @@ class _Line extends StatelessWidget {
             ? MainAxisAlignment.end
             : MainAxisAlignment.start,
         children: [
+          /* TAKING BACK SOMETHING YOU SENT. There was no way to at all — the
+             server has allowed it from the beginning and no client on a phone
+             ever asked. The server keeps the row and marks it deleted, so a
+             tutor still witnesses what was said; this is "take it off the
+             wall", not "make it never have happened".
+
+             A BUTTON, NOT A LONG-PRESS. A long-press on the bubble is eaten
+             by the SelectableText inside it — the student gets the copy menu
+             and nothing else — so the affordance has to sit outside the
+             text. */
+          if (m.mine && onDelete != null && !m.deleted)
+            IconButton(
+              tooltip: 'Delete this message',
+              iconSize: 16,
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+              icon: Icon(Icons.more_horiz_rounded, color: c.text3),
+              onPressed: onDelete,
+            ),
           Flexible(
             child: GlassSurface(
               tier: m.mine ? GlassTier.raised : GlassTier.card,
@@ -573,15 +680,39 @@ class _Line extends StatelessWidget {
                       mine: myVote,
                       onVote: onVote!,
                     ),
-                  if (m.type != 'text' &&
-                      m.type != 'poll' &&
-                      m.mediaUrl.isNotEmpty)
+                  /* A QUIZ DROP IS ANSWERABLE NOW. It used to arrive as a
+                     bubble containing the two words "Quiz drop" — the body
+                     the website sends as a fallback — because the question,
+                     the options and the answer all live in `meta`, and the
+                     app threw `meta` away. */
+                  if (m.quiz != null) GramQuizDrop(quiz: m.quiz!),
+                  /* AND A PICTURE IS A PICTURE. It used to be a grey sentence
+                     telling the student to go and open a browser. */
+                  if (m.type == 'image' && m.mediaUrl.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(Radii.md),
+                        child: CachedNetworkImage(
+                          imageUrl: m.mediaUrl,
+                          fit: BoxFit.cover,
+                          // Decoded at the size it is drawn, not at the size
+                          // it was uploaded. A 4MB photo decoded full-size is
+                          // how a chat kills a 1GB phone.
+                          memCacheWidth: 900,
+                          placeholder: (_, _) => const LipSkeleton(height: 160),
+                          errorWidget: (_, _, _) => Text(
+                            'That picture could not be loaded.',
+                            style: LipType.label.copyWith(color: c.text3),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (m.type == 'voice' && m.mediaUrl.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: Text(
-                        m.type == 'voice'
-                            ? 'Voice note — open in the browser to play'
-                            : 'Attachment — open in the browser to view',
+                        'Voice note — open in the browser to play',
                         style: LipType.label.copyWith(color: c.text3),
                       ),
                     ),
@@ -888,6 +1019,117 @@ class GramPoll extends StatelessWidget {
           total == 1 ? 'One vote' : '$total votes',
           style: LipType.label.copyWith(color: c.text3),
         ),
+      ],
+    );
+  }
+}
+
+/// ===========================================================================
+/// A QUIZ DROP
+///
+/// A question from the real bank, dropped into a room mid-conversation. It
+/// used to arrive on the phone as a bubble containing the two words "Quiz
+/// drop": the body the website sends as a fallback. Everything that makes it
+/// a question — the stem, the options, the answer — rides in `meta`, and the
+/// app discarded `meta` entirely.
+///
+/// It reveals on tap rather than asking the server, because the answer comes
+/// down with the drop and a quiz drop is a moment in a conversation, not a
+/// graded sitting. Nothing is recorded and nothing is scored.
+/// ===========================================================================
+class GramQuizDrop extends StatefulWidget {
+  const GramQuizDrop({super.key, required this.quiz});
+  final GramQuiz quiz;
+
+  @override
+  State<GramQuizDrop> createState() => _GramQuizDropState();
+}
+
+class _GramQuizDropState extends State<GramQuizDrop> {
+  String? _picked;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.lip;
+    final q = widget.quiz;
+
+    String letterFor(int i) =>
+        q.letters.length > i ? q.letters[i] : String.fromCharCode(65 + i);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (q.question.isNotEmpty)
+          LipHtml(
+            q.question,
+            baseStyle: LipType.body.copyWith(color: c.text1, height: 1.4),
+          ),
+        const SizedBox(height: Gap.sm),
+        for (var i = 0; i < q.options.length; i++)
+          Builder(
+            builder: (_) {
+              final letter = letterFor(i);
+              final chosen = _picked == letter;
+              final right = q.answer.isNotEmpty && letter == q.answer;
+              final revealed = _picked != null;
+              final tone = !revealed
+                  ? null
+                  : right
+                  ? c.success
+                  : (chosen ? c.danger : null);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: InkWell(
+                  onTap: revealed
+                      ? null
+                      : () => setState(() => _picked = letter),
+                  borderRadius: BorderRadius.circular(Radii.sm),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: Gap.sm,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: revealed && right
+                          ? c.successSoft
+                          : (chosen ? c.dangerSoft : c.glassDeep),
+                      borderRadius: BorderRadius.circular(Radii.sm),
+                      border: Border.all(color: tone ?? c.glassBorder),
+                    ),
+                    child: Row(
+                      children: [
+                        Text(
+                          '$letter. ',
+                          style: LipType.label.copyWith(
+                            color: tone ?? c.text3,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Expanded(
+                          child: LipHtml(
+                            q.options[i],
+                            baseStyle: LipType.small.copyWith(
+                              color: tone ?? c.text1,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        if (_picked != null && q.answer.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              _picked == q.answer ? 'Correct.' : 'The answer is ${q.answer}.',
+              style: LipType.label.copyWith(
+                color: _picked == q.answer ? c.success : c.text2,
+              ),
+            ),
+          ),
       ],
     );
   }

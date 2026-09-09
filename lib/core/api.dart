@@ -134,6 +134,19 @@ class Api {
     ),
   );
 
+  /// PATCH — "change this one thing about that", as distinct from "make a
+  /// new one". Pointgram's delete and pin are PATCHes, and this client had no
+  /// way to send one, so neither could ever be called from a phone.
+  Future<Map<String, dynamic>> patch(String path, {Object? body}) => _request(
+    'PATCH',
+    path,
+    (token, url) => _dio.patch(
+      url,
+      data: body,
+      options: Options(headers: _authHeader(token)),
+    ),
+  );
+
   /// Fetches BYTES rather than JSON — a watermarked PDF, an image. Goes
   /// through [_request] like everything else, so it inherits the same
   /// 401-refresh-and-retry: a download that started the moment an access

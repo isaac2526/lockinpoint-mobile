@@ -73,6 +73,7 @@ class GramMessage {
     this.type = 'text',
     this.options = const [],
     this.mediaUrl = '',
+    this.quiz,
   });
 
   factory GramMessage.from(
@@ -95,6 +96,7 @@ class GramMessage {
             .toList() ??
         const [],
     mediaUrl: m['media_url'] as String? ?? '',
+    quiz: GramQuiz.from(m['meta'] as Map?),
   );
 
   final String id;
@@ -113,6 +115,49 @@ class GramMessage {
 
   /// Anything with a URL — an image, a voice note. Empty when there is none.
   final String mediaUrl;
+
+  /// A quiz drop's question, straight out of the real bank.
+  ///
+  /// The app used to render one as a bubble containing the two words "Quiz
+  /// drop" — the body the website sends as a fallback — and threw the
+  /// question, the options and the answer away with the rest of `meta`.
+  final GramQuiz? quiz;
+}
+
+/// A question dropped into a room from the real bank.
+class GramQuiz {
+  const GramQuiz({
+    required this.question,
+    required this.options,
+    required this.letters,
+    required this.answer,
+  });
+
+  final String question;
+  final List<String> options;
+  final List<String> letters;
+
+  /// The correct letter. It arrives WITH the drop — the room reveals on tap
+  /// rather than asking the server, because a quiz drop is a moment in a
+  /// conversation, not a graded sitting.
+  final String answer;
+
+  static GramQuiz? from(Map<dynamic, dynamic>? meta) {
+    final q = (meta?['q'] as Map?)?.cast<String, dynamic>();
+    if (q == null) return null;
+    final options = ((q['options'] as List?) ?? const [])
+        .map((e) => e.toString())
+        .toList();
+    if (options.isEmpty) return null;
+    return GramQuiz(
+      question: q['question'] as String? ?? '',
+      options: options,
+      letters: ((q['letters'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList(),
+      answer: (q['answer'] as String? ?? '').toUpperCase(),
+    );
+  }
 }
 
 class GramFeed {
@@ -380,6 +425,70 @@ Future<String?> voteInGram(Api api, String messageId, int option) async {
       body: {'option': option},
     );
     return res['ok'] == false ? 'That vote did not go through.' : null;
+  } on ApiFailure catch (e) {
+    return e.message;
+  }
+}
+
+/// Sends a picture into a room.
+///
+/// THE COMPOSER COULD SEND TEXT AND NOTHING ELSE. /api/gram/upload has been
+/// there since Pointgram shipped and no client on a phone ever called it, so
+/// a student could see that pictures existed — badly, as a grey sentence
+/// telling them to open a browser — and could never send one.
+///
+/// The upload and the message are two steps on purpose: a picture that
+/// uploads but whose message fails is recoverable, and one message carrying
+/// four megabytes of body is not.
+Future<String?> sendGramImage(
+  Api api, {
+  String? groupId,
+  bool dm = false,
+  required String filePath,
+  String caption = '',
+}) async {
+  try {
+    final up = await api.upload(
+      '/api/gram/upload',
+      filePath: filePath,
+      fieldName: 'file',
+    );
+    final url = up['url'] as String? ?? '';
+    if (up['ok'] == false || url.isEmpty) {
+      return up['message'] as String? ?? 'That picture would not upload.';
+    }
+    await api.post(
+      '/api/gram/messages',
+      body: {
+        'group': ?groupId,
+        if (dm) 'dm': true,
+        'type': 'image',
+        'body': caption,
+        'media_url': url,
+      },
+    );
+    return null;
+  } on ApiFailure catch (e) {
+    return e.message;
+  }
+}
+
+/// Takes back something you sent.
+///
+/// The server keeps the row and marks it deleted — a tutor can still see what
+/// was said, which is the point of a moderated study room — so this is "take
+/// it off the wall", not "make it never have happened".
+Future<String?> deleteGram(Api api, String messageId) async {
+  try {
+    /* PATCH, and the key is `action` — read off the route rather than
+       guessed. A POST here creates nothing and would 405. */
+    final res = await api.patch(
+      '/api/gram/messages/$messageId',
+      body: {'action': 'delete'},
+    );
+    return res['ok'] == false
+        ? (res['message'] as String? ?? 'That could not be deleted.')
+        : null;
   } on ApiFailure catch (e) {
     return e.message;
   }

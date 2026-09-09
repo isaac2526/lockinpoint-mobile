@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,11 +24,19 @@ import 'package:lockinpoint/features/gram/gram_screen.dart';
 const _rightPin = '3513';
 
 class _Gram extends Fake implements Api {
-  _Gram({this.locked = false, this.enabled = true, this.poll = false});
+  _Gram({
+    this.locked = false,
+    this.enabled = true,
+    this.poll = false,
+    this.quiz = false,
+    this.image = false,
+  });
 
   final bool locked;
   final bool enabled;
   final bool poll;
+  final bool quiz;
+  final bool image;
 
   /// Every path this fake was asked for, so a test can hold that the app
   /// SENT the request rather than merely rendering as if it had.
@@ -85,9 +94,29 @@ class _Gram extends Fake implements Api {
           'id': 'm1',
           'user_id': 'u1',
           'who': 'me',
-          'body': poll ? '' : 'Read chapter four.',
-          'type': poll ? 'poll' : 'text',
-          'meta': poll
+          'body': quiz
+              ? 'Quiz drop'
+              : poll
+              ? ''
+              : 'Read chapter four.',
+          'type': quiz
+              ? 'quiz'
+              : image
+              ? 'image'
+              : poll
+              ? 'poll'
+              : 'text',
+          'media_url': image ? 'https://example.test/p.jpg' : null,
+          'meta': quiz
+              ? {
+                  'q': {
+                    'question': 'What is the SI unit of force?',
+                    'options': ['Newton', 'Joule'],
+                    'letters': ['A', 'B'],
+                    'answer': 'A',
+                  },
+                }
+              : poll
               ? {
                   'options': ['Yes', 'No'],
                 }
@@ -106,6 +135,12 @@ class _Gram extends Fake implements Api {
             ]
           : const [],
     };
+  }
+
+  @override
+  Future<Map<String, dynamic>> patch(String path, {Object? body}) async {
+    posted.add('PATCH $path');
+    return {'ok': true};
   }
 
   @override
@@ -257,6 +292,107 @@ void main() {
     await tester.tap(find.text('2'));
     await tester.pumpAndSettle();
     expect(api.posted, contains('/api/gram/messages/m1/react'));
+  });
+
+  testWidgets('a quiz drop is a question, not the words "Quiz drop"', (
+    tester,
+  ) async {
+    /* It arrived as a bubble containing the two words the website sends as a
+       fallback body. The stem, the options and the answer all ride in `meta`,
+       and the app discarded `meta` entirely. */
+    await _open(
+      tester,
+      _Gram(quiz: true),
+      home: const GramRoomScreen(
+        room: GramRoom(
+          id: 'g1',
+          name: 'The Main Hall',
+          description: '',
+          status: 'approved',
+          unread: 0,
+          last: '',
+          locked: false,
+          joinMode: 'open',
+        ),
+      ),
+    );
+    /* The stem and the options are drawn as HTML, so they are TextSpans
+       rather than Text widgets and find.text cannot see them — which is why
+       this asserts on the widget and on the option letters, both of which
+       are real. */
+    expect(find.byType(GramQuizDrop), findsOneWidget);
+    expect(find.text('A. '), findsOneWidget);
+    expect(find.text('B. '), findsOneWidget);
+
+    await tester.tap(find.text('A. '));
+    await tester.pumpAndSettle();
+    // The answer comes down with the drop; nothing is asked of the server and
+    // nothing is scored. It is a moment in a conversation.
+    expect(find.text('Correct.'), findsOneWidget);
+  });
+
+  testWidgets('a picture is a picture, not a sentence about a browser', (
+    tester,
+  ) async {
+    /* pumpAndSettle would never return here: CachedNetworkImage starts a
+       real HTTP fetch that never resolves in a test binding, so the frame
+       scheduler never goes quiet. Fixed pumps instead — this test is about
+       what is BUILT, not about a picture arriving. */
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [apiProvider.overrideWithValue(_Gram(image: true))],
+        child: MaterialApp(
+          theme: LipTheme.light(),
+          home: const GramRoomScreen(
+            room: GramRoom(
+              id: 'g1',
+              name: 'The Main Hall',
+              description: '',
+              status: 'approved',
+              unread: 0,
+              last: '',
+              locked: false,
+              joinMode: 'open',
+            ),
+          ),
+        ),
+      ),
+    );
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 60));
+    }
+    expect(find.byType(CachedNetworkImage), findsOneWidget);
+    expect(find.textContaining('open in the browser'), findsNothing);
+  });
+
+  testWidgets('you can take back a message you sent', (tester) async {
+    final api = _Gram();
+    await _open(
+      tester,
+      api,
+      home: const GramRoomScreen(
+        room: GramRoom(
+          id: 'g1',
+          name: 'The Main Hall',
+          description: '',
+          status: 'approved',
+          unread: 0,
+          last: '',
+          locked: false,
+          joinMode: 'open',
+        ),
+      ),
+    );
+    // A button, not a long-press: a long-press on the bubble is eaten by the
+    // SelectableText inside it, so the student gets the copy menu instead.
+    await tester.tap(find.byIcon(Icons.more_horiz_rounded));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete this message?'), findsOneWidget);
+
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+    // PATCH, not POST: the route creates nothing and a POST would 405.
+    expect(api.posted, contains('PATCH /api/gram/messages/m1'));
   });
 
   testWidgets('a poll can be answered', (tester) async {
