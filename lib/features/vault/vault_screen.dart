@@ -7,6 +7,8 @@ import '../../core/vault/vault_db.dart';
 import '../../core/vault/vault_repository.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
+import '../../core/vault/essential_download.dart';
+import '../practice/practice_session_screen.dart';
 import '../../design/motion_widgets.dart';
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
@@ -32,7 +34,18 @@ class VaultScreen extends ConsumerWidget {
     final online = ref.watch(isOnlineProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Offline vault')),
+      appBar: AppBar(
+        title: const Text('Offline vault'),
+        /* THE DOWNLOAD / UPDATE BUTTON, in the top corner, always there.
+        
+           There was no `actions:` on this bar at all. The only control that
+           ever pulled from the server was a "Retry" that appeared solely
+           while the first-launch download happened to be paused — so once
+           that finished, a student who wanted the newly-added questions had
+           no way to ask for them, which is exactly the button that was
+           asked for. */
+        actions: [const _UpdateAction()],
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -186,12 +199,52 @@ class _PackCard extends ConsumerWidget {
   const _PackCard({required this.pack});
   final Pack pack;
 
+  /// OPENING A PACK — the step that did not exist.
+  ///
+  /// Every piece of offline practice was already built and working:
+  /// `openSitting()` assembles the paper out of the local database,
+  /// `sittingFromVault()` reshapes it into what the practice screen speaks,
+  /// and that screen runs happily with no network. NOTHING CALLED THEM. This
+  /// card showed a downloaded subject, its question count, and a delete
+  /// button — so the one thing a student downloads a pack in order to do was
+  /// the one thing they could not do with it.
+  Future<void> _sit(BuildContext context, WidgetRef ref) async {
+    final offline = await ref.read(vaultProvider).openSitting(pack.subjectId);
+    if (!context.mounted) return;
+    if (offline == null) {
+      /* The row exists but its questions do not — a download interrupted
+         part-way. Said plainly, with the way out, rather than as a screen
+         that opens on nothing. */
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              'This download is incomplete. Remove it and download '
+              '${pack.subjectName} again.',
+            ),
+          ),
+        );
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            PracticeSessionScreen(sitting: sittingFromVault(offline)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.lip;
 
     return GlassSurface(
       tier: GlassTier.card,
+      onTap: () => _sit(context, ref),
+      semanticLabel:
+          'Practise ${pack.subjectName} offline. '
+          '${pack.examShort}, ${pack.count} questions.',
       child: Row(
         children: [
           Container(
@@ -223,6 +276,11 @@ class _PackCard extends ConsumerWidget {
                   // which one they are holding.
                   '${pack.examShort} · ${pack.count} questions',
                   style: LipType.small.copyWith(color: c.text3),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Tap to practise — no signal needed',
+                  style: LipType.label.copyWith(color: c.hues.teal.ink),
                 ),
               ],
             ),
@@ -370,3 +428,64 @@ Sitting sittingFromVault(OfflineSitting s, {int minutes = 0}) => Sitting(
   duration: minutes * 60,
   initialIndex: 0,
 );
+
+/// Pulls anything new down, and says what it is doing while it does.
+///
+/// It is deliberately ONE control for both jobs. A student does not think in
+/// terms of "the first download" and "an update" — they think "get me the
+/// new questions", and the phone already knows which of the two that is.
+class _UpdateAction extends ConsumerWidget {
+  const _UpdateAction();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
+    final essential = ref.watch(essentialDownloadProvider);
+    final running = essential.phase == EssentialPhase.running;
+    final online = ref.watch(isOnlineProvider);
+
+    if (running) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Gap.md),
+        child: Center(
+          child: Text(
+            /* THE MB AND THE PERCENTAGE, which is what was asked for — and
+               they belong here as much as on the first-launch screen, since
+               this is where a student comes to watch a big update land. */
+            essential.totalBytes > 0
+                ? '${essential.percent}% · ${essential.sizeLine}'
+                : 'Downloading…',
+            style: LipType.label.copyWith(color: c.brand),
+          ),
+        ),
+      );
+    }
+
+    return IconButton(
+      tooltip: online ? 'Check for new questions' : 'No connection',
+      icon: Icon(Icons.cloud_download_rounded, color: online ? null : c.text3),
+      onPressed: !online
+          ? null
+          : () async {
+              final notifier = ref.read(essentialDownloadProvider.notifier);
+              await notifier.check();
+              if (ref.read(essentialDownloadProvider).phase ==
+                  EssentialPhase.needed) {
+                await notifier.start();
+              } else if (context.mounted) {
+                /* SAYING "nothing new" OUT LOUD MATTERS. A button that can
+                   answer with silence is a button a student taps again and
+                   again wondering whether it worked. */
+                ScaffoldMessenger.of(context)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(
+                    const SnackBar(
+                      content: Text('You already have everything.'),
+                    ),
+                  );
+              }
+              ref.invalidate(vaultPacksProvider);
+            },
+    );
+  }
+}
