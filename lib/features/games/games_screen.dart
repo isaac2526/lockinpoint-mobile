@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
+import '../../design/rich_text.dart';
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
@@ -394,9 +395,16 @@ class _QuickGameScreenState extends ConsumerState<QuickGameScreen> {
                   Gap.huge,
                 ),
                 children: [
-                  Text(
+                  /* THE GAMES PRINTED THEIR TAGS. The server sanitises but
+                     does not strip: a question with <sub>, <sup>, <b> or an
+                     &amp; arrived here as markup and this bare Text drew it
+                     literally, so H<sub>2</sub>O read as "H<sub>2</sub>O".
+                     Every other question surface in the app already goes
+                     through LipHtml — the games and the Climb were the two
+                     that did not. */
+                  LipHtml(
                     q.question,
-                    style: LipType.question.copyWith(
+                    baseStyle: LipType.question.copyWith(
                       color: c.text1,
                       height: 1.45,
                     ),
@@ -428,9 +436,9 @@ class _QuickGameScreenState extends ConsumerState<QuickGameScreen> {
                               ),
                             ),
                             Expanded(
-                              child: Text(
+                              child: LipHtml(
                                 q.options[i],
-                                style: LipType.option.copyWith(
+                                baseStyle: LipType.option.copyWith(
                                   color: tone ?? c.text1,
                                 ),
                               ),

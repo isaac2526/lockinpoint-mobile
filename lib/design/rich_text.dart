@@ -38,12 +38,60 @@ class LipHtml extends StatelessWidget {
   static final _display2 = RegExp(r'\$\$(.+?)\$\$', dotAll: true);
   static final _inline = RegExp(r'\\\((.+?)\\\)', dotAll: true);
 
+  /// THE FORMULA ARRIVES ALREADY ESCAPED, AND ESCAPING IT AGAIN BROKE IT.
+  ///
+  /// Question bodies are sanitised on the server, which turns `<` into
+  /// `&lt;`. So an inequality written `\(a < b\)` reaches this widget as
+  /// `\(a &lt; b\)`. `_escape` then made that `&amp;lt;`; the HTML parser
+  /// decoded one level back to the literal text `&lt;`; and Math.tex was
+  /// handed `a &lt; b`, which is not LaTeX. It failed, fell through to
+  /// onErrorFallback, and PRINTED ITS OWN ESCAPED SOURCE on the screen.
+  ///
+  /// Every inequality, every `\langle`, every `a &amp; b` in a formula was
+  /// affected — across Practice, Review, Search, Theory, Practical and the
+  /// offline pack. Decoding first makes the round trip lossless: decode to
+  /// real characters, escape once, let the parser decode once.
+  static final _entity = RegExp(
+    r'&(#x?[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]{1,31});',
+  );
+
+  static String decodeEntities(String s) => s.replaceAllMapped(_entity, (m) {
+    final body = m[1]!;
+    if (body.startsWith('#')) {
+      final hex = body.startsWith('#x') || body.startsWith('#X');
+      final digits = body.substring(hex ? 2 : 1);
+      final code = int.tryParse(digits, radix: hex ? 16 : 10);
+      /* A code point outside Unicode, or a control character, is left as
+             written rather than turned into something unprintable. */
+      if (code == null || code < 0x20 || code > 0x10FFFF) return m[0]!;
+      return String.fromCharCode(code);
+    }
+    return switch (body.toLowerCase()) {
+      'lt' => '<',
+      'gt' => '>',
+      'amp' => '&',
+      'quot' => '"',
+      'apos' => "'",
+      'nbsp' => '\u00A0',
+      'times' => '\u00D7',
+      'minus' => '\u2212',
+      'le' => '\u2264',
+      'ge' => '\u2265',
+      'ne' => '\u2260',
+      // An entity this app does not know is left exactly as it was
+      // written. Guessing would corrupt the formula silently.
+      _ => m[0]!,
+    };
+  });
+
   /// LaTeX often contains `<` and `&`, which the HTML parser would eat. Each
-  /// formula is entity-escaped into its `<tex>` element and decoded on render.
-  static String _escape(String tex) => tex
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;');
+  /// formula is decoded to real characters, then entity-escaped ONCE into its
+  /// `<tex>` element, and decoded again on render.
+  static String _escape(String tex) =>
+      decodeEntities(tex)
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;');
 
   static String prepare(String raw) => raw
       .replaceAllMapped(_display1, (m) => '<tex d="1">${_escape(m[1]!)}</tex>')

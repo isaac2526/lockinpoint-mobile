@@ -1,3 +1,5 @@
+import '../../app/shell.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -210,7 +212,21 @@ class LeaderboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final board = ref.watch(leaderboardProvider);
     return Scaffold(
-      appBar: embedded ? null : AppBar(title: const Text('Leaderboard')),
+      /* AN EMBEDDED TAB STILL NEEDS THE MENU. Dropping the AppBar
+         entirely left Ranking and Profile with no way into the drawer at
+         all — not even a dead button — so two of the four tabs simply had
+         no menu. It keeps a bar with the hamburger and no back arrow. */
+      appBar: AppBar(
+        title: const Text('Leaderboard'),
+        automaticallyImplyLeading: !embedded,
+        leading: embedded
+            ? IconButton(
+                onPressed: openAppMenu,
+                icon: const Icon(Icons.menu_rounded),
+                tooltip: 'Menu',
+              )
+            : null,
+      ),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () async => ref.invalidate(leaderboardProvider),

@@ -63,6 +63,30 @@ class AppShell extends ConsumerStatefulWidget {
   ConsumerState<AppShell> createState() => _AppShellState();
 }
 
+/// ===========================================================================
+/// THE ONE HANDLE ON THE SHELL'S DRAWER.
+///
+/// THE MENU BUTTON WAS A DEAD TAP, on Home and on Practice, for the life of
+/// the app. The drawer belongs to the SHELL's Scaffold — but every tab builds
+/// its own Scaffold inside it, and `Scaffold.of(context)` walks UP to the
+/// nearest one, which is the tab's. That Scaffold has no drawer, so
+/// `openDrawer()` found a null drawer key and returned without doing
+/// anything, silently, with no error to notice. The only way into the menu
+/// was a left-edge drag that nothing on screen advertises.
+///
+/// A GlobalKey held here is addressed directly rather than looked up through
+/// the widget tree, so it cannot be shadowed by an inner Scaffold no matter
+/// how deeply a tab nests.
+final shellDrawerKey = GlobalKey<ScaffoldState>();
+
+/// Opens the app's menu from anywhere inside the shell. Safe to call when
+/// there is no shell (a pushed route, a test): it does nothing rather than
+/// throwing.
+void openAppMenu() {
+  final st = shellDrawerKey.currentState;
+  if (st != null && !st.isDrawerOpen) st.openDrawer();
+}
+
 class _AppShellState extends ConsumerState<AppShell> {
   int _tab = 0;
 
@@ -119,6 +143,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     }
 
     return Scaffold(
+      key: shellDrawerKey,
       drawer: const _LipDrawer(),
       body: Column(
         children: [

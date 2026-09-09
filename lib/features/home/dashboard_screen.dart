@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../app/shell.dart';
 import '../../core/api.dart';
 import '../../core/update_check.dart';
 import '../../design/components.dart';
@@ -217,17 +218,16 @@ class _Content extends ConsumerWidget {
         Entrance(
           child: Row(
             children: [
-              Builder(
-                builder: (context) => IconButton(
-                  onPressed: () => Scaffold.of(context).openDrawer(),
-                  icon: const Icon(Icons.menu_rounded),
-                  tooltip: 'Menu',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 40,
-                    minHeight: 40,
-                  ),
-                ),
+              IconButton(
+                /* NOT Scaffold.of(context). This screen builds its own
+                   Scaffold, so that lookup finds THIS one — which has no
+                   drawer — and openDrawer() returns silently. The shell's
+                   drawer is addressed by its key instead. */
+                onPressed: openAppMenu,
+                icon: const Icon(Icons.menu_rounded),
+                tooltip: 'Menu',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
               ),
               const SizedBox(width: Gap.sm),
               const LipWordmark(size: 24),

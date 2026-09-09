@@ -183,6 +183,23 @@ class ClimbApi {
   Future<Map<String, dynamic>> _post(Map<String, dynamic> body) =>
       _api.post('/api/games/ladder', body: body);
 
+  /// WHAT THE CHOOSER NEEDS BEFORE A SINGLE QUESTION IS DEALT.
+  ///
+  /// The app never called this. It went straight to `op: "start"` with no
+  /// subject, and the server — which has required one since the Yoruba fix —
+  /// answered "Pick a subject to climb." every single time. The Climb was
+  /// unstartable from the phone, which is exactly what "the climb is saying
+  /// rubbish" describes.
+  ///
+  /// The server does the thinking here: it returns only subjects with enough
+  /// questions to fill all fifteen rungs, and marks the ones this student
+  /// actually sits — inferred from their own past attempts and study plan
+  /// rather than from a form nobody filled in.
+  Future<ClimbSetup> setup() async {
+    final res = await _post({'op': 'setup'});
+    return ClimbSetup.from(res);
+  }
+
   Future<ClimbState> start({
     required List<String> lifelines,
     String mode = 'classic',
@@ -244,4 +261,67 @@ class ClimbApi {
     final res = await _post({'op': 'walk', 'gameId': gameId});
     return ClimbState.from((res['state'] as Map).cast<String, dynamic>());
   }
+}
+
+/// A subject the ladder can actually be built from.
+class ClimbSubject {
+  const ClimbSubject({
+    required this.id,
+    required this.name,
+    required this.exam,
+    required this.examName,
+    required this.ready,
+    required this.mine,
+  });
+
+  final String id;
+  final String name;
+  final String exam;
+  final String examName;
+
+  /// How many questions stand behind it. The server only ever sends subjects
+  /// that can fill the whole ladder, so this is for showing, not for judging.
+  final int ready;
+
+  /// True when this student has actually sat this subject before, or it is in
+  /// their study plan. The chooser puts these first — the answer to "Yoruba
+  /// keeps coming up and I don't offer it".
+  final bool mine;
+
+  static ClimbSubject from(Map<String, dynamic> j) => ClimbSubject(
+    id: j['id'] as String? ?? '',
+    name: j['name'] as String? ?? '',
+    exam: j['exam'] as String? ?? '',
+    examName: j['examName'] as String? ?? '',
+    ready: (j['ready'] as num?)?.toInt() ?? 0,
+    mine: j['mine'] == true,
+  );
+}
+
+class ClimbSetup {
+  const ClimbSetup({required this.subjects, required this.anyReady});
+
+  final List<ClimbSubject> subjects;
+
+  /// False when the question bank cannot fill a ladder in ANY subject. That
+  /// is a different sentence to "pick a subject", and a student deserves to
+  /// be told which of the two it is.
+  final bool anyReady;
+
+  /// This student's own subjects first, then the rest, each group by name.
+  List<ClimbSubject> get ordered {
+    final mine = subjects.where((s) => s.mine).toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    final rest = subjects.where((s) => !s.mine).toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    return [...mine, ...rest];
+  }
+
+  static ClimbSetup from(Map<String, dynamic> j) => ClimbSetup(
+    subjects: ((j['subjects'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((m) => ClimbSubject.from(m.cast<String, dynamic>()))
+        .toList(),
+    anyReady: j['anyReady'] == true,
+  );
 }

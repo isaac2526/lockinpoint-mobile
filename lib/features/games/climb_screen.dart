@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
+import '../../design/rich_text.dart';
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
@@ -41,14 +42,31 @@ class ClimbSetupScreen extends ConsumerStatefulWidget {
   ConsumerState<ClimbSetupScreen> createState() => _ClimbSetupScreenState();
 }
 
+/// The subjects the ladder can be built from, this student's own first.
+///
+/// This provider is the whole fix for "the Climb is saying rubbish": the app
+/// used to skip straight to `op: "start"` with no subject, and the server has
+/// required one ever since Yoruba started appearing on ladders for candidates
+/// who never offered it. Every tap on Start returned "Pick a subject to
+/// climb." and there was no picker on the screen to answer it with.
+final climbSetupProvider = FutureProvider.autoDispose<ClimbSetup>(
+  (ref) => ClimbApi(ref.read(apiProvider)).setup(),
+);
+
 class _ClimbSetupScreenState extends ConsumerState<ClimbSetupScreen> {
   final _chosen = <String>{'fifty', 'class', 'lumi'};
   String _mode = 'classic';
   bool _busy = false;
   String _error = '';
   bool _needActivation = false;
+  ClimbSubject? _subject;
 
   Future<void> _start() async {
+    final subject = _subject;
+    if (subject == null) {
+      setState(() => _error = 'Pick a subject to climb.');
+      return;
+    }
     final api = ref.read(apiProvider);
     setState(() {
       _busy = true;
@@ -56,8 +74,12 @@ class _ClimbSetupScreenState extends ConsumerState<ClimbSetupScreen> {
       _needActivation = false;
     });
     try {
-      final state = await ClimbApi(api)
-          .start(lifelines: _chosen.toList(), mode: _mode);
+      final state = await ClimbApi(api).start(
+        lifelines: _chosen.toList(),
+        mode: _mode,
+        exam: subject.exam,
+        subject: subject.id,
+      );
       if (!mounted) return;
       await Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(builder: (_) => ClimbScreen(initial: state)),
@@ -91,6 +113,16 @@ class _ClimbSetupScreenState extends ConsumerState<ClimbSetupScreen> {
                 'place a SECOND net yourself — and once placed it cannot move.',
                 style: LipType.body.copyWith(color: c.text1, height: 1.5),
               ),
+            ),
+            const SizedBox(height: Gap.lg),
+            const LipLabel('Which subject?'),
+            const SizedBox(height: Gap.sm),
+            _SubjectPicker(
+              chosen: _subject,
+              onPick: (s) => setState(() {
+                _subject = s;
+                _error = '';
+              }),
             ),
             const SizedBox(height: Gap.lg),
             const LipLabel('Pick exactly three lifelines'),
@@ -442,9 +474,10 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
                   Gap.huge,
                 ),
                 children: [
-                  Text(
+                  // See games_screen.dart: the Climb printed its markup too.
+                  LipHtml(
                     _s.question,
-                    style: LipType.question.copyWith(
+                    baseStyle: LipType.question.copyWith(
                       color: c.text1,
                       height: 1.45,
                     ),
@@ -476,9 +509,9 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
                               ),
                             ),
                             Expanded(
-                              child: Text(
+                              child: LipHtml(
                                 o.text,
-                                style: LipType.option.copyWith(
+                                baseStyle: LipType.option.copyWith(
                                   color: right
                                       ? c.success
                                       : wrongPick
@@ -645,6 +678,94 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// ===========================================================================
+/// WHICH SUBJECT?
+///
+/// The screen that was missing. The server only offers subjects with enough
+/// questions to fill all fifteen rungs — a subject that would run dry at rung
+/// nine is never shown, rather than shown and then refused — and it marks the
+/// ones this student actually sits, worked out from their own past attempts
+/// and study plan rather than from a form nobody ever filled in.
+///
+/// Those come first, under "Your subjects". Everything else is below, under
+/// "Everything else", so a candidate who does not offer Yoruba never has it
+/// put in front of them.
+/// ===========================================================================
+class _SubjectPicker extends ConsumerWidget {
+  const _SubjectPicker({required this.chosen, required this.onPick});
+
+  final ClimbSubject? chosen;
+  final void Function(ClimbSubject) onPick;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
+    final setup = ref.watch(climbSetupProvider);
+
+    return setup.when(
+      loading: () => const LipSkeleton(height: 90),
+      error: (e, _) => LipError(
+        message: e is ApiFailure ? e.message : 'Could not load the subjects.',
+        detail: e is ApiFailure ? e.detail : null,
+        onRetry: () => ref.invalidate(climbSetupProvider),
+      ),
+      data: (s) {
+        /* NO SUBJECT CAN FILL A LADDER is a different problem to "you have
+           not picked one", and saying the wrong one sends a student hunting
+           for a button that is not there. */
+        if (!s.anyReady || s.subjects.isEmpty) {
+          return LipEmpty(
+            icon: Icons.stairs_rounded,
+            title: 'The ladder is not ready yet',
+            message: s.anyReady
+                ? 'No subject has enough questions for all fifteen rungs '
+                      'yet. Try the Games arena while the bank grows.'
+                : 'Tutor Bello is still adding questions. This opens as soon '
+                      'as one subject can fill the ladder.',
+          );
+        }
+
+        final mine = s.ordered.where((x) => x.mine).toList();
+        final rest = s.ordered.where((x) => !x.mine).toList();
+
+        Widget group(String label, List<ClimbSubject> list) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: Gap.sm),
+              child: Text(label, style: LipType.label.copyWith(color: c.text3)),
+            ),
+            Wrap(
+              spacing: Gap.sm,
+              runSpacing: Gap.sm,
+              children: [
+                for (final sub in list)
+                  LipChip(
+                    sub.examName.isEmpty
+                        ? sub.name
+                        : '${sub.name} · ${sub.examName}',
+                    selected: chosen?.id == sub.id,
+                    onTap: () => onPick(sub),
+                  ),
+              ],
+            ),
+            const SizedBox(height: Gap.md),
+          ],
+        );
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (mine.isNotEmpty) group('Your subjects', mine),
+            if (rest.isNotEmpty)
+              group(mine.isEmpty ? 'Ready to climb' : 'Everything else', rest),
+          ],
+        );
+      },
     );
   }
 }

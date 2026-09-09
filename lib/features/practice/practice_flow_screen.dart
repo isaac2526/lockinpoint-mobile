@@ -1,3 +1,5 @@
+import '../../app/shell.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -173,12 +175,12 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
                   // At the top of a tab the arrow would point nowhere, so it
                   // becomes the way into the drawer instead.
                   if (widget.embedded && _step == 0)
-                    Builder(
-                      builder: (context) => IconButton(
-                        onPressed: () => Scaffold.of(context).openDrawer(),
-                        icon: const Icon(Icons.menu_rounded),
-                        tooltip: 'Menu',
-                      ),
+                    IconButton(
+                      // See dashboard_screen.dart: Scaffold.of() finds this
+                      // screen's own drawer-less Scaffold, not the shell's.
+                      onPressed: openAppMenu,
+                      icon: const Icon(Icons.menu_rounded),
+                      tooltip: 'Menu',
                     )
                   else
                     IconButton(
