@@ -123,13 +123,28 @@ void main() {
       );
     });
 
-    test('every feature carries a distinct, stable colour', () {
-      final hues = kFeatures.map((f) => f.hue).toList();
-      expect(
-        hues.toSet().length,
-        hues.length,
-        reason: 'two features sharing a hue cannot be told apart at a glance',
-      );
+    test('colour still tells tiles apart, band by band', () {
+      /* THE OLD RULE WAS "every tile has a unique hue", and it held while
+         there were twelve tiles and twelve hues. There are twenty-two rooms
+         now and still twelve hues, so that rule is arithmetically impossible
+         — and dropping it would throw away the thing it protected.
+
+         The scanning unit is the BAND: a student looking for Pointgram looks
+         under Community, and only needs it to be unmistakable among the tiles
+         beside it. So the invariant is uniqueness WITHIN a band, which is
+         both achievable and the one that actually does the work. */
+      for (final band in FeatureBand.values) {
+        final inBand = kFeatures.where((f) => f.band == band).toList();
+        final hues = inBand.map((f) => f.hue).toList();
+        expect(
+          hues.toSet().length,
+          hues.length,
+          reason:
+              'two tiles in ${band.label} share a hue and cannot be told '
+              'apart at a glance: '
+              '${inBand.map((f) => "${f.title}=${f.hue.name}").join(", ")}',
+        );
+      }
     });
 
     test('semantic colour meanings hold', () {

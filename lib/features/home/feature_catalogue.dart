@@ -57,6 +57,29 @@ extension FeatureHueX on FeatureHue {
   );
 }
 
+/// Which band of the home screen a tile belongs to.
+///
+/// TWENTY-ONE IDENTICAL TILES IN ONE WALL IS NOT A HOME SCREEN, it is a
+/// contents page. The grid carried twelve, and every room added since —
+/// Theory, Practical, Pointgram, the Study Plan, the Challenge, activity,
+/// referrals, receipts, the harvest — was reachable only from the drawer. So
+/// the owner opened the app, looked at the dashboard, and correctly said the
+/// new features were not there. A drawer is where you go when you already
+/// know what you are looking for; a dashboard is how you find out what exists.
+///
+/// They are all on it now, in four bands a student can scan: what you study,
+/// what you compete in, who you talk to, and what is yours.
+enum FeatureBand { study, compete, community, you }
+
+extension FeatureBandX on FeatureBand {
+  String get label => switch (this) {
+    FeatureBand.study => 'Study',
+    FeatureBand.compete => 'Compete',
+    FeatureBand.community => 'Community',
+    FeatureBand.you => 'Yours',
+  };
+}
+
 @immutable
 class Feature {
   const Feature({
@@ -65,6 +88,7 @@ class Feature {
     required this.subtitle,
     required this.icon,
     required this.hue,
+    this.band = FeatureBand.study,
     this.ready = true,
     this.badge = '',
   });
@@ -74,6 +98,7 @@ class Feature {
   final String subtitle;
   final IconData icon;
   final FeatureHue hue;
+  final FeatureBand band;
 
   /// False while the app cannot yet reach this feature's backend.
   final bool ready;
@@ -92,6 +117,7 @@ class Feature {
     subtitle: subtitle ?? this.subtitle,
     icon: icon,
     hue: hue ?? this.hue,
+    band: band,
     ready: ready,
     badge: badge ?? this.badge,
   );
@@ -106,6 +132,7 @@ const kFeatures = <Feature>[
     title: 'Practice & CBT',
     subtitle: 'Real past questions, timed or open',
     icon: Icons.rocket_launch_rounded,
+    band: FeatureBand.study,
     hue: FeatureHue.blue,
   ),
   Feature(
@@ -113,6 +140,7 @@ const kFeatures = <Feature>[
     title: 'Classroom',
     subtitle: 'Notes, materials and video lessons',
     icon: Icons.auto_stories_rounded,
+    band: FeatureBand.study,
     hue: FeatureHue.violet,
   ),
   Feature(
@@ -120,6 +148,7 @@ const kFeatures = <Feature>[
     title: 'Question search',
     subtitle: 'Find any question, fast',
     icon: Icons.search_rounded,
+    band: FeatureBand.study,
     hue: FeatureHue.slate,
   ),
   Feature(
@@ -127,6 +156,7 @@ const kFeatures = <Feature>[
     title: 'Result history',
     subtitle: 'Every paper you have sat',
     icon: Icons.receipt_long_rounded,
+    band: FeatureBand.compete,
     hue: FeatureHue.green,
   ),
   Feature(
@@ -134,6 +164,7 @@ const kFeatures = <Feature>[
     title: 'Performance analysis',
     subtitle: 'Where your marks are going',
     icon: Icons.insights_rounded,
+    band: FeatureBand.compete,
     hue: FeatureHue.indigo,
   ),
   Feature(
@@ -141,6 +172,7 @@ const kFeatures = <Feature>[
     title: 'Games arena',
     subtitle: 'Blitz, Survival, The Climb',
     icon: Icons.sports_esports_rounded,
+    band: FeatureBand.compete,
     hue: FeatureHue.purple,
   ),
   Feature(
@@ -148,6 +180,7 @@ const kFeatures = <Feature>[
     title: 'The Climb',
     subtitle: 'Fifteen rungs, three lifelines',
     icon: Icons.emoji_events_rounded,
+    band: FeatureBand.compete,
     hue: FeatureHue.amber,
   ),
   Feature(
@@ -155,6 +188,7 @@ const kFeatures = <Feature>[
     title: 'Leaderboard',
     subtitle: 'Your rank, nationally and locally',
     icon: Icons.leaderboard_rounded,
+    band: FeatureBand.compete,
     hue: FeatureHue.pink,
   ),
   Feature(
@@ -162,6 +196,7 @@ const kFeatures = <Feature>[
     title: 'Saved questions',
     subtitle: 'Everything you kept',
     icon: Icons.bookmark_rounded,
+    band: FeatureBand.you,
     hue: FeatureHue.lime,
   ),
   Feature(
@@ -169,6 +204,7 @@ const kFeatures = <Feature>[
     title: 'Offline vault',
     subtitle: 'Downloaded questions, no signal needed',
     icon: Icons.offline_bolt_rounded,
+    band: FeatureBand.you,
     hue: FeatureHue.teal,
   ),
   Feature(
@@ -176,6 +212,7 @@ const kFeatures = <Feature>[
     title: 'Career & institutions',
     subtitle: 'Courses, schools and cut-offs',
     icon: Icons.school_rounded,
+    band: FeatureBand.study,
     hue: FeatureHue.orange,
   ),
   Feature(
@@ -183,13 +220,96 @@ const kFeatures = <Feature>[
     title: 'Ask Lumi',
     subtitle: 'Your AI tutor, any question',
     icon: Icons.smart_toy_rounded,
+    band: FeatureBand.study,
     hue: FeatureHue.rose,
+  ),
+
+  // ---- the rooms that were reachable only from the drawer ---------------
+  /* EVERY ONE OF THESE EXISTED AND WORKED. None of them was on this grid, so
+     the owner's verdict — "the remaining features of the app isn't their" —
+     was correct about the only surface he actually looks at. */
+  Feature(
+    key: 'theory',
+    title: 'Theory',
+    subtitle: 'Written questions and their marking schemes',
+    icon: Icons.edit_note_rounded,
+    band: FeatureBand.study,
+    hue: FeatureHue.amber,
+  ),
+  Feature(
+    key: 'practical',
+    title: 'Practical',
+    subtitle: 'Apparatus, observations and readings',
+    icon: Icons.science_rounded,
+    band: FeatureBand.study,
+    hue: FeatureHue.lime,
+  ),
+  Feature(
+    key: 'plan',
+    title: 'Study plan',
+    subtitle: 'Fourteen days from your own weak topics',
+    icon: Icons.event_note_rounded,
+    band: FeatureBand.study,
+    hue: FeatureHue.teal,
+  ),
+  Feature(
+    key: 'rounds',
+    title: 'UTME Challenge',
+    subtitle: 'Competition rounds and past winners',
+    icon: Icons.military_tech_rounded,
+    band: FeatureBand.compete,
+    hue: FeatureHue.violet,
+  ),
+  Feature(
+    key: 'gram',
+    title: 'Pointgram',
+    subtitle: 'Study rooms and the Tutor Line',
+    icon: Icons.forum_rounded,
+    band: FeatureBand.community,
+    hue: FeatureHue.blue,
+  ),
+  Feature(
+    key: 'harvest',
+    title: 'Question harvest',
+    subtitle: 'Give back the questions you remember',
+    icon: Icons.volunteer_activism_rounded,
+    band: FeatureBand.community,
+    hue: FeatureHue.rose,
+  ),
+  Feature(
+    key: 'referrals',
+    title: 'Refer a friend',
+    subtitle: 'Your code, and what it has earned',
+    icon: Icons.card_giftcard_rounded,
+    band: FeatureBand.community,
+    hue: FeatureHue.green,
+  ),
+  Feature(
+    key: 'activity',
+    title: 'Your activity',
+    subtitle: 'Everything you have done here',
+    icon: Icons.history_rounded,
+    band: FeatureBand.you,
+    hue: FeatureHue.slate,
+  ),
+  Feature(
+    key: 'receipts',
+    title: 'Receipts',
+    subtitle: 'Every payment, with its printable receipt',
+    icon: Icons.receipt_rounded,
+    band: FeatureBand.you,
+    hue: FeatureHue.indigo,
+  ),
+  Feature(
+    key: 'activate',
+    title: 'Activate',
+    subtitle: 'Card, transfer or a key',
+    icon: Icons.vpn_key_rounded,
+    band: FeatureBand.you,
+    hue: FeatureHue.amber,
   ),
 ];
 
-/// Backend tiles name their icon as a string. This is the only place that
-/// turns one into a glyph, so an unknown name degrades to a sensible default
-/// rather than crashing a home screen.
 IconData iconNamed(String? name, IconData fallback) => switch (name) {
   'practice' || 'rocket' => Icons.rocket_launch_rounded,
   'classroom' || 'book' => Icons.auto_stories_rounded,

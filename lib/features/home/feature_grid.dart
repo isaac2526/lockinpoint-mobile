@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../design/components.dart';
 import '../../design/glass.dart';
 import '../../design/motion_widgets.dart';
 import '../../design/theme.dart';
@@ -19,6 +20,15 @@ import '../saved/saved_screen.dart';
 import '../search/search_screen.dart';
 import '../tutor/tutor_screen.dart';
 import '../vault/vault_screen.dart';
+import '../theory/theory_screen.dart';
+import '../plan/plan_screen.dart';
+import '../rounds/rounds_screen.dart';
+import '../gram/gram_screen.dart';
+import '../harvest/harvest_screen.dart';
+import '../referrals/referrals_screen.dart';
+import '../activity/activity_screen.dart';
+import '../receipts/receipts_screen.dart';
+import '../activation/activation_screen.dart';
 import 'feature_catalogue.dart';
 
 /// ===========================================================================
@@ -43,32 +53,94 @@ class FeatureGrid extends ConsumerWidget {
     final tiles = ref.watch(featureTilesProvider).value ?? const [];
     final features = mergeFeatureTiles(tiles);
 
+    /* GROUPED, NOT PILED. Twenty-one tiles in one undifferentiated wall is a
+       contents page; a student scanning it has to read every label. Four
+       bands — Study, Compete, Community, Yours — and the eye lands in the
+       right third of the screen before it reads a word.
+
+       A band with nothing in it draws no heading, so hiding every community
+       tile from the admin panel removes the word "Community" too rather than
+       leaving a title over empty space. */
+    final bands = <FeatureBand, List<Feature>>{};
+    for (final f in features) {
+      bands.putIfAbsent(f.band, () => []).add(f);
+    }
+
     return LayoutBuilder(
       builder: (context, box) {
         /* Two columns on a phone, more when there is genuinely room — a
            tablet or the web build. The tile keeps its proportions rather
            than stretching into a letterbox. */
         final columns = box.maxWidth > 720 ? 4 : (box.maxWidth > 520 ? 3 : 2);
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          padding: EdgeInsets.zero,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            mainAxisSpacing: Gap.md,
-            crossAxisSpacing: Gap.md,
-            childAspectRatio: 0.92,
-          ),
-          itemCount: features.length,
-          itemBuilder: (context, i) => Entrance(
-            index: i + 3,
-            child: FeatureTile(feature: features[i]),
-          ),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final band in FeatureBand.values)
+              if ((bands[band] ?? const []).isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: Gap.lg, bottom: Gap.sm),
+                  child: LipLabel(band.label),
+                ),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  padding: EdgeInsets.zero,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: columns,
+                    mainAxisSpacing: Gap.md,
+                    crossAxisSpacing: Gap.md,
+                    childAspectRatio: 0.92,
+                  ),
+                  itemCount: bands[band]!.length,
+                  itemBuilder: (context, i) => Entrance.inList(
+                    index: i,
+                    child: FeatureTile(feature: bands[band]![i]),
+                  ),
+                ),
+              ],
+          ],
         );
       },
     );
   }
 }
+
+/// EVERY TILE'S DESTINATION, IN ONE PLACE A TEST CAN READ.
+///
+/// This was a private `switch` inside a widget, which meant nothing could
+/// check it. Nine rooms were built, wired into the drawer, and left off the
+/// grid entirely — and no test could have noticed, because the only statement
+/// of "where does this tile go" was unreachable from a test file.
+///
+/// It is a top-level function now, and dashboard_reach_test.dart holds that
+/// every key in the catalogue resolves here and that every room in the app is
+/// in the catalogue.
+Widget? destinationForFeatureKey(String key) => switch (key) {
+  'practice' => const PracticeFlowScreen(),
+  'search' => const SearchScreen(),
+  'leaderboard' => const LeaderboardScreen(),
+  'history' => const ResultsScreen(),
+  'analysis' => const AnalysisScreen(),
+  'vault' => const VaultScreen(),
+  'classroom' => const ClassroomScreen(),
+  'bookmarks' => const SavedScreen(),
+  'tutor' => const TutorScreen(),
+  'games' => const GamesScreen(),
+  'challenge' => const ClimbSetupScreen(),
+  'career' => const CareerScreen(),
+  // The rooms that were reachable only from the drawer.
+  'theory' => const TheoryScreen(),
+  'practical' => const TheoryScreen(kind: 'practical'),
+  'plan' => const PlanScreen(),
+  'rounds' => const RoundsScreen(),
+  'gram' => const GramScreen(),
+  'harvest' => const HarvestScreen(),
+  'referrals' => const ReferralsScreen(),
+  'activity' => const ActivityScreen(),
+  'receipts' => const ReceiptsScreen(),
+  'activate' => const ActivationScreen(),
+  _ => null,
+};
 
 class FeatureTile extends StatelessWidget {
   const FeatureTile({super.key, required this.feature});
@@ -77,21 +149,7 @@ class FeatureTile extends StatelessWidget {
   /// Where a tile goes. A feature whose backend the app cannot reach yet says
   /// so plainly instead of opening a screen that will only apologise.
   void _open(BuildContext context) {
-    final Widget? destination = switch (feature.key) {
-      'practice' => const PracticeFlowScreen(),
-      'search' => const SearchScreen(),
-      'leaderboard' => const LeaderboardScreen(),
-      'history' => const ResultsScreen(),
-      'analysis' => const AnalysisScreen(),
-      'vault' => const VaultScreen(),
-      'classroom' => const ClassroomScreen(),
-      'bookmarks' => const SavedScreen(),
-      'tutor' => const TutorScreen(),
-      'games' => const GamesScreen(),
-      'challenge' => const ClimbSetupScreen(),
-      'career' => const CareerScreen(),
-      _ => null,
-    };
+    final destination = destinationForFeatureKey(feature.key);
     if (destination != null) {
       Navigator.of(context)
           .push(MaterialPageRoute(builder: (_) => destination));
