@@ -31,11 +31,11 @@ class AppConfig {
   /// named a build that had not existed for months, which makes a server log
   /// worse than useless: it points confidently at the wrong version. The
   /// check now runs in `check` on every push.
-  static const appVersion = '2.0.1';
+  static const appVersion = '2.1.0';
 
   /// The build number, which is what an update check compares. Names are for
   /// people; only this ever increases, and only this can be ordered.
-  static const buildNumber = 16;
+  static const buildNumber = 17;
 
   static const userAgent = 'LockInPoint/$appVersion+$buildNumber (Flutter)';
 
