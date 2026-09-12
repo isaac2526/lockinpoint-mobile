@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lockinpoint/core/smart_cache.dart';
 import 'package:lockinpoint/design/theme.dart';
 import 'package:lockinpoint/features/leaderboard/leaderboard_screen.dart';
 
@@ -13,9 +14,11 @@ class _FakeLadder extends Fake implements LeaderboardRepository {
   String? asked;
 
   @override
-  Future<Ladder> board(String scope) async {
+  Future<Cached<Ladder>> board(String scope) async {
     asked = scope;
-    return _board;
+    // Live, so these tests are about what a fresh board looks like. The
+    // stale path has its own file: smart_cache_test.dart.
+    return Cached(value: _board, savedAt: DateTime.now());
   }
 }
 

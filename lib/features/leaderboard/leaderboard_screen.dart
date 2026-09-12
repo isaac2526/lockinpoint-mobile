@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
+import '../../core/smart_cache.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
 import '../../design/motion_widgets.dart';
@@ -140,14 +141,19 @@ class Ladder {
 }
 
 class LeaderboardRepository {
-  LeaderboardRepository(this._api);
-  final Api _api;
+  LeaderboardRepository(this._ref);
 
-  Future<Ladder> board(String scope) async {
-    final res = await _api.get(
-      '/api/leaderboard',
-      query: {if (scope.isNotEmpty) 'scope': scope},
-    );
+  /// The Ref rather than the Api, because the cache lives beside the fetch:
+  /// a board served from storage has to be shaped by the SAME parser as a
+  /// live one, and splitting the two is how the offline path ends up with
+  /// its own quietly different bugs.
+  final Ref _ref;
+
+  /// Shapes one response. Kept apart from the fetch so the SAME parsing runs
+  /// over a live answer and over one restored from the cache — two parsers
+  /// would eventually disagree, and the one that disagrees would be the
+  /// offline one nobody tests by hand.
+  static Ladder parse(Map<String, dynamic> res) {
     final rows = (asList(res['rows']))
         .whereType<Map>()
         .map((m) => LadderRow.fromJson(m.cast<String, dynamic>()))
@@ -164,11 +170,34 @@ class LeaderboardRepository {
       message: res['ok'] == false ? (asText(res['message'])) : '',
     );
   }
+
+  /// The board, and how old it is.
+  ///
+  /// It had no cache at all: off signal a student got an error card in place
+  /// of a position they had already been shown. The last good board comes
+  /// back marked with when it was fetched — because a stale rank presented as
+  /// live is worse than no rank, and a student who thinks they have dropped
+  /// ten places has been told something false about their own work.
+  ///
+  /// Cached PER SCOPE: the national board and their school's board are
+  /// different answers to different questions and must not overwrite each
+  /// other in storage.
+  Future<Cached<Ladder>> board(String scope) async {
+    final got = await readCached(
+      _ref,
+      key: 'lip.ladder.${scope.isEmpty ? 'national' : scope}',
+      path: '/api/leaderboard',
+      query: {if (scope.isNotEmpty) 'scope': scope},
+    );
+    return Cached(
+      value: parse(got.value),
+      savedAt: got.savedAt,
+      live: got.live,
+    );
+  }
 }
 
-final leaderboardRepositoryProvider = Provider(
-  (ref) => LeaderboardRepository(ref.watch(apiProvider)),
-);
+final leaderboardRepositoryProvider = Provider(LeaderboardRepository.new);
 
 /// Which slice is being looked at. Kept outside the future so switching tabs
 /// does not tear the screen down and rebuild it from a spinner.
@@ -183,7 +212,7 @@ final ladderScopeProvider = NotifierProvider<LadderScopeChoice, String>(
   LadderScopeChoice.new,
 );
 
-final leaderboardProvider = FutureProvider.autoDispose<Ladder>(
+final leaderboardProvider = FutureProvider.autoDispose<Cached<Ladder>>(
   (ref) => ref
       .watch(leaderboardRepositoryProvider)
       .board(ref.watch(ladderScopeProvider)),
@@ -232,6 +261,16 @@ class LeaderboardScreen extends ConsumerWidget {
         child: RefreshIndicator(
           onRefresh: () async => ref.invalidate(leaderboardProvider),
           child: board.when(
+            /* A BOARD THAT FAILED TO LOAD SHOWED A SKELETON FOR EVER.
+               An AsyncValue can be in error AND reloading at the same time,
+               and `when` looks at loading first — so a student off signal sat
+               watching grey bars pulse, with the real message ("No
+               connection") held in a state nothing ever drew. These two flags
+               say: if we already know something, show it; a reload is not a
+               reason to blank the screen. It also means pulling to refresh no
+               longer throws the board away and rebuilds it from nothing. */
+            skipLoadingOnReload: true,
+            skipLoadingOnRefresh: true,
             loading: () => ListView(
               padding: const EdgeInsets.all(Gap.md),
               children: const [
@@ -255,7 +294,7 @@ class LeaderboardScreen extends ConsumerWidget {
                 ),
               ],
             ),
-            data: (l) => _Board(board: l),
+            data: (l) => _Board(board: l.value, cache: l),
           ),
         ),
       ),
@@ -264,11 +303,16 @@ class LeaderboardScreen extends ConsumerWidget {
 }
 
 class _Board extends ConsumerWidget {
-  const _Board({required this.board});
+  const _Board({required this.board, required this.cache});
   final Ladder board;
+
+  /// Carried only so the screen can say how old this is. A stale rank shown
+  /// as if it were live is worse than no rank.
+  final Cached<Ladder> cache;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
     final scope = ref.watch(ladderScopeProvider);
     final me = board.me;
 
@@ -280,6 +324,32 @@ class _Board extends ConsumerWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(Gap.md),
       children: [
+        /* SAID, NOT HIDDEN. A rank from this morning is very nearly right and
+           is worth far more than an error card — but only if the student
+           knows it is from this morning. Presented as live it would tell them
+           something false about their own work. */
+        if (cache.isStale) ...[
+          GlassSurface(
+            hue: c.hues.amber,
+            padding: const EdgeInsets.symmetric(
+              horizontal: Gap.md,
+              vertical: Gap.sm,
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.history_rounded, size: 17, color: c.hues.amber.ink),
+                const SizedBox(width: Gap.sm),
+                Expanded(
+                  child: Text(
+                    '${cache.staleLine} It updates when you are back online.',
+                    style: LipType.caption.copyWith(color: c.text2),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: Gap.md),
+        ],
         if (board.scopes.isNotEmpty) ...[
           _Scopes(scopes: board.scopes, chosen: scope),
           const SizedBox(height: Gap.md),
