@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
@@ -262,10 +264,10 @@ class VaultDb extends _$VaultDb {
       await into(packs).insertOnConflictUpdate(
         Pack(
           subjectId: subjectId,
-          subjectName: pack['subjectName'] as String? ?? '',
-          examId: pack['examId'] as String? ?? '',
-          examSlug: pack['examSlug'] as String? ?? '',
-          examShort: pack['examShort'] as String? ?? '',
+          subjectName: asText(pack['subjectName']),
+          examId: asText(pack['examId']),
+          examSlug: asText(pack['examSlug']),
+          examShort: asText(pack['examShort']),
           count: questions.length,
           downloadedAt: DateTime.now(),
         ),
@@ -278,14 +280,14 @@ class VaultDb extends _$VaultDb {
             (q) => VaultQuestion(
               id: q['id'] as String,
               subjectId: subjectId,
-              question: q['question'] as String? ?? '',
+              question: asText(q['question']),
               optionsJson: jsonEncode(q['options'] ?? const []),
               lettersJson: jsonEncode(q['letters'] ?? const []),
-              passageId: q['passage_id'] as String?,
-              section: q['section'] as String?,
-              year: (q['year'] as num?)?.toInt(),
-              answer: (q['answer'] as String?)?.toUpperCase(),
-              explanation: q['explanation'] as String?,
+              passageId: asTextOrNull(q['passage_id']),
+              section: asTextOrNull(q['section']),
+              year: asIntOrNull(q['year']),
+              answer: (asTextOrNull(q['answer']))?.toUpperCase(),
+              explanation: asTextOrNull(q['explanation']),
               mediaJson: q['media'] == null ? null : jsonEncode(q['media']),
             ),
           ),
@@ -296,8 +298,8 @@ class VaultDb extends _$VaultDb {
           passages.map(
             (p) => VaultPassage(
               id: p['id'] as String,
-              title: p['title'] as String? ?? '',
-              body: p['body'] as String? ?? '',
+              title: asText(p['title']),
+              body: asText(p['body']),
             ),
           ),
         );

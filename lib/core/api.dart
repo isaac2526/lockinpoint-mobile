@@ -1,3 +1,5 @@
+import '../core/json.dart';
+
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -502,7 +504,7 @@ class Api {
       // The website answers every route as { ok, message?, ...payload }.
       if (data['ok'] == false) {
         throw ApiFailure(
-          (data['message'] as String?)?.trim().isNotEmpty == true
+          (asTextOrNull(data['message']))?.trim().isNotEmpty == true
               ? data['message'] as String
               : 'That did not work. Please try again.',
           detail: '$where → $code',
@@ -571,8 +573,8 @@ RefreshExchange backendRefreshExchange(Dio dio) => (refreshToken) async {
   }
 
   if (code == 200 && data is Map<String, dynamic>) {
-    final access = data['access_token'] as String?;
-    final refresh = data['refresh_token'] as String?;
+    final access = asTextOrNull(data['access_token']);
+    final refresh = asTextOrNull(data['refresh_token']);
     if (access != null && refresh != null) {
       return RefreshedSession(access: access, refresh: refresh);
     }

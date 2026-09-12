@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
@@ -35,10 +37,10 @@ class TheoryExam {
   final int subjects;
 
   static TheoryExam from(Map<String, dynamic> j) => TheoryExam(
-    slug: j['slug'] as String? ?? '',
-    name: j['name'] as String? ?? '',
-    full: j['full'] as String? ?? '',
-    subjects: (j['subjects'] as num?)?.toInt() ?? 0,
+    slug: asText(j['slug']),
+    name: asText(j['name']),
+    full: asText(j['full']),
+    subjects: asInt(j['subjects']),
   );
 }
 
@@ -61,8 +63,8 @@ class TheorySession {
   final DateTime? updatedAt;
 
   static TheorySession from(Map<String, dynamic> j) => TheorySession(
-    id: j['id'] as String? ?? '',
-    title: j['title'] as String? ?? 'Untitled session',
+    id: asText(j['id']),
+    title: asText(j['title'], 'Untitled session'),
     updatedAt: DateTime.tryParse('${j['updatedAt'] ?? ''}'),
   );
 }
@@ -161,11 +163,11 @@ final theorySubjectsProvider =
           .whereType<Map>()
           .map(
             (m) => TheorySubject(
-              id: m['id'] as String? ?? '',
-              name: m['name'] as String? ?? '',
-              exam: m['exam'] as String? ?? '',
-              questions: (m['questions'] as num?)?.toInt() ?? 0,
-              sessions: (m['sessions'] as num?)?.toInt() ?? 0,
+              id: asText(m['id']),
+              name: asText(m['name']),
+              exam: asText(m['exam']),
+              questions: asInt(m['questions']),
+              sessions: asInt(m['sessions']),
             ),
           )
           .toList();
@@ -191,12 +193,7 @@ final theoryShelfProvider =
             .toList(),
         years: ((res['years'] as List?) ?? const [])
             .whereType<Map>()
-            .map(
-              (m) => (
-                year: (m['year'] as num?)?.toInt() ?? 0,
-                n: (m['n'] as num?)?.toInt() ?? 0,
-              ),
-            )
+            .map((m) => (year: asInt(m['year']), n: asInt(m['n'])))
             .toList(),
       );
     });
@@ -212,8 +209,8 @@ final theorySessionProvider =
           .get('/api/mobile/theory', query: {'session': id});
       final n = (res['session'] as Map?)?.cast<String, dynamic>() ?? const {};
       return (
-        title: n['title'] as String? ?? 'Session',
-        html: n['body_html'] as String? ?? n['body'] as String? ?? '',
+        title: asText(n['title'], 'Session'),
+        html: n['body_html'] as String? ?? asText(n['body']),
       );
     });
 
@@ -236,13 +233,13 @@ final theoryPaperProvider =
           .whereType<Map>()
           .map(
             (m) => TheoryQuestion(
-              id: m['id'] as String? ?? '',
-              number: m['number'] as String? ?? '',
+              id: asText(m['id']),
+              number: asText(m['number']),
               html:
                   m['question_html'] as String? ??
                   m['question'] as String? ??
                   '',
-              marks: m['marks'] as int?,
+              marks: asIntOrNull(m['marks']),
             ),
           )
           .toList();
@@ -255,8 +252,8 @@ Future<TheoryAnswer> revealAnswer(Api api, String questionId) async {
     query: {'answer': questionId},
   );
   return TheoryAnswer(
-    html: res['answer_html'] as String? ?? res['answer'] as String? ?? '',
+    html: res['answer_html'] as String? ?? asText(res['answer']),
     hasAnswer: res['hasAnswer'] == true,
-    marks: res['marks'] as int?,
+    marks: asIntOrNull(res['marks']),
   );
 }

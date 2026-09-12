@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -87,7 +89,7 @@ class _HarvestScreenState extends ConsumerState<HarvestScreen> {
       if (res['ok'] == false) {
         setState(() {
           _sending = false;
-          _error = res['message'] as String? ?? 'That did not send.';
+          _error = asText(res['message'], 'That did not send.');
         });
         return;
       }
@@ -127,11 +129,11 @@ class _HarvestScreenState extends ConsumerState<HarvestScreen> {
           .read(apiProvider)
           .post('/api/schools/request', body: {'school': name});
       if (!mounted) return;
-      final count = (res['count'] as num?)?.toInt() ?? 0;
+      final count = asInt(res['count']);
       setState(() {
         _requesting = false;
         if (res['ok'] == false) {
-          _requestSaid = res['message'] as String? ?? 'That did not send.';
+          _requestSaid = asText(res['message'], 'That did not send.');
         } else {
           _requestSaid = count > 1
               ? 'Noted — $count students have asked for this school.'

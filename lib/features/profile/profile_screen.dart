@@ -1,3 +1,4 @@
+import '../../core/json.dart';
 import '../../app/shell.dart';
 
 import 'package:flutter/material.dart';
@@ -104,19 +105,19 @@ class _Content extends ConsumerWidget {
     final student =
         (data['student'] as Map?)?.cast<String, dynamic>() ?? const {};
 
-    final first = student['name'] as String? ?? 'Champion';
-    final surname = student['surname'] as String? ?? '';
+    final first = asText(student['name'], 'Champion');
+    final surname = asText(student['surname']);
     final fullName = '$first $surname'.trim();
-    final email = student['email'] as String? ?? '';
-    final username = student['username'] as String?;
-    final phone = student['phone'] as String?;
-    final dial = student['dialCode'] as String? ?? '';
-    final country = student['countryCode'] as String?;
+    final email = asText(student['email']);
+    final username = asTextOrNull(student['username']);
+    final phone = asTextOrNull(student['phone']);
+    final dial = asText(student['dialCode']);
+    final country = asTextOrNull(student['countryCode']);
     final activated = student['activated'] == true;
-    final code = student['referralCode'] as String?;
-    final productKey = student['productKey'] as String?;
-    final state = student['state'] as String?;
-    final school = student['institution'] as String?;
+    final code = asTextOrNull(student['referralCode']);
+    final productKey = asTextOrNull(student['productKey']);
+    final state = asTextOrNull(student['state']);
+    final school = asTextOrNull(student['institution']);
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),

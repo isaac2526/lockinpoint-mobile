@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -101,7 +103,7 @@ class AuthController extends AsyncNotifier<AuthState> {
     () async {
       try {
         final me = await api.get('/api/me');
-        final name = me['name'] as String?;
+        final name = asTextOrNull(me['name']);
         if (name == null || name.isEmpty) return;
         await _rememberName(name);
         if (alive && state.value is SignedIn) state = AsyncData(SignedIn(name));
@@ -141,7 +143,7 @@ class AuthController extends AsyncNotifier<AuthState> {
     try {
       final res = await _api.post('/api/auth/signup', body: form);
       await _establishSession(res);
-      final name = _nameFrom(res, hint: form['first_name'] as String?);
+      final name = _nameFrom(res, hint: asTextOrNull(form['first_name']));
       await _rememberName(name);
       state = AsyncData(SignedIn(name));
     } on ApiFailure catch (e, st) {
@@ -175,8 +177,8 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// route's body is the ONLY source of tokens, so a response without them is
   /// a named failure, not a silent detour to some other auth server.
   Future<void> _establishSession(Map<String, dynamic> res) async {
-    final access = res['access_token'] as String?;
-    final refresh = res['refresh_token'] as String?;
+    final access = asTextOrNull(res['access_token']);
+    final refresh = asTextOrNull(res['refresh_token']);
     if (access == null || refresh == null) {
       // Name the missing pieces, so a screenshot of this message is a
       // diagnosis rather than a mystery.
@@ -193,7 +195,7 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// answer /api/me would give, without a second request. Never a failure:
   /// a greeting is not worth an error screen.
   String _nameFrom(Map<String, dynamic> res, {String? hint}) {
-    final n = res['name'] as String?;
+    final n = asTextOrNull(res['name']);
     if (n != null && n.isNotEmpty) return n;
     return (hint != null && hint.isNotEmpty) ? hint : 'Champion';
   }

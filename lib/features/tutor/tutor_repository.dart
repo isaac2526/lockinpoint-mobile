@@ -1,3 +1,4 @@
+import '../../core/json.dart';
 import '../../core/api.dart';
 
 /// ===========================================================================
@@ -66,13 +67,13 @@ Future<LumiReply> askLumi(
       },
     );
     if (res['ok'] == true) {
-      return LumiReply(ok: true, text: (res['answer'] as String? ?? '').trim());
+      return LumiReply(ok: true, text: (asText(res['answer'])).trim());
     }
     return LumiReply(
       ok: false,
-      text: res['message'] as String? ?? 'Lumi could not answer that one.',
+      text: asText(res['message'], 'Lumi could not answer that one.'),
       needActivation: res['needActivation'] == true,
-      coolSeconds: (res['cool'] as num?)?.toInt(),
+      coolSeconds: asIntOrNull(res['cool']),
     );
   } on ApiFailure catch (e) {
     /* Api turns any `{ ok: false }` into this, which is right — but Lumi's

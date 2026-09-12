@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -34,7 +36,7 @@ class PlanScreen extends ConsumerWidget {
             child: LipSkeleton(height: 240),
           ),
           error: (e, _) => LipError(
-            message: '$e',
+            message: humanError(e, doing: 'load your study plan'),
             onRetry: () => ref.invalidate(studyPlanProvider),
           ),
           data: (p) => p == null ? const _NoPlanYet() : _Plan(plan: p),

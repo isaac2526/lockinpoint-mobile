@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -34,7 +36,7 @@ class RoundsScreen extends ConsumerWidget {
             child: LipSkeleton(height: 220),
           ),
           error: (e, _) => LipError(
-            message: '$e',
+            message: humanError(e, doing: 'load the Challenge'),
             onRetry: () => ref.invalidate(roundsProvider),
           ),
           data: (v) => RefreshIndicator(

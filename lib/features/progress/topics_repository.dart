@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
@@ -35,11 +37,11 @@ class TopicRow {
   });
 
   factory TopicRow.from(Map<dynamic, dynamic> m) => TopicRow(
-    topicId: m['topicId'] as String? ?? '',
-    topic: m['topic'] as String? ?? '',
-    subject: m['subject'] as String? ?? '',
-    seen: (m['seen'] as int?) ?? 0,
-    correct: (m['correct'] as int?) ?? 0,
+    topicId: asText(m['topicId']),
+    topic: asText(m['topic']),
+    subject: asText(m['subject']),
+    seen: (asIntOrNull(m['seen'])) ?? 0,
+    correct: (asIntOrNull(m['correct'])) ?? 0,
     percent: ((m['percent'] as num?) ?? 0).toDouble(),
   );
 
@@ -77,17 +79,15 @@ final topicStrengthProvider = FutureProvider<TopicStrength>((ref) async {
   List<TopicRow> list(Object? raw) =>
       ((raw as List?) ?? const []).whereType<Map>().map(TopicRow.from).toList();
   return TopicStrength(
-    minSeen: (res['minSeen'] as int?) ?? 6,
+    minSeen: (asIntOrNull(res['minSeen'])) ?? 6,
     rows: list(res['rows']),
     weakest: list(res['weakest']),
     strongest: list(res['strongest']),
     unproven: ((res['unproven'] as List?) ?? const [])
         .whereType<Map>()
         .map(
-          (m) => (
-            topic: m['topic'] as String? ?? '',
-            seen: (m['seen'] as int?) ?? 0,
-          ),
+          (m) =>
+              (topic: asText(m['topic']), seen: (asIntOrNull(m['seen'])) ?? 0),
         )
         .toList(),
   );

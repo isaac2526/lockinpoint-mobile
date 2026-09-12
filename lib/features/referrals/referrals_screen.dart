@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -38,7 +40,7 @@ class ReferralsScreen extends ConsumerWidget {
             child: LipSkeleton(height: 240),
           ),
           error: (e, _) => LipError(
-            message: '$e',
+            message: humanError(e, doing: 'load your referrals'),
             onRetry: () => ref.invalidate(referralsProvider),
           ),
           data: (d) => RefreshIndicator(

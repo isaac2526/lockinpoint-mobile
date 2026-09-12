@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
@@ -59,10 +61,10 @@ List<Material> _materials(Object? raw, {String titleKey = 'title'}) =>
         .whereType<Map>()
         .map(
           (m) => Material(
-            id: m['id'] as String? ?? '',
-            title: m[titleKey] as String? ?? '',
-            url: m['url'] as String? ?? '',
-            kind: m['kind'] as String? ?? '',
+            id: asText(m['id']),
+            title: asText(m[titleKey]),
+            url: asText(m['url']),
+            kind: asText(m['kind']),
           ),
         )
         .toList();
@@ -71,9 +73,7 @@ final classroomExamsProvider = FutureProvider<List<ExamRef>>((ref) async {
   final res = await ref.read(apiProvider).get('/api/mobile/classroom');
   return ((res['exams'] as List?) ?? const [])
       .whereType<Map>()
-      .map(
-        (m) => ExamRef(m['slug'] as String? ?? '', m['name'] as String? ?? ''),
-      )
+      .map((m) => ExamRef(asText(m['slug']), asText(m['name'])))
       .toList();
 });
 
@@ -84,12 +84,7 @@ final classroomSubjectsProvider =
           .get('/api/mobile/classroom', query: {'exam': examSlug});
       return ((res['subjects'] as List?) ?? const [])
           .whereType<Map>()
-          .map(
-            (m) => SubjectRef(
-              m['id'] as String? ?? '',
-              m['name'] as String? ?? '',
-            ),
-          )
+          .map((m) => SubjectRef(asText(m['id']), asText(m['name'])))
           .toList();
     });
 
@@ -116,8 +111,5 @@ final noteProvider = FutureProvider.family<Map<String, String>, String>((
       .get('/api/mobile/classroom', query: {'note': noteId});
   final n = res['note'];
   if (n is! Map) throw ApiFailure('That note is not available.');
-  return {
-    'title': n['title'] as String? ?? '',
-    'body': n['body'] as String? ?? '',
-  };
+  return {'title': asText(n['title']), 'body': asText(n['body'])};
 });

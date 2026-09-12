@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -46,7 +48,7 @@ class _SavedScreenState extends ConsumerState<SavedScreen> {
             ),
           ),
           error: (e, _) => LipError(
-            message: '$e',
+            message: humanError(e, doing: 'load your saved questions'),
             onRetry: () => ref.invalidate(savedQuestionsProvider(_page)),
           ),
           data: (p) => p.questions.isEmpty

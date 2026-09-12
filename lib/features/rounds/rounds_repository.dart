@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
@@ -35,18 +37,18 @@ class Round {
   });
 
   factory Round.from(Map<dynamic, dynamic> m) => Round(
-    id: m['id'] as String? ?? '',
-    name: m['name'] as String? ?? 'Challenge',
-    description: m['description'] as String? ?? '',
+    id: asText(m['id']),
+    name: asText(m['name'], 'Challenge'),
+    description: asText(m['description']),
     startsAt: DateTime.tryParse('${m['startsAt'] ?? ''}'),
     endsAt: DateTime.tryParse('${m['endsAt'] ?? ''}'),
     prizes: ((m['prizes'] as List?) ?? const [])
         .whereType<Map>()
         .map(
           (p) => Prize(
-            (p['position'] as int?) ?? 0,
-            p['prize'] as String? ?? '',
-            p['note'] as String? ?? '',
+            (asIntOrNull(p['position'])) ?? 0,
+            asText(p['prize']),
+            asText(p['note']),
           ),
         )
         .toList(),
@@ -100,11 +102,11 @@ final roundsProvider = FutureProvider<RoundsView>((ref) async {
         .whereType<Map>()
         .map(
           (w) => Winner(
-            w['round'] as String? ?? '',
-            (w['position'] as int?) ?? 0,
-            w['name'] as String? ?? 'A student',
-            w['prize'] as String? ?? '',
-            w['state'] as String? ?? '',
+            asText(w['round']),
+            (asIntOrNull(w['position'])) ?? 0,
+            asText(w['name'], 'A student'),
+            asText(w['prize']),
+            asText(w['state']),
           ),
         )
         .toList(),

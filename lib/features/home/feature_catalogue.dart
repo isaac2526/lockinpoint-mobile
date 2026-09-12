@@ -1,4 +1,7 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
+
+import '../../core/json.dart';
+
 import 'package:flutter/material.dart';
 
 import '../../design/tokens.dart';
@@ -340,18 +343,18 @@ List<Feature> mergeFeatureTiles(List<Map<String, dynamic>> rows) {
   final out = <Feature>[];
 
   for (final r in rows) {
-    final base = byKey[r['key'] as String? ?? ''];
+    final base = byKey[asText(r['key'])];
     if (base == null) continue;
     out.add(
       base.copyWith(
-        title: (r['title'] as String?)?.trim().isNotEmpty == true
-            ? r['title'] as String
+        title: asTextOrNull(r['title'])?.trim().isNotEmpty == true
+            ? asText(r['title'])
             : null,
-        subtitle: (r['subtitle'] as String?)?.trim().isNotEmpty == true
-            ? r['subtitle'] as String
+        subtitle: asTextOrNull(r['subtitle'])?.trim().isNotEmpty == true
+            ? asText(r['subtitle'])
             : null,
-        badge: (r['badge'] as String?) ?? '',
-        hue: r['hue'] == null ? null : FeatureHueX.parse(r['hue'] as String),
+        badge: asText(r['badge']),
+        hue: r['hue'] == null ? null : FeatureHueX.parse(asText(r['hue'])),
       ),
     );
   }

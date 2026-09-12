@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -52,7 +54,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
             child: LipSkeleton(height: 300),
           ),
           error: (e, _) => LipError(
-            message: '$e',
+            message: humanError(e, doing: 'load your activities'),
             onRetry: () => ref.invalidate(activityProvider(_page)),
           ),
           data: (p) => p.rows.isEmpty && _page == 1

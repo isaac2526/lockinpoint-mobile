@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -48,13 +50,13 @@ class Receipt {
   bool get settled => status == 'success' || status == 'manual';
 
   static Receipt fromJson(Map<String, dynamic> j) => Receipt(
-    reference: j['reference'] as String? ?? '',
+    reference: asText(j['reference']),
     amount: (j['amount'] as num?) ?? 0,
-    currency: j['currency'] as String? ?? 'NGN',
-    label: j['label'] as String? ?? 'Payment',
-    status: j['status'] as String? ?? '',
-    createdAt: j['createdAt'] as String? ?? '',
-    receiptPath: j['receiptPath'] as String? ?? '',
+    currency: asText(j['currency'], 'NGN'),
+    label: asText(j['label'], 'Payment'),
+    status: asText(j['status']),
+    createdAt: asText(j['createdAt']),
+    receiptPath: asText(j['receiptPath']),
   );
 
   /// The symbol where there is one, the code where there is not. A currency

@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
@@ -25,10 +27,10 @@ class PlanItem {
   });
 
   factory PlanItem.from(Map<dynamic, dynamic> m) => PlanItem(
-    id: m['id'] as String? ?? '',
+    id: asText(m['id']),
     dueOn: DateTime.tryParse('${m['dueOn'] ?? m['due_on'] ?? ''}'),
-    label: m['label'] as String? ?? '',
-    kind: m['kind'] as String? ?? 'practice',
+    label: asText(m['label']),
+    kind: asText(m['kind'], 'practice'),
     targetQuestions:
         (m['targetQuestions'] ?? m['target_questions'] ?? 0) as int? ?? 0,
     done: (m['doneAt'] ?? m['done_at']) != null,
@@ -95,7 +97,7 @@ final studyPlanProvider = FutureProvider<StudyPlan?>((ref) async {
   final p = res['plan'];
   if (p is! Map) return null;
   return StudyPlan(
-    id: p['id'] as String? ?? '',
+    id: asText(p['id']),
     targetDate: DateTime.tryParse(
       '${p['targetDate'] ?? p['target_date'] ?? ''}',
     ),

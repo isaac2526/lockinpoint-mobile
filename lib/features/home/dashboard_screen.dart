@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -198,8 +200,8 @@ class _Content extends ConsumerWidget {
     final you = ((data['you'] as Map?) ?? const {}).cast<String, dynamic>();
     final resume = data['resume'] as Map?;
 
-    final name = student['name'] as String? ?? 'Champion';
-    final streak = (student['streak'] as num?)?.toInt() ?? 0;
+    final name = asText(student['name'], 'Champion');
+    final streak = asInt(student['streak']);
     final activated = student['activated'] == true;
 
     return ListView(
@@ -314,7 +316,7 @@ class _Content extends ConsumerWidget {
             ),
           ],
         ),
-        if (((you['dueToday'] as num?)?.toInt() ?? 0) > 0) ...[
+        if ((asInt(you['dueToday'])) > 0) ...[
           const SizedBox(height: Gap.md),
           _DueToday(count: (you['dueToday'] as num).toInt()),
         ],
@@ -333,7 +335,7 @@ class _Content extends ConsumerWidget {
         const _ChannelCard(),
 
         const SizedBox(height: Gap.xl),
-        _Footer(email: student['email'] as String? ?? ''),
+        _Footer(email: asText(student['email'])),
       ],
     );
   }
@@ -433,7 +435,7 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
   Map<String, dynamic> get resume => widget.resume;
 
   Future<void> _continue() async {
-    final attemptId = resume['id'] as String?;
+    final attemptId = asTextOrNull(resume['id']);
     if (attemptId == null || _busy) return;
     setState(() => _busy = true);
     try {
@@ -460,9 +462,9 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
   @override
   Widget build(BuildContext context) {
     final c = context.lip;
-    final label = resume['label'] as String? ?? 'Practice';
-    final done = (resume['answered'] as num?)?.toInt() ?? 0;
-    final total = (resume['total'] as num?)?.toInt() ?? 0;
+    final label = asText(resume['label'], 'Practice');
+    final done = asInt(resume['answered']);
+    final total = asInt(resume['total']);
     final share = total == 0 ? 0.0 : (done / total).clamp(0.0, 1.0);
 
     return GlassSurface(

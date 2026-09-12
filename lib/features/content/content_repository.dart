@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -76,10 +78,10 @@ class SupportContact {
   final String description;
 
   static SupportContact from(Map<String, dynamic> j) => SupportContact(
-    kind: j['kind'] as String? ?? 'link',
-    label: j['label'] as String? ?? '',
-    value: j['value'] as String? ?? '',
-    description: j['description'] as String? ?? '',
+    kind: asText(j['kind'], 'link'),
+    label: asText(j['label']),
+    value: asText(j['value']),
+    description: asText(j['description']),
   );
 
   /// What tapping this should open. The backend stores the human-readable

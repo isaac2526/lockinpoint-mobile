@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -511,7 +513,10 @@ class _ChatsSheet extends ConsumerWidget {
           ),
           error: (e, _) => Padding(
             padding: const EdgeInsets.all(Gap.lg),
-            child: Text('$e', style: LipType.small.copyWith(color: c.danger)),
+            child: Text(
+              humanError(e, doing: 'reach Lumi'),
+              style: LipType.small.copyWith(color: c.danger),
+            ),
           ),
           data: (l) => Column(
             mainAxisSize: MainAxisSize.min,

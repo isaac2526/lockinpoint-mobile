@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -57,7 +59,7 @@ class ClassroomScreen extends ConsumerWidget {
             ),
           ),
           error: (e, _) => LipError(
-            message: '$e',
+            message: humanError(e, doing: 'open the classroom'),
             onRetry: () => ref.invalidate(classroomExamsProvider),
           ),
           data: (list) => list.isEmpty
@@ -126,7 +128,7 @@ class ClassroomSubjectsScreen extends ConsumerWidget {
             child: LipSkeleton(height: 220),
           ),
           error: (e, _) => LipError(
-            message: '$e',
+            message: humanError(e, doing: 'open the classroom'),
             onRetry: () => ref.invalidate(classroomSubjectsProvider(exam.slug)),
           ),
           data: (list) => list.isEmpty
@@ -190,7 +192,7 @@ class ClassroomShelfScreen extends ConsumerWidget {
             child: LipSkeleton(height: 220),
           ),
           error: (e, _) => LipError(
-            message: '$e',
+            message: humanError(e, doing: 'open the classroom'),
             onRetry: () => ref.invalidate(subjectShelfProvider(subject.id)),
           ),
           data: (s) => s.isEmpty
@@ -366,7 +368,7 @@ class _ClassroomNoteScreenState extends ConsumerState<ClassroomNoteScreen> {
             child: LipSkeleton(height: 300),
           ),
           error: (e, _) => LipError(
-            message: '$e',
+            message: humanError(e, doing: 'open the classroom'),
             onRetry: () => ref.invalidate(noteProvider(id)),
           ),
           data: (n) => SingleChildScrollView(

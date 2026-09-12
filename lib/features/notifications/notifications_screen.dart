@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -169,7 +171,7 @@ class _NoticeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.lip;
-    final kind = n['kind'] as String? ?? 'announcement';
+    final kind = asText(n['kind'], 'announcement');
     final look = noticeLook(kind);
     final hue = look.hue.of(c);
     final seen = n['seen'] == true;
@@ -177,7 +179,7 @@ class _NoticeCard extends StatelessWidget {
         .whereType<Map>()
         .map((m) => m.cast<String, dynamic>())
         .toList();
-    final attribution = (n['attribution'] as String? ?? '').trim();
+    final attribution = asText(n['attribution']).trim();
 
     return GlassSurface(
       tier: GlassTier.card,
@@ -205,12 +207,12 @@ class _NoticeCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      n['title'] as String? ?? '',
+                      asText(n['title']),
                       style: LipType.subheading.copyWith(color: c.text1),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      _ago(n['created_at'] as String?),
+                      _ago(asTextOrNull(n['created_at'])),
                       style: LipType.caption.copyWith(color: c.text3),
                     ),
                   ],
@@ -229,7 +231,7 @@ class _NoticeCard extends StatelessWidget {
             ],
           ),
 
-          if ((n['body'] as String? ?? '').isNotEmpty) ...[
+          if (asText(n['body']).isNotEmpty) ...[
             const SizedBox(height: Gap.md),
             _Body(n['body'] as String),
           ],
@@ -250,8 +252,8 @@ class _NoticeCard extends StatelessWidget {
               children: [
                 for (final a in actions)
                   OutlinedButton(
-                    onPressed: () => _go(context, a['target'] as String? ?? ''),
-                    child: Text(a['label'] as String? ?? 'Open'),
+                    onPressed: () => _go(context, asText(a['target'])),
+                    child: Text(asText(a['label'], 'Open')),
                   ),
               ],
             ),

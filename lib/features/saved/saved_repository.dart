@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
@@ -40,12 +42,12 @@ class SavedQuestion {
   }
 
   static SavedQuestion from(Map<String, dynamic> j) => SavedQuestion(
-    id: j['id'] as String? ?? '',
-    question: j['question'] as String? ?? '',
+    id: asText(j['id']),
+    question: asText(j['question']),
     options: ((j['options'] as List?) ?? const []).map((o) => '$o').toList(),
-    answer: (j['answer'] as String? ?? '').toUpperCase(),
-    explanation: j['explanation'] as String? ?? '',
-    subject: j['subject'] as String? ?? '',
+    answer: (asText(j['answer'])).toUpperCase(),
+    explanation: asText(j['explanation']),
+    subject: asText(j['subject']),
     year: j['year'] is int ? j['year'] as int : null,
   );
 }
@@ -68,7 +70,7 @@ final savedQuestionsProvider = FutureProvider.family<SavedPage, int>((
         .whereType<Map>()
         .map((m) => SavedQuestion.from(m.cast<String, dynamic>()))
         .toList(),
-    total: (res['total'] as num?)?.toInt() ?? 0,
+    total: asInt(res['total']),
   );
 });
 

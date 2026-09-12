@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -56,7 +58,7 @@ class GramScreen extends ConsumerWidget {
             child: LipSkeleton(height: 220),
           ),
           error: (e, _) => LipError(
-            message: '$e',
+            message: humanError(e, doing: 'open Pointgram'),
             onRetry: () => ref.invalidate(gramLobbyProvider),
           ),
           data: (l) => !l.open

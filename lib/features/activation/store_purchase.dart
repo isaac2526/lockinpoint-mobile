@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'dart:async';
 import 'dart:io' show Platform;
 
@@ -48,44 +50,50 @@ class StorePurchase {
     required void Function(String message) onProblem,
   }) {
     if (!platformHasStore) return;
-    _sub ??= InAppPurchase.instance.purchaseStream.listen((list) async {
-      for (final p in list) {
-        switch (p.status) {
-          case PurchaseStatus.pending:
-            break;
-          case PurchaseStatus.canceled:
-            if (p.pendingCompletePurchase) {
-              await InAppPurchase.instance.completePurchase(p);
-            }
-          case PurchaseStatus.error:
-            onProblem(p.error?.message ?? 'The store could not complete that.');
-            if (p.pendingCompletePurchase) {
-              await InAppPurchase.instance.completePurchase(p);
-            }
-          case PurchaseStatus.purchased:
-          case PurchaseStatus.restored:
-            try {
-              final msg = await redeemStorePurchase(
-                _api,
-                store: storeName,
-                productId: p.productID,
-                token: p.verificationData.serverVerificationData,
-              );
-              onDone(msg);
-            } on ApiFailure catch (e) {
-              onProblem(e.message);
-            } finally {
-              /* ALWAYS acknowledged, even when the backend refused it. An
-                   unacknowledged Play purchase is refunded automatically after
-                   three days, and a student who paid would silently lose both
-                   the money and the access while support was still looking. */
+    _sub ??= InAppPurchase.instance.purchaseStream.listen(
+      (list) async {
+        for (final p in list) {
+          switch (p.status) {
+            case PurchaseStatus.pending:
+              break;
+            case PurchaseStatus.canceled:
               if (p.pendingCompletePurchase) {
                 await InAppPurchase.instance.completePurchase(p);
               }
-            }
+            case PurchaseStatus.error:
+              onProblem(
+                p.error?.message ?? 'The store could not complete that.',
+              );
+              if (p.pendingCompletePurchase) {
+                await InAppPurchase.instance.completePurchase(p);
+              }
+            case PurchaseStatus.purchased:
+            case PurchaseStatus.restored:
+              try {
+                final msg = await redeemStorePurchase(
+                  _api,
+                  store: storeName,
+                  productId: p.productID,
+                  token: p.verificationData.serverVerificationData,
+                );
+                onDone(msg);
+              } on ApiFailure catch (e) {
+                onProblem(e.message);
+              } finally {
+                /* ALWAYS acknowledged, even when the backend refused it. An
+                   unacknowledged Play purchase is refunded automatically after
+                   three days, and a student who paid would silently lose both
+                   the money and the access while support was still looking. */
+                if (p.pendingCompletePurchase) {
+                  await InAppPurchase.instance.completePurchase(p);
+                }
+              }
+          }
         }
-      }
-    }, onError: (Object e) => onProblem('$e'));
+      },
+      onError: (Object e) =>
+          onProblem(humanError(e, doing: 'complete that purchase')),
+    );
   }
 
   Future<void> dispose() async {

@@ -1,3 +1,4 @@
+import '../../core/json.dart';
 import '../../core/api.dart';
 
 /// ===========================================================================
@@ -38,12 +39,12 @@ class GameQuestion {
   }
 
   static GameQuestion from(Map<String, dynamic> j) => GameQuestion(
-    id: j['id'] as String? ?? '',
-    question: j['question'] as String? ?? '',
+    id: asText(j['id']),
+    question: asText(j['question']),
     options: ((j['options'] as List?) ?? const []).map((o) => '$o').toList(),
     letters: ((j['letters'] as List?) ?? const []).map((o) => '$o').toList(),
-    answer: (j['answer'] as String? ?? '').toUpperCase(),
-    explanation: j['explanation'] as String? ?? '',
+    answer: (asText(j['answer'])).toUpperCase(),
+    explanation: asText(j['explanation']),
     year: j['year'] is int ? j['year'] as int : null,
   );
 }
@@ -124,23 +125,23 @@ class ClimbState {
   static ClimbState from(Map<String, dynamic> s) {
     final q = s['question'];
     return ClimbState(
-      id: s['id'] as String? ?? '',
-      rung: (s['rung'] as num?)?.toInt() ?? 1,
-      total: (s['total'] as num?)?.toInt() ?? 15,
+      id: asText(s['id']),
+      rung: asInt(s['rung'], 1),
+      total: asInt(s['total'], 15),
       ladder: ((s['ladder'] as List?) ?? const [])
           .map((e) => (e as num).toInt())
           .toList(),
-      firstNet: (s['firstNet'] as num?)?.toInt() ?? 5,
-      secondNet: (s['secondNet'] as num?)?.toInt(),
-      banked: (s['banked'] as num?)?.toInt() ?? 0,
-      status: s['status'] as String? ?? 'playing',
-      score: (s['score'] as num?)?.toInt() ?? 0,
+      firstNet: asInt(s['firstNet'], 5),
+      secondNet: asIntOrNull(s['secondNet']),
+      banked: asInt(s['banked']),
+      status: asText(s['status'], 'playing'),
+      score: asInt(s['score']),
       lifelines: {
         for (final e in ((s['lifelines'] as Map?) ?? const {}).entries)
           '${e.key}': e.value == true,
       },
-      seconds: (s['seconds'] as num?)?.toInt(),
-      question: q is Map ? (q['question'] as String? ?? '') : '',
+      seconds: asIntOrNull(s['seconds']),
+      question: q is Map ? (asText(q['question'])) : '',
       options: q is Map
           ? ((q['options'] as List?) ?? const [])
                 .whereType<Map>()
@@ -248,8 +249,8 @@ class ClimbApi {
     return ClimbAnswer(
       correct: res['correct'] == true,
       won: res['won'] == true,
-      right: res['right'] as String?,
-      explanation: res['explanation'] as String? ?? '',
+      right: asTextOrNull(res['right']),
+      explanation: asText(res['explanation']),
       state: st is Map ? ClimbState.from(st.cast<String, dynamic>()) : null,
       unlockedDoubleDip: res['unlockedDoubleDip'] == true,
       dipRemaining: res['dipRemaining'] == true,
@@ -289,11 +290,11 @@ class ClimbSubject {
   final bool mine;
 
   static ClimbSubject from(Map<String, dynamic> j) => ClimbSubject(
-    id: j['id'] as String? ?? '',
-    name: j['name'] as String? ?? '',
-    exam: j['exam'] as String? ?? '',
-    examName: j['examName'] as String? ?? '',
-    ready: (j['ready'] as num?)?.toInt() ?? 0,
+    id: asText(j['id']),
+    name: asText(j['name']),
+    exam: asText(j['exam']),
+    examName: asText(j['examName']),
+    ready: asInt(j['ready']),
     mine: j['mine'] == true,
   );
 }

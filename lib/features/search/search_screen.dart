@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -32,12 +34,12 @@ class SearchHit {
   final String subject;
 
   static SearchHit fromJson(Map<String, dynamic> j) => SearchHit(
-    id: j['id'] as String? ?? '',
-    question: j['question'] as String? ?? '',
-    answer: (j['answer'] as String? ?? '').toUpperCase(),
-    explanation: j['explanation'] as String? ?? '',
-    exam: j['exam'] as String? ?? '',
-    subject: j['subject'] as String? ?? '',
+    id: asText(j['id']),
+    question: asText(j['question']),
+    answer: (asText(j['answer'])).toUpperCase(),
+    explanation: asText(j['explanation']),
+    exam: asText(j['exam']),
+    subject: asText(j['subject']),
   );
 }
 
@@ -66,7 +68,7 @@ class SearchRepository {
           .cast<Map<String, dynamic>>()
           .map(SearchHit.fromJson)
           .toList(),
-      total: (res['total'] as num?)?.toInt() ?? 0,
+      total: asInt(res['total']),
     );
   }
 }

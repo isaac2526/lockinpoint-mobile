@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -140,7 +142,7 @@ class _CourseSearchState extends ConsumerState<_CourseSearch> {
                     child: LipSkeleton(height: 200),
                   ),
                   error: (e, _) => LipError(
-                    message: '$e',
+                    message: humanError(e, doing: 'load the schools'),
                     onRetry: () => ref.invalidate(courseOffersProvider(_query)),
                   ),
                   data: (list) => list.isEmpty
@@ -243,7 +245,7 @@ class _Careers extends ConsumerWidget {
         child: LipSkeleton(height: 220),
       ),
       error: (e, _) => LipError(
-        message: '$e',
+        message: humanError(e, doing: 'load the schools'),
         onRetry: () => ref.invalidate(careerShelfProvider('')),
       ),
       data: (s) => s.careers.isEmpty
@@ -330,7 +332,7 @@ class _CareerDetail extends ConsumerWidget {
             child: LipSkeleton(height: 280),
           ),
           error: (e, _) => LipError(
-            message: '$e',
+            message: humanError(e, doing: 'load the schools'),
             onRetry: () => ref.invalidate(careerProvider(slug)),
           ),
           data: (k) {
@@ -345,7 +347,7 @@ class _CareerDetail extends ConsumerWidget {
                 Gap.huge,
               ),
               children: [
-                if ((k['summary'] as String? ?? '').isNotEmpty)
+                if ((asText(k['summary'])).isNotEmpty)
                   GlassSurface(
                     hue: c.hues.orange,
                     child: Text(
@@ -353,7 +355,7 @@ class _CareerDetail extends ConsumerWidget {
                       style: LipType.body.copyWith(color: c.text1, height: 1.5),
                     ),
                   ),
-                if ((k['body'] as String? ?? '').isNotEmpty) ...[
+                if ((asText(k['body'])).isNotEmpty) ...[
                   const SizedBox(height: Gap.lg),
                   Text(
                     readableHtml(k['body'] as String),
@@ -413,7 +415,7 @@ class _Schools extends ConsumerWidget {
         child: LipSkeleton(height: 220),
       ),
       error: (e, _) => LipError(
-        message: '$e',
+        message: humanError(e, doing: 'load the schools'),
         onRetry: () => ref.invalidate(careerShelfProvider('')),
       ),
       data: (s) => s.institutions.isEmpty
@@ -495,7 +497,7 @@ class _InstitutionDetail extends ConsumerWidget {
             child: LipSkeleton(height: 300),
           ),
           error: (e, _) => LipError(
-            message: '$e',
+            message: humanError(e, doing: 'load the schools'),
             onRetry: () => ref.invalidate(institutionProvider(id)),
           ),
           data: (d) => ListView(

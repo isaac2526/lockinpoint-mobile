@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -162,7 +164,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _message = '$e';
+        _message = humanError(e, doing: 'activate your account');
         _ok = false;
       });
     } finally {
@@ -190,7 +192,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
             ),
           ),
           error: (e, _) => LipError(
-            message: '$e',
+            message: humanError(e, doing: 'activate your account'),
             onRetry: () => ref.invalidate(activationOfferProvider),
           ),
           data: (o) => o.activated

@@ -1,3 +1,5 @@
+import '../../../core/json.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -126,7 +128,8 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             _nameWhy = 'This name is yours.';
           } else if (free == false) {
             _nameCheck = _NameCheck.taken;
-            _nameWhy = (res['why'] as String?) ?? 'Already taken. Try another.';
+            _nameWhy =
+                (asTextOrNull(res['why'])) ?? 'Already taken. Try another.';
           } else {
             _nameCheck = _NameCheck.idle;
           }

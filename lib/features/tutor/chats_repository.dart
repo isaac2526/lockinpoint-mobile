@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
@@ -20,8 +22,8 @@ class LumiChat {
   final String title;
 
   static LumiChat from(Map<dynamic, dynamic> m) => LumiChat(
-    id: m['id'] as String? ?? '',
-    title: (m['title'] as String? ?? '').trim().isEmpty
+    id: asText(m['id']),
+    title: (asText(m['title'])).trim().isEmpty
         ? 'New chat'
         : m['title'] as String,
   );
@@ -42,7 +44,7 @@ final lumiChatsProvider = FutureProvider<ChatList>((ref) async {
         .whereType<Map>()
         .map(LumiChat.from)
         .toList(),
-    max: (res['max'] as int?) ?? 15,
+    max: (asIntOrNull(res['max'])) ?? 15,
   );
 });
 
@@ -51,12 +53,7 @@ Future<List<({String role, String text})>> loadChat(Api api, String id) async {
   final res = await api.get('/api/ai/chats', query: {'id': id});
   return ((res['messages'] as List?) ?? const [])
       .whereType<Map>()
-      .map(
-        (m) => (
-          role: m['role'] as String? ?? 'user',
-          text: m['text'] as String? ?? '',
-        ),
-      )
+      .map((m) => (role: asText(m['role'], 'user'), text: asText(m['text'])))
       .toList();
 }
 
@@ -66,9 +63,7 @@ Future<LumiChat> newChat(Api api) async {
   final res = await api.post('/api/ai/chats', body: {'op': 'new'});
   final c = res['chat'];
   if (c is! Map) {
-    throw ApiFailure(
-      res['message'] as String? ?? 'Could not start a conversation.',
-    );
+    throw ApiFailure(asText(res['message'], 'Could not start a conversation.'));
   }
   return LumiChat.from(c);
 }

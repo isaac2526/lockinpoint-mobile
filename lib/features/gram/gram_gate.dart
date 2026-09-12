@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -69,13 +71,13 @@ class GramGate {
           .whereType<Map>()
           .map(
             (m) => (
-              username: m['username'] as String? ?? 'student',
+              username: asText(m['username'], 'student'),
               activated: m['activated'] == true,
             ),
           )
           .toList(),
-      myUid: me['uid'] as String? ?? '',
-      myUsername: me['username'] as String? ?? '',
+      myUid: asText(me['uid']),
+      myUsername: asText(me['username']),
     );
   }
 }
@@ -142,7 +144,7 @@ class GramDoor extends AsyncNotifier<GramGate> {
     try {
       final res = await api.post('/api/gram/gate', body: {'pin': clean});
       if (res['ok'] == false) {
-        return res['message'] as String? ?? 'That is not the room code.';
+        return asText(res['message'], 'That is not the room code.');
       }
       /* The code is set on the client FIRST, then remembered. The refresh
          below is the first request that must carry it, and a write to disk

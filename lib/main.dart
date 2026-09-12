@@ -1,8 +1,12 @@
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app/theme_controller.dart';
+import 'core/json.dart';
 import 'core/presence.dart';
+import 'design/broke.dart';
 import 'design/theme.dart';
 import 'design/tokens.dart';
 import 'features/auth/auth_controller.dart';
@@ -16,6 +20,45 @@ void main() {
      three routes on the one backend — login, refresh, logout — and the only
      startup work is reading the keystore, which the splash already covers. */
   WidgetsFlutterBinding.ensureInitialized();
+
+  /* ===================================================================
+     THE LAST LINE OF DEFENCE.
+
+     Seventeen screens used to render `'$e'` — the raw Dart exception —
+     straight into their error card, which is how the owner came to be
+     reading "Type int is not a subtype of type string in type cast" on
+     his own activities page. Those are all gone.
+
+     But a widget can still throw during BUILD, and Flutter's default
+     answer to that is the grey-on-red error box with the exception text
+     in it. In a release build it is a bare grey rectangle — which is
+     arguably worse, because it says nothing at all.
+
+     So: a calm card that names what happened in one sentence, and the
+     real error to the console for whoever is debugging. Nothing here
+     recovers the screen — it cannot — but a student meets a sentence
+     rather than a stack.
+     =================================================================== */
+  ErrorWidget.builder = (details) {
+    debugPrint(
+      '[lockinpoint] widget build failed: '
+      '${describeFailure(details.exception, details.stack)}',
+    );
+    return const SomethingBroke();
+  };
+
+  /* Anything the framework catches outside a build — a gesture callback, a
+     ticker, a future with no handler. Logged, never shown: the screen is
+     still usable and interrupting it would be worse than the fault. */
+  FlutterError.onError = (details) {
+    debugPrint(
+      '[lockinpoint] ${describeFailure(details.exception, details.stack)}',
+    );
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('[lockinpoint] uncaught: ${describeFailure(error, stack)}');
+    return true;
+  };
 
   runApp(
     ProviderScope(

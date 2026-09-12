@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -58,7 +60,7 @@ class PlaceAsk {
     missing: ((j['missing'] as List?) ?? const [])
         .map((e) => e.toString())
         .toList(),
-    countryCode: j['country_code'] as String? ?? '',
+    countryCode: asText(j['country_code']),
     states: ((j['states'] as List?) ?? const [])
         .map((e) => e.toString())
         .toList(),
@@ -132,7 +134,7 @@ class _PlaceCardState extends ConsumerState<PlaceCard> {
       if (res['ok'] == false) {
         setState(() {
           _saving = false;
-          _error = res['message'] as String? ?? 'That did not save.';
+          _error = asText(res['message'], 'That did not save.');
         });
         return;
       }

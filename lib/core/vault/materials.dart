@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -153,12 +155,12 @@ class MaterialVault {
     final res = await _api.get('/api/mobile/classroom', query: {'note': id});
     final n = res['note'];
     if (n is! Map) throw ApiFailure('That note is not available.');
-    final body = n['body'] as String? ?? '';
+    final body = asText(n['body']);
     await _db.saveMaterial(
       id: id,
       kind: 'note',
       subjectId: subjectId,
-      title: title.isEmpty ? (n['title'] as String? ?? 'Note') : title,
+      title: title.isEmpty ? (asText(n['title'], 'Note')) : title,
       body: body,
       bytes: body.length,
     );

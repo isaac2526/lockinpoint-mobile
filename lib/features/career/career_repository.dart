@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
@@ -25,10 +27,10 @@ class CareerRef {
   final String stream;
 
   static CareerRef from(Map<String, dynamic> j) => CareerRef(
-    name: j['name'] as String? ?? '',
-    slug: j['slug'] as String? ?? '',
-    summary: j['summary'] as String? ?? '',
-    stream: j['stream'] as String? ?? '',
+    name: asText(j['name']),
+    slug: asText(j['slug']),
+    summary: asText(j['summary']),
+    stream: asText(j['stream']),
   );
 }
 
@@ -48,11 +50,11 @@ class InstitutionRef {
   final String state;
 
   static InstitutionRef from(Map<String, dynamic> j) => InstitutionRef(
-    id: j['id'] as String? ?? '',
-    name: j['name'] as String? ?? '',
-    shortName: j['shortName'] as String? ?? '',
-    type: j['type'] as String? ?? '',
-    state: j['state'] as String? ?? '',
+    id: asText(j['id']),
+    name: asText(j['name']),
+    shortName: asText(j['shortName']),
+    type: asText(j['type']),
+    state: asText(j['state']),
   );
 }
 
@@ -78,13 +80,13 @@ class CourseOffer {
   final String type;
 
   static CourseOffer from(Map<String, dynamic> j) => CourseOffer(
-    course: j['course'] as String? ?? '',
-    institution: j['institution'] as String? ?? '',
-    shortName: j['shortName'] as String? ?? '',
-    cutoff: j['cutoff'] as String? ?? '',
-    note: j['note'] as String? ?? '',
-    state: j['state'] as String? ?? '',
-    type: j['type'] as String? ?? '',
+    course: asText(j['course']),
+    institution: asText(j['institution']),
+    shortName: asText(j['shortName']),
+    cutoff: asText(j['cutoff']),
+    note: asText(j['note']),
+    state: asText(j['state']),
+    type: asText(j['type']),
   );
 }
 
@@ -157,17 +159,17 @@ final institutionProvider = FutureProvider.family<InstitutionDetail, String>((
       .get('/api/mobile/career', query: {'inst': id});
   final i = (res['institution'] as Map?)?.cast<String, dynamic>() ?? const {};
   return InstitutionDetail(
-    name: i['name'] as String? ?? '',
-    about: i['about'] as String? ?? '',
-    aggregate: i['aggregate'] as String? ?? '',
-    state: i['state'] as String? ?? '',
+    name: asText(i['name']),
+    about: asText(i['about']),
+    aggregate: asText(i['aggregate']),
+    state: asText(i['state']),
     departments: ((res['departments'] as List?) ?? const [])
         .whereType<Map>()
         .map(
           (d) => (
-            name: d['name'] as String? ?? '',
-            cutoff: d['cutoff'] as String? ?? '',
-            note: d['note'] as String? ?? '',
+            name: asText(d['name']),
+            cutoff: asText(d['cutoff']),
+            note: asText(d['note']),
           ),
         )
         .toList(),

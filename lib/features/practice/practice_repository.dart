@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
@@ -27,9 +29,9 @@ class ExamOption {
 
   static ExamOption fromJson(Map<String, dynamic> j) => ExamOption(
     id: j['id'] as String,
-    slug: j['slug'] as String? ?? '',
-    shortName: j['short_name'] as String? ?? '',
-    fullName: j['full_name'] as String? ?? '',
+    slug: asText(j['slug']),
+    shortName: asText(j['short_name']),
+    fullName: asText(j['full_name']),
   );
 }
 
@@ -46,7 +48,7 @@ class SubjectOption {
 
   static SubjectOption fromJson(Map<String, dynamic> j) => SubjectOption(
     id: j['id'] as String,
-    name: j['name'] as String? ?? '',
+    name: asText(j['name']),
     compulsory: j['compulsory'] == true,
   );
 }
@@ -125,14 +127,14 @@ class ServedQuestion {
 
   static ServedQuestion fromJson(Map<String, dynamic> j) => ServedQuestion(
     id: j['id'] as String,
-    question: j['question'] as String? ?? '',
+    question: asText(j['question']),
     options: ((j['options'] as List?) ?? const []).cast<String>(),
     letters: ((j['letters'] as List?) ?? const []).cast<String>(),
-    passageId: j['passage_id'] as String?,
-    section: j['section'] as String?,
-    year: (j['year'] as num?)?.toInt(),
-    answer: (j['answer'] as String?)?.toUpperCase(),
-    explanation: j['explanation'] as String?,
+    passageId: asTextOrNull(j['passage_id']),
+    section: asTextOrNull(j['section']),
+    year: asIntOrNull(j['year']),
+    answer: (asTextOrNull(j['answer']))?.toUpperCase(),
+    explanation: asTextOrNull(j['explanation']),
     media: j['media'] as Map<String, dynamic>?,
   );
 }
@@ -219,13 +221,13 @@ class Correction {
   }
 
   static Correction fromJson(Map<String, dynamic> j) => Correction(
-    id: j['id'] as String? ?? '',
-    question: j['question'] as String? ?? '',
+    id: asText(j['id']),
+    question: asText(j['question']),
     options: ((j['options'] as List?) ?? const []).cast<String>(),
-    chosen: (j['chosen'] as String? ?? '').toUpperCase(),
-    right: (j['right'] as String? ?? '').toUpperCase(),
+    chosen: (asText(j['chosen'])).toUpperCase(),
+    right: (asText(j['right'])).toUpperCase(),
     isRight: j['isRight'] == true,
-    explanation: j['explanation'] as String? ?? '',
+    explanation: asText(j['explanation']),
     media: j['media'] as Map<String, dynamic>?,
   );
 }
@@ -280,32 +282,27 @@ class PracticeRepository {
     final subject =
         (res['subject'] as Map?)?.cast<String, dynamic>() ?? const {};
     return ChooserData(
-      subjectName: subject['name'] as String? ?? '',
-      examSlug: exam['slug'] as String? ?? '',
-      examShort: exam['short_name'] as String? ?? '',
+      subjectName: asText(subject['name']),
+      examSlug: asText(exam['slug']),
+      examShort: asText(exam['short_name']),
       years: ((res['years'] as List?) ?? const [])
           .cast<Map<String, dynamic>>()
-          .map(
-            (y) => YearCount(
-              (y['year'] as num).toInt(),
-              (y['n'] as num?)?.toInt() ?? 0,
-            ),
-          )
+          .map((y) => YearCount((y['year'] as num).toInt(), asInt(y['n'])))
           .toList(),
       topics: ((res['topics'] as List?) ?? const [])
           .cast<Map<String, dynamic>>()
           .map(
             (t) => TopicCount(
               t['topic_id'] as String,
-              t['name'] as String? ?? '',
-              (t['n'] as num?)?.toInt() ?? 0,
-              (t['n_tutorial'] as num?)?.toInt() ?? 0,
+              asText(t['name']),
+              asInt(t['n']),
+              asInt(t['n_tutorial']),
             ),
           )
           .where((t) => t.n > 0 || t.nTutorial > 0)
           .toList(),
-      past: (res['past'] as num?)?.toInt() ?? 0,
-      tutorial: (res['tutorial'] as num?)?.toInt() ?? 0,
+      past: asInt(res['past']),
+      tutorial: asInt(res['tutorial']),
     );
   }
 
@@ -350,8 +347,8 @@ class PracticeRepository {
         (res['progress'] as Map?)?.cast<String, dynamic>() ?? const {};
     return _sitting(
       res,
-      res['label'] as String? ?? 'Practice',
-      initialIndex: (progress['idx'] as num?)?.toInt() ?? 0,
+      asText(res['label'], 'Practice'),
+      initialIndex: asInt(progress['idx']),
       initialAnswers: ((progress['answers'] as Map?) ?? const {}).map(
         (k, v) => MapEntry(k.toString(), v.toString()),
       ),
@@ -373,9 +370,9 @@ class PracticeRepository {
     Map<String, bool> initialFlags = const {},
   }) => Sitting(
     attemptId: res['attemptId'] as String,
-    mode: res['mode'] as String? ?? 'practice',
+    mode: asText(res['mode'], 'practice'),
     label: label,
-    duration: (res['duration'] as num?)?.toInt() ?? 0,
+    duration: asInt(res['duration']),
     questions: ((res['questions'] as List?) ?? const [])
         .cast<Map<String, dynamic>>()
         .map(ServedQuestion.fromJson)
@@ -385,7 +382,7 @@ class PracticeRepository {
         k.toString(),
         Passage(
           title: (v as Map)['title'] as String? ?? '',
-          body: v['body'] as String? ?? '',
+          body: asText(v['body']),
         ),
       ),
     ),
@@ -430,16 +427,16 @@ class PracticeRepository {
     );
     final score = (res['score'] as Map?)?.cast<String, dynamic>() ?? const {};
     return SubmitResult(
-      correct: (score['correct'] as num?)?.toInt() ?? 0,
-      total: (score['total'] as num?)?.toInt() ?? 0,
-      overall: (score['overall'] as num?)?.toInt() ?? 0,
+      correct: asInt(score['correct']),
+      total: asInt(score['total']),
+      overall: asInt(score['overall']),
       perSubject: ((score['perSubject'] as List?) ?? const [])
           .cast<Map<String, dynamic>>()
           .map(
             (p) => (
-              name: p['name'] as String? ?? 'Questions',
-              correct: (p['correct'] as num?)?.toInt() ?? 0,
-              total: (p['total'] as num?)?.toInt() ?? 0,
+              name: asText(p['name'], 'Questions'),
+              correct: asInt(p['correct']),
+              total: asInt(p['total']),
             ),
           )
           .toList(),

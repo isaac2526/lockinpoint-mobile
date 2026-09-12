@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
@@ -22,10 +24,10 @@ class ActivityRow {
   });
 
   factory ActivityRow.from(Map<dynamic, dynamic> m) => ActivityRow(
-    id: m['id'] as String? ?? '',
-    title: m['title'] as String? ?? 'Activity',
-    detail: m['detail'] as String? ?? '',
-    icon: m['icon'] as String? ?? 'dot',
+    id: asText(m['id']),
+    title: asText(m['title'], 'Activity'),
+    detail: asText(m['detail']),
+    icon: asText(m['icon'], 'dot'),
     at: DateTime.tryParse('${m['at'] ?? ''}'),
   );
 
@@ -60,7 +62,7 @@ final activityProvider = FutureProvider.family<ActivityPage, int>((
         .whereType<Map>()
         .map(ActivityRow.from)
         .toList(),
-    total: (res['total'] as int?) ?? 0,
+    total: (asIntOrNull(res['total'])) ?? 0,
     hasMore: res['hasMore'] == true,
   );
 });

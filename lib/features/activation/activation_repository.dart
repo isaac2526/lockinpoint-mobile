@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -35,12 +37,12 @@ class BankAccount {
   final String instructions;
 
   static BankAccount from(Map<String, dynamic> j) => BankAccount(
-    id: j['id'] as String? ?? '',
-    bankName: j['bankName'] as String? ?? '',
-    accountName: j['accountName'] as String? ?? '',
-    accountNumber: j['accountNumber'] as String? ?? '',
-    currency: j['currency'] as String? ?? '',
-    instructions: j['instructions'] as String? ?? '',
+    id: asText(j['id']),
+    bankName: asText(j['bankName']),
+    accountName: asText(j['accountName']),
+    accountNumber: asText(j['accountNumber']),
+    currency: asText(j['currency']),
+    instructions: asText(j['instructions']),
   );
 
   /// Copying beats retyping a ten digit number into a banking app.
@@ -92,8 +94,8 @@ class PayWays {
       key: m['key'] != false,
       play: m['play'] == true,
       appStore: m['appstore'] == true,
-      playProduct: p['play'] as String? ?? '',
-      appStoreProduct: p['appstore'] as String? ?? '',
+      playProduct: asText(p['play']),
+      appStoreProduct: asText(p['appstore']),
     );
   }
 }
@@ -145,10 +147,10 @@ class ActivationOffer {
     final price = j['price'];
     return ActivationOffer(
       activated: j['activated'] == true,
-      productKey: j['productKey'] as String? ?? '',
+      productKey: asText(j['productKey']),
       amount: price is Map ? price['amount'] as num? : null,
-      currency: price is Map ? (price['currency'] as String? ?? '') : '',
-      note: price is Map ? (price['note'] as String? ?? '') : '',
+      currency: price is Map ? (asText(price['currency'])) : '',
+      note: price is Map ? (asText(price['note'])) : '',
       accounts: ((j['accounts'] as List?) ?? const [])
           .whereType<Map>()
           .map((m) => BankAccount.from(m.cast<String, dynamic>()))
@@ -170,7 +172,7 @@ final activationOfferProvider = FutureProvider<ActivationOffer>((ref) async {
 /// disposed screen reaches into a torn-down container.
 Future<String> redeemKey(Api api, String code) async {
   final res = await api.post('/api/activate/key', body: {'code': code.trim()});
-  return (res['message'] as String?) ??
+  return (asTextOrNull(res['message'])) ??
       (res['ok'] == true ? 'Activated!' : 'That key did not work.');
 }
 
@@ -199,7 +201,7 @@ Future<String> sendTransferProof(
     filePath: imagePath,
     fieldName: 'file',
   );
-  final stored = up['url'] as String? ?? '';
+  final stored = asText(up['url']);
   if (stored.isEmpty) {
     throw ApiFailure(
       'The screenshot uploaded but the server did not say where it went. '
@@ -226,5 +228,5 @@ Future<String> redeemStorePurchase(
     '/api/mobile/store-purchase',
     body: {'store': store, 'productId': productId, 'token': token},
   );
-  return res['message'] as String? ?? 'You are activated. Welcome in.';
+  return asText(res['message'], 'You are activated. Welcome in.');
 }

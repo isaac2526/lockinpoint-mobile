@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -138,11 +140,11 @@ class EssentialDownloader extends Notifier<EssentialState> {
           .whereType<Map>()
           .map(
             (m) => VaultPackPlan(
-              subjectId: m['subjectId'] as String? ?? '',
-              subject: m['subject'] as String? ?? '',
-              exam: m['exam'] as String? ?? '',
-              questions: (m['questions'] as int?) ?? 0,
-              bytes: (m['bytes'] as int?) ?? 0,
+              subjectId: asText(m['subjectId']),
+              subject: asText(m['subject']),
+              exam: asText(m['exam']),
+              questions: (asIntOrNull(m['questions'])) ?? 0,
+              bytes: (asIntOrNull(m['bytes'])) ?? 0,
             ),
           )
           .where((p) => p.subjectId.isNotEmpty)

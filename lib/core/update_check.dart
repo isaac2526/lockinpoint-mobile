@@ -1,3 +1,5 @@
+import '../core/json.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -74,21 +76,21 @@ Future<AppUpdate> checkForUpdate(Api api, {String? platformKey}) async {
     final res = await api.get('/api/public/downloads');
     for (final p
         in ((res['platforms'] as List?) ?? const []).whereType<Map>()) {
-      if ((p['platform'] as String? ?? '').toLowerCase() != want) continue;
+      if ((asText(p['platform'])).toLowerCase() != want) continue;
 
       /* AN ADMIN CAN TAKE A DOWNLOAD OFFLINE, and a row that is not
          available must not be offered as an upgrade — pointing a student at
          a link that is deliberately down is worse than saying nothing. */
       if (p['available'] == false) return AppUpdate.none;
 
-      final code = (p['version_code'] as num?)?.toInt() ?? 0;
-      final url = p['url'] as String? ?? '';
+      final code = asInt(p['version_code']);
+      final url = asText(p['url']);
       if (code <= AppConfig.buildNumber || url.isEmpty) return AppUpdate.none;
 
       return AppUpdate(
         available: true,
-        version: p['version'] as String? ?? '',
-        notes: p['release_notes'] as String? ?? '',
+        version: asText(p['version']),
+        notes: asText(p['release_notes']),
         url: url,
         buildNumber: code,
       );

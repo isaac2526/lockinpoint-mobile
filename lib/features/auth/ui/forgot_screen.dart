@@ -1,3 +1,5 @@
+import '../../../core/json.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -67,7 +69,7 @@ class _ForgotScreenState extends ConsumerState<ForgotScreen> {
         _busy = false;
         _codeSent = true;
         _notice =
-            (res['message'] as String?) ??
+            (asTextOrNull(res['message'])) ??
             'A reset code is on its way to $email. Check your inbox and spam.';
       });
     } on ApiFailure catch (e) {
@@ -121,7 +123,7 @@ class _ForgotScreenState extends ConsumerState<ForgotScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            (res['message'] as String?) ??
+            (asTextOrNull(res['message'])) ??
                 'Password changed. Log in with the new one.',
           ),
         ),

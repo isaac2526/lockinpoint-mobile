@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
@@ -29,14 +31,14 @@ class Attempt {
   final List<SubjectScore> perSubject;
 
   static Attempt from(Map<String, dynamic> j) => Attempt(
-    id: j['id'] as String? ?? '',
-    mode: j['mode'] as String? ?? 'practice',
-    takenAt: DateTime.tryParse(j['takenAt'] as String? ?? '') ?? DateTime.now(),
-    durationSeconds: (j['durationSeconds'] as num?)?.toInt() ?? 0,
-    correct: (j['correct'] as num?)?.toInt() ?? 0,
-    total: (j['total'] as num?)?.toInt() ?? 0,
-    percent: (j['percent'] as num?)?.toDouble() ?? 0,
-    overall: (j['overall'] as num?)?.toInt(),
+    id: asText(j['id']),
+    mode: asText(j['mode'], 'practice'),
+    takenAt: DateTime.tryParse(asText(j['takenAt'])) ?? DateTime.now(),
+    durationSeconds: asInt(j['durationSeconds']),
+    correct: asInt(j['correct']),
+    total: asInt(j['total']),
+    percent: asDouble(j['percent'], 0),
+    overall: asIntOrNull(j['overall']),
     isJamb: j['isJamb'] == true,
     perSubject: ((j['perSubject'] as List?) ?? const [])
         .whereType<Map>()
@@ -76,10 +78,10 @@ class SubjectScore {
   final double percent;
 
   static SubjectScore from(Map<String, dynamic> j) => SubjectScore(
-    name: j['name'] as String? ?? '',
-    correct: (j['correct'] as num?)?.toInt() ?? 0,
-    total: (j['total'] as num?)?.toInt() ?? 0,
-    percent: (j['percent'] as num?)?.toDouble() ?? 0,
+    name: asText(j['name']),
+    correct: asInt(j['correct']),
+    total: asInt(j['total']),
+    percent: asDouble(j['percent'], 0),
   );
 }
 
@@ -110,11 +112,11 @@ class Progress {
   static Progress from(Map<String, dynamic> j) {
     final s = (j['summary'] as Map?)?.cast<String, dynamic>() ?? const {};
     return Progress(
-      sittings: (s['sittings'] as num?)?.toInt() ?? 0,
-      questions: (s['questions'] as num?)?.toInt() ?? 0,
-      correct: (s['correct'] as num?)?.toInt() ?? 0,
-      accuracy: (s['accuracy'] as num?)?.toDouble() ?? 0,
-      minutes: (s['minutes'] as num?)?.toInt() ?? 0,
+      sittings: asInt(s['sittings']),
+      questions: asInt(s['questions']),
+      correct: asInt(s['correct']),
+      accuracy: asDouble(s['accuracy'], 0),
+      minutes: asInt(s['minutes']),
       attempts: ((j['attempts'] as List?) ?? const [])
           .whereType<Map>()
           .map((m) => Attempt.from(m.cast<String, dynamic>()))
@@ -123,7 +125,7 @@ class Progress {
           .whereType<Map>()
           .map((m) => SubjectScore.from(m.cast<String, dynamic>()))
           .toList(),
-      insight: j['insight'] as String?,
+      insight: asTextOrNull(j['insight']),
     );
   }
 }

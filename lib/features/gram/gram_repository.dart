@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
@@ -29,13 +31,13 @@ class GramRoom {
   });
 
   factory GramRoom.from(Map<dynamic, dynamic> m) => GramRoom(
-    id: m['id'] as String? ?? '',
-    name: m['name'] as String? ?? 'Room',
-    description: m['description'] as String? ?? '',
+    id: asText(m['id']),
+    name: asText(m['name'], 'Room'),
+    description: asText(m['description']),
     /* The server calls it `membership`: 'none' before joining, 'pending'
        while a tutor decides, 'approved' once in, 'tutor' for staff. */
-    status: m['membership'] as String? ?? 'none',
-    unread: (m['unread'] as int?) ?? 0,
+    status: asText(m['membership'], 'none'),
+    unread: (asIntOrNull(m['unread'])) ?? 0,
     last: m['last'] is Map
         ? [
             (m['last'] as Map)['who'] as String?,
@@ -43,7 +45,7 @@ class GramRoom {
           ].where((s) => s != null && s.isNotEmpty).join(': ')
         : '',
     locked: m['locked'] == true,
-    joinMode: m['join_mode'] as String? ?? m['joinMode'] as String? ?? 'open',
+    joinMode: m['join_mode'] as String? ?? asText(m['joinMode'], 'open'),
   );
 
   final String id;
@@ -80,22 +82,22 @@ class GramMessage {
     Map<dynamic, dynamic> m,
     String? myId,
   ) => GramMessage(
-    id: m['id'] as String? ?? '',
-    who: m['who'] as String? ?? 'student',
-    body: m['body'] as String? ?? '',
+    id: asText(m['id']),
+    who: asText(m['who'], 'student'),
+    body: asText(m['body']),
     // The orange tick. A tutor's word in a study room carries weight and has
     // to be distinguishable from a confident classmate's.
     tutor: m['tutor'] == true,
     mine: myId != null && m['user_id'] == myId,
     deleted: m['deleted'] == true,
-    type: m['type'] as String? ?? 'text',
+    type: asText(m['type'], 'text'),
     at: DateTime.tryParse('${m['at'] ?? ''}'),
     options:
         ((m['meta'] as Map?)?['options'] as List?)
             ?.map((e) => e.toString())
             .toList() ??
         const [],
-    mediaUrl: m['media_url'] as String? ?? '',
+    mediaUrl: asText(m['media_url']),
     quiz: GramQuiz.from(m['meta'] as Map?),
   );
 
@@ -150,12 +152,12 @@ class GramQuiz {
         .toList();
     if (options.isEmpty) return null;
     return GramQuiz(
-      question: q['question'] as String? ?? '',
+      question: asText(q['question']),
       options: options,
       letters: ((q['letters'] as List?) ?? const [])
           .map((e) => e.toString())
           .toList(),
-      answer: (q['answer'] as String? ?? '').toUpperCase(),
+      answer: (asText(q['answer'])).toUpperCase(),
     );
   }
 }
@@ -245,7 +247,7 @@ final gramLobbyProvider = FutureProvider<GramLobby>((ref) async {
           .whereType<Map>()
           .map(GramRoom.from)
           .toList(),
-      dmUnread: (res['dmUnread'] as int?) ?? 0,
+      dmUnread: (asIntOrNull(res['dmUnread'])) ?? 0,
       open: true,
       locked: false,
     );
@@ -279,8 +281,8 @@ Future<GramFeed> loadRoom(
   final reactions = <String, Map<String, int>>{};
   final myReactions = <String, String>{};
   for (final r in ((res['reactions'] as List?) ?? const []).whereType<Map>()) {
-    final mid = r['message_id'] as String? ?? '';
-    final icon = r['icon'] as String? ?? '';
+    final mid = asText(r['message_id']);
+    final icon = asText(r['icon']);
     if (mid.isEmpty || icon.isEmpty) continue;
     reactions.putIfAbsent(mid, () => {});
     reactions[mid]![icon] = (reactions[mid]![icon] ?? 0) + 1;
@@ -290,8 +292,8 @@ Future<GramFeed> loadRoom(
   final votes = <String, Map<int, int>>{};
   final myVotes = <String, int>{};
   for (final v in ((res['votes'] as List?) ?? const []).whereType<Map>()) {
-    final mid = v['message_id'] as String? ?? '';
-    final idx = (v['option_index'] as num?)?.toInt();
+    final mid = asText(v['message_id']);
+    final idx = asIntOrNull(v['option_index']);
     if (mid.isEmpty || idx == null) continue;
     votes.putIfAbsent(mid, () => {});
     votes[mid]![idx] = (votes[mid]![idx] ?? 0) + 1;
@@ -304,7 +306,7 @@ Future<GramFeed> loadRoom(
         .map((m) => GramMessage.from(m, myId))
         .toList(),
     canPost: res['canPost'] != false,
-    blockedBecause: res['postBlock'] as String? ?? '',
+    blockedBecause: asText(res['postBlock']),
     reactions: reactions,
     myReactions: myReactions,
     votes: votes,
@@ -313,13 +315,13 @@ Future<GramFeed> loadRoom(
         .whereType<Map>()
         .map(
           (m) => (
-            username: m['username'] as String? ?? 'someone',
-            state: m['state'] as String? ?? 'typing',
+            username: asText(m['username'], 'someone'),
+            state: asText(m['state'], 'typing'),
           ),
         )
         .toList(),
-    online: (res['online'] as num?)?.toInt() ?? 0,
-    memberCount: (res['memberCount'] as num?)?.toInt() ?? 0,
+    online: asInt(res['online']),
+    memberCount: asInt(res['memberCount']),
   );
 }
 
@@ -354,7 +356,7 @@ Future<String?> joinRoom(Api api, String groupId) async {
       '/api/gram/groups/$groupId',
       body: {'op': 'join'},
     );
-    return res['message'] as String?;
+    return asTextOrNull(res['message']);
   } on ApiFailure catch (e) {
     return e.message;
   }
@@ -409,7 +411,7 @@ Future<String?> reactToGram(Api api, String messageId, String icon) async {
       body: {'icon': icon},
     );
     return res['ok'] == false
-        ? (res['message'] as String? ?? 'Not that one.')
+        ? (asText(res['message'], 'Not that one.'))
         : null;
   } on ApiFailure catch (e) {
     return e.message;
@@ -453,9 +455,9 @@ Future<String?> sendGramImage(
       filePath: filePath,
       fieldName: 'file',
     );
-    final url = up['url'] as String? ?? '';
+    final url = asText(up['url']);
     if (up['ok'] == false || url.isEmpty) {
-      return up['message'] as String? ?? 'That picture would not upload.';
+      return asText(up['message'], 'That picture would not upload.');
     }
     await api.post(
       '/api/gram/messages',
@@ -487,7 +489,7 @@ Future<String?> deleteGram(Api api, String messageId) async {
       body: {'action': 'delete'},
     );
     return res['ok'] == false
-        ? (res['message'] as String? ?? 'That could not be deleted.')
+        ? (asText(res['message'], 'That could not be deleted.'))
         : null;
   } on ApiFailure catch (e) {
     return e.message;

@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -57,7 +59,7 @@ class TheoryScreen extends ConsumerWidget {
             child: LipSkeleton(height: 220),
           ),
           error: (e, _) => LipError(
-            message: e is ApiFailure ? e.message : '$e',
+            message: humanError(e, doing: 'open this paper'),
             detail: e is ApiFailure ? e.detail : null,
             onRetry: () => ref.invalidate(theoryExamsProvider(kind)),
           ),
@@ -148,7 +150,7 @@ class TheorySubjectsScreen extends ConsumerWidget {
             child: LipSkeleton(height: 200),
           ),
           error: (e, _) => LipError(
-            message: e is ApiFailure ? e.message : '$e',
+            message: humanError(e, doing: 'open this paper'),
             detail: e is ApiFailure ? e.detail : null,
             onRetry: () => ref.invalidate(theorySubjectsProvider(key)),
           ),
@@ -236,7 +238,7 @@ class TheoryShelfScreen extends ConsumerWidget {
             child: LipSkeleton(height: 160),
           ),
           error: (e, _) => LipError(
-            message: e is ApiFailure ? e.message : '$e',
+            message: humanError(e, doing: 'open this paper'),
             detail: e is ApiFailure ? e.detail : null,
             onRetry: () => ref.invalidate(theoryShelfProvider(key)),
           ),
@@ -352,7 +354,7 @@ class TheorySessionScreen extends ConsumerWidget {
             child: LipSkeleton(height: 300),
           ),
           error: (e, _) => LipError(
-            message: e is ApiFailure ? e.message : '$e',
+            message: humanError(e, doing: 'open this paper'),
             detail: e is ApiFailure ? e.detail : null,
             onRetry: () => ref.invalidate(theorySessionProvider(id)),
           ),
@@ -433,7 +435,7 @@ class TheoryPaperScreen extends ConsumerWidget {
             child: LipSkeleton(height: 260),
           ),
           error: (e, _) => LipError(
-            message: '$e',
+            message: humanError(e, doing: 'open this paper'),
             onRetry: () => ref.invalidate(theoryPaperProvider(key)),
           ),
           data: (qs) => qs.isEmpty

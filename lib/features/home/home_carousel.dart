@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -59,9 +61,9 @@ class _Slide extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.lip;
-    final image = (slide['image_url'] as String? ?? '').trim();
-    final target = (slide['target'] as String? ?? '').trim();
-    final subtext = (slide['subtext'] as String? ?? '').trim();
+    final image = (asText(slide['image_url'])).trim();
+    final target = (asText(slide['target'])).trim();
+    final subtext = (asText(slide['subtext'])).trim();
 
     return SizedBox(
       width: width,
@@ -108,7 +110,7 @@ class _Slide extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    slide['headline'] as String? ?? '',
+                    asText(slide['headline']),
                     style: LipType.subheading.copyWith(
                       color: image.isEmpty ? c.text1 : Colors.white,
                     ),

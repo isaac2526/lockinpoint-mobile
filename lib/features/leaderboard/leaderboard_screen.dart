@@ -1,3 +1,4 @@
+import '../../core/json.dart';
 import '../../app/shell.dart';
 
 import 'package:flutter/material.dart';
@@ -59,17 +60,17 @@ class LadderRow {
   final bool isMe;
 
   static LadderRow fromJson(Map<String, dynamic> j) => LadderRow(
-    rank: (j['rank'] as num?)?.toInt() ?? 0,
-    userId: j['userId'] as String? ?? '',
-    name: j['name'] as String? ?? 'Student',
-    points: (j['points'] as num?)?.toInt() ?? 0,
-    streak: (j['streak'] as num?)?.toInt() ?? 0,
-    longestStreak: (j['longestStreak'] as num?)?.toInt() ?? 0,
-    minutes: (j['minutes'] as num?)?.toInt() ?? 0,
-    country: j['country'] as String? ?? '',
-    state: j['state'] as String? ?? '',
-    institution: j['institution'] as String? ?? '',
-    lastSeen: j['lastSeen'] as String? ?? '',
+    rank: asInt(j['rank']),
+    userId: asText(j['userId']),
+    name: asText(j['name'], 'Student'),
+    points: asInt(j['points']),
+    streak: asInt(j['streak']),
+    longestStreak: asInt(j['longestStreak']),
+    minutes: asInt(j['minutes']),
+    country: asText(j['country']),
+    state: asText(j['state']),
+    institution: asText(j['institution']),
+    lastSeen: asText(j['lastSeen']),
     isMe: j['isMe'] == true,
   );
 
@@ -98,8 +99,8 @@ class LadderScope {
   final bool available;
 
   static LadderScope fromJson(Map<String, dynamic> j) => LadderScope(
-    key: j['key'] as String? ?? 'national',
-    label: j['label'] as String? ?? 'National',
+    key: asText(j['key'], 'national'),
+    label: asText(j['label'], 'National'),
     available: j['available'] == true,
   );
 }
@@ -159,8 +160,8 @@ class LeaderboardRepository {
           .whereType<Map>()
           .map((m) => LadderScope.fromJson(m.cast<String, dynamic>()))
           .toList(),
-      total: (res['total'] as num?)?.toInt() ?? rows.length,
-      message: res['ok'] == false ? (res['message'] as String? ?? '') : '',
+      total: asIntOrNull(res['total']) ?? rows.length,
+      message: res['ok'] == false ? (asText(res['message'])) : '',
     );
   }
 }

@@ -1,3 +1,5 @@
+import '../../core/json.dart';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -27,9 +29,9 @@ class Money {
   static Money from(Object? m) {
     if (m is! Map) return const Money('', 0, '');
     return Money(
-      m['currency'] as String? ?? '',
+      asText(m['currency']),
       (m['amount'] as num?) ?? 0,
-      m['label'] as String? ?? '',
+      asText(m['label']),
     );
   }
 }
@@ -81,9 +83,9 @@ final referralsProvider = FutureProvider<Referrals>((ref) async {
   final balanceNgn = (res['balanceNgn'] as num?) ?? 0;
   final minNgn = (res['minNgn'] as num?) ?? 0;
   return Referrals(
-    code: res['code'] as String? ?? '',
-    joined: (res['joined'] as int?) ?? 0,
-    activated: (res['activated'] as int?) ?? 0,
+    code: asText(res['code']),
+    joined: (asIntOrNull(res['joined'])) ?? 0,
+    activated: (asIntOrNull(res['activated'])) ?? 0,
     reward: Money.from(res['reward']),
     minimum: Money.from(res['min']),
     balance: Money.from(res['balance']),
@@ -95,8 +97,8 @@ final referralsProvider = FutureProvider<Referrals>((ref) async {
           (w) => Withdrawal(
             amount:
                 (w['amount_local'] as num?) ?? (w['amount_ngn'] as num?) ?? 0,
-            currency: w['currency'] as String? ?? 'NGN',
-            status: w['status'] as String? ?? 'pending',
+            currency: asText(w['currency'], 'NGN'),
+            status: asText(w['status'], 'pending'),
             at: DateTime.tryParse('${w['created_at'] ?? ''}'),
           ),
         )
@@ -122,7 +124,7 @@ Future<String> requestPayout(
         'account_number': accountNumber,
       },
     );
-    return res['message'] as String? ?? 'Request received.';
+    return asText(res['message'], 'Request received.');
   } on ApiFailure catch (e) {
     return e.message;
   }
