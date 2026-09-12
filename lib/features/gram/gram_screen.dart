@@ -223,6 +223,7 @@ class _GramRoomScreenState extends ConsumerState<GramRoomScreen> {
   String _problem = '';
   bool _busy = false;
   Timer? _poll;
+  AppLifecycleListener? _life;
   Timer? _beat;
 
   /* THE CLIENT IS HELD, NOT LOOKED UP LATE.
@@ -247,7 +248,7 @@ class _GramRoomScreenState extends ConsumerState<GramRoomScreen> {
        that a room feels alive. */
     _poll = Timer.periodic(
       const Duration(seconds: 12),
-      (_) => _load(quiet: true),
+      (_) => _away ? null : _load(quiet: true),
     );
 
     /* THE HEARTBEAT. /api/gram/ping is what puts this student in everyone
@@ -259,8 +260,46 @@ class _GramRoomScreenState extends ConsumerState<GramRoomScreen> {
     gramPing(_api, groupId: widget.room?.id);
     _beat = Timer.periodic(
       const Duration(seconds: 15),
-      (_) => gramPing(_api, groupId: widget.room?.id),
+      (_) => _away ? null : gramPing(_api, groupId: widget.room?.id),
     );
+
+    /* AND IT ALL STOPS WHEN NOBODY IS LOOKING.
+
+       These two timers kept firing after the student switched to WhatsApp:
+       nine requests a minute, from a screen nobody could see, on a phone
+       whose owner is paying for the data — and nine invocations a minute on
+       the bill at the other end. The OS suspends the process eventually, but
+       "eventually" is minutes on Android and never on desktop or web.
+
+       Paused on the way out, and brought straight up to date on the way back
+       so the room is current the moment it is looked at again rather than up
+       to twelve seconds behind. */
+    _life = AppLifecycleListener(
+      onHide: _pause,
+      onPause: _pause,
+      /* All four, because the transition a phone actually makes differs by
+         platform: Android goes paused -> resumed, iOS goes inactive -> hidden
+         -> resumed, and desktop uses show/hide. Missing the one your platform
+         uses means the room never wakes up and stays frozen at whatever it
+         last saw, which is worse than the polling it replaced. */
+      onRestart: _wake,
+      onShow: _wake,
+      onResume: _wake,
+    );
+  }
+
+  /// True while the app is not on screen. The timers keep their own clocks;
+  /// they simply do nothing when they fire.
+  bool _away = false;
+
+  void _pause() => _away = true;
+
+  void _wake() {
+    if (!_away) return;
+    _away = false;
+    if (!mounted) return;
+    _load(quiet: true);
+    gramPing(_api, groupId: widget.room?.id);
   }
 
   /// Adds or removes my reaction, then re-reads the room so the count shown
@@ -344,6 +383,7 @@ class _GramRoomScreenState extends ConsumerState<GramRoomScreen> {
   void dispose() {
     _poll?.cancel();
     _beat?.cancel();
+    _life?.dispose();
     /* LEAVING THE ROOM IS ITSELF A STATE. Without this the student stays in
        everyone else's Online list for another forty-five seconds after they
        have gone. */
