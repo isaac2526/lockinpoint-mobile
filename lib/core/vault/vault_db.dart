@@ -246,20 +246,32 @@ class VaultDb extends _$VaultDb {
 
   // ------------------------------------------------------------- writing ---
 
-  /// Save a downloaded pack. Replaces any earlier copy of the SAME subject
-  /// wholesale rather than merging, so a re-download is a clean refresh and
-  /// a question deleted upstream does not linger on the phone for ever.
+  /// Save a downloaded pack.
+  ///
+  /// [replace] wipes any earlier copy of the SAME subject first, so a
+  /// re-download is a clean refresh and a question deleted upstream does not
+  /// linger on the phone for ever. It is TRUE ONLY FOR THE FIRST PAGE: a
+  /// subject is fetched five hundred questions at a time, and wiping on
+  /// every page would leave the phone holding only the last one.
+  ///
+  /// [runningCount] is how many questions the subject has after this page, so
+  /// the pack row's count is the whole subject rather than the size of the
+  /// last page — the vault screen and the update check both read it.
   Future<void> savePack({
     required Map<String, dynamic> pack,
     required List<Map<String, dynamic>> questions,
     required List<Map<String, dynamic>> passages,
+    bool replace = true,
+    int? runningCount,
   }) async {
     final subjectId = asText(pack['subjectId']);
 
     await transaction(() async {
-      await (delete(
-        vaultQuestions,
-      )..where((t) => t.subjectId.equals(subjectId))).go();
+      if (replace) {
+        await (delete(
+          vaultQuestions,
+        )..where((t) => t.subjectId.equals(subjectId))).go();
+      }
 
       await into(packs).insertOnConflictUpdate(
         Pack(
@@ -268,7 +280,7 @@ class VaultDb extends _$VaultDb {
           examId: asText(pack['examId']),
           examSlug: asText(pack['examSlug']),
           examShort: asText(pack['examShort']),
-          count: questions.length,
+          count: runningCount ?? questions.length,
           downloadedAt: DateTime.now(),
         ),
       );

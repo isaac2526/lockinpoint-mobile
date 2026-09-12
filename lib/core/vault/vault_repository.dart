@@ -51,23 +51,62 @@ class VaultRepository {
 
   /// Fetch a subject and keep it. Needs the network, obviously — this is the
   /// one operation in the vault that legitimately cannot work offline.
-  Future<Pack> download(String subjectId, {int limit = 200}) async {
-    final res = await _api.get(
-      '/api/mobile/pack',
-      query: {'subject': subjectId, 'limit': '$limit'},
-    );
+  ///
+  /// IT FOLLOWS THE PAGES. The pack endpoint serves at most 500 questions in
+  /// one response — a 900-question reply is a phone with 1GB of RAM being
+  /// killed mid-download — and this used to take that one page and stop. So a
+  /// subject with 900 questions put 500 on the phone while the vault manifest
+  /// went on counting all 900, and the app told the student, for ever, that
+  /// 400 new questions were waiting. Tapping Update re-fetched the same first
+  /// 500 and changed nothing, spending their bundle every time.
+  ///
+  /// [onPage] is called after each page lands, so a progress bar can move
+  /// within a single large subject instead of sitting still for a minute.
+  Future<Pack> download(
+    String subjectId, {
+    int limit = 200,
+    void Function(int soFar)? onPage,
+  }) async {
+    var offset = 0;
+    var total = 0;
+    var first = true;
 
-    final pack = asMap(res['pack']);
-    final questions = (asList(res['questions']))
-        .whereType<Map>()
-        .map((m) => m.cast<String, dynamic>())
-        .toList();
-    final passages = (asList(res['passages']))
-        .whereType<Map>()
-        .map((m) => m.cast<String, dynamic>())
-        .toList();
+    // A hard stop, so a server that kept answering with a next page could
+    // never spin this for ever.
+    for (var page = 0; page < 200; page++) {
+      final res = await _api.get(
+        '/api/mobile/pack',
+        query: {
+          'subject': subjectId,
+          'limit': '$limit',
+          if (offset > 0) 'offset': '$offset',
+        },
+      );
 
-    await _db.savePack(pack: pack, questions: questions, passages: passages);
+      final pack = asMap(res['pack']);
+      final questions = asMapList(res['questions']);
+      final passages = asMapList(res['passages']);
+      total += questions.length;
+
+      await _db.savePack(
+        pack: pack,
+        questions: questions,
+        passages: passages,
+        replace: first,
+        runningCount: total,
+      );
+      first = false;
+      onPage?.call(total);
+
+      final next = asIntOrNull(res['nextOffset']);
+      /* NULL MEANS THAT WAS THE LAST PAGE — the server's own word for it,
+         rather than the app guessing from the length. A subject whose total
+         is an exact multiple of the page size would otherwise look finished
+         one page early, or be asked for one page too many. */
+      if (next == null || next <= offset || questions.isEmpty) break;
+      offset = next;
+    }
+
     return (await _db.pack(subjectId))!;
   }
 

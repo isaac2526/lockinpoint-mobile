@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lockinpoint/core/api.dart';
 import 'package:lockinpoint/core/vault/vault_db.dart';
 import 'package:lockinpoint/core/vault/vault_repository.dart';
 import 'package:lockinpoint/design/theme.dart';
@@ -20,6 +21,11 @@ import 'package:lockinpoint/features/vault/vault_screen.dart';
 /// order to do was the one thing they could not do with it — and no test
 /// noticed, because every part in isolation worked perfectly.
 /// ===========================================================================
+class _Db extends Fake implements VaultDb {
+  @override
+  Future<List<Pack>> allPacks() async => [_pack()];
+}
+
 class _Vault extends Fake implements VaultRepository {
   _Vault({this.sitting});
 
@@ -45,6 +51,31 @@ class _Vault extends Fake implements VaultRepository {
   }
 }
 
+/// The manifest the examinations section reads. One examination, one subject,
+/// already held — so the card reads "Downloaded" and nothing runs.
+class _Manifest extends Fake implements Api {
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => {
+    'ok': true,
+    'activated': true,
+    'text': {
+      'packs': [
+        {
+          'subjectId': 's1',
+          'subject': 'Physics',
+          'exam': 'WAEC',
+          'examSlug': 'waec',
+          'questions': 40,
+          'bytes': 56000,
+        },
+      ],
+    },
+  };
+}
+
 Pack _pack() => Pack(
   subjectId: 's1',
   subjectName: 'Physics',
@@ -60,8 +91,12 @@ Future<_Vault> _open(WidgetTester tester, {OfflineSitting? sitting}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiProvider.overrideWithValue(_Manifest()),
         vaultProvider.overrideWithValue(vault),
         vaultPacksProvider.overrideWith((ref) async => [_pack()]),
+        // The examinations section reads the vault database directly for the
+        // held counts; in a test there is no database file to open.
+        vaultDbProvider.overrideWithValue(_Db()),
       ],
       child: MaterialApp(theme: LipTheme.light(), home: const VaultScreen()),
     ),

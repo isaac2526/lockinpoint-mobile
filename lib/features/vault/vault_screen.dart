@@ -8,6 +8,7 @@ import '../../core/vault/vault_repository.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
 import '../../core/vault/essential_download.dart';
+import '../../core/vault/exam_download.dart';
 import '../practice/practice_session_screen.dart';
 import '../../design/motion_widgets.dart';
 import '../../design/theme.dart';
@@ -75,42 +76,29 @@ class VaultScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  data: (list) => list.isEmpty
-                      ? ListView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          children: [
-                            SizedBox(
-                              height: MediaQuery.sizeOf(context).height * 0.1,
-                            ),
-                            const LipEmpty(
-                              icon: Icons.download_for_offline_rounded,
-                              title: 'Nothing downloaded yet',
-                              message:
-                                  'Open a subject in Practice and download it. '
-                                  'Once it is here you can answer it anywhere — '
-                                  'on a bus, in a village, with no signal at all.',
-                            ),
-                          ],
-                        )
-                      : ListView.separated(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(
-                            Gap.lg,
-                            Gap.lg,
-                            Gap.lg,
-                            Gap.huge,
-                          ),
-                          itemCount: list.length + 1,
-                          separatorBuilder: (_, _) =>
-                              const SizedBox(height: Gap.md),
-                          itemBuilder: (context, i) {
-                            if (i == 0) return const _PendingBanner();
-                            return Entrance(
-                              index: i,
-                              child: _PackCard(pack: list[i - 1]),
-                            );
-                          },
-                        ),
+                  data: (list) => ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(
+                      Gap.lg,
+                      Gap.lg,
+                      Gap.lg,
+                      Gap.huge,
+                    ),
+                    /* The pending banner, the examinations, then what is
+                       actually on the phone. An empty vault is no longer an
+                       empty SCREEN: the examinations are the thing to act
+                       on, and they are what was missing. */
+                    itemCount: list.length + 2,
+                    separatorBuilder: (_, _) => const SizedBox(height: Gap.md),
+                    itemBuilder: (context, i) {
+                      if (i == 0) return const _PendingBanner();
+                      if (i == 1) return const _Examinations();
+                      return Entrance(
+                        index: i,
+                        child: _PackCard(pack: list[i - 2]),
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
@@ -128,6 +116,273 @@ class VaultScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+/// ===========================================================================
+/// DOWNLOAD, BY EXAMINATION
+///
+/// The vault could be FILLED subject by subject and that was the whole of it.
+/// A student sitting WAEC had to find and tap Download on each of their nine
+/// subjects, one at a time, with no idea what the nine would cost until they
+/// had spent it.
+///
+/// One button per examination. While it runs: per cent, megabytes so far,
+/// megabytes in total, the subject being fetched right now, and PAUSE.
+/// Paused: RESUME. Failed: RETRY, and the reason in a sentence.
+///
+/// When an examination is already held, the button says what an update is
+/// actually worth — "12 new questions" — rather than just "Update", which
+/// tells a student on a metered bundle nothing they can decide with.
+/// ===========================================================================
+class _Examinations extends ConsumerStatefulWidget {
+  const _Examinations();
+
+  @override
+  ConsumerState<_Examinations> createState() => _ExaminationsState();
+}
+
+class _ExaminationsState extends ConsumerState<_Examinations> {
+  @override
+  void initState() {
+    super.initState();
+    // After the first frame, so the notifier is not written to during build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.read(vaultDownloadProvider.notifier).refresh();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.lip;
+    final st = ref.watch(vaultDownloadProvider);
+
+    if (st.loading && st.exams.isEmpty) {
+      return const LipSkeleton(height: 120);
+    }
+
+    /* NO NETWORK AND NOTHING CACHED. Said plainly, and NOT as an error card:
+       a student with downloads already on the phone is here to use them, and
+       this section is simply the part that needs a connection. */
+    if (st.exams.isEmpty) {
+      if (st.listProblem.isEmpty) return const SizedBox.shrink();
+      return GlassSurface(
+        padding: const EdgeInsets.all(Gap.md),
+        child: Row(
+          children: [
+            Icon(Icons.cloud_off_rounded, size: 20, color: c.text3),
+            const SizedBox(width: Gap.md),
+            Expanded(
+              child: Text(
+                'The list of examinations needs a connection. Your downloads '
+                'below still work.',
+                style: LipType.caption.copyWith(color: c.text3),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const LipLabel('Download a whole examination'),
+        const SizedBox(height: Gap.sm),
+        for (final e in st.exams) ...[
+          _ExamCard(plan: e, st: st),
+          const SizedBox(height: Gap.sm),
+        ],
+      ],
+    );
+  }
+}
+
+class _ExamCard extends ConsumerWidget {
+  const _ExamCard({required this.plan, required this.st});
+
+  final ExamPlan plan;
+  final VaultDownloadState st;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
+    final notifier = ref.read(vaultDownloadProvider.notifier);
+    final online = ref.watch(isOnlineProvider);
+
+    final isThisOne = st.runningExam == plan.slug;
+    final running = isThisOne && st.phase == VaultRunPhase.running;
+    final paused = isThisOne && st.phase == VaultRunPhase.paused;
+    final failed = isThisOne && st.phase == VaultRunPhase.failed;
+
+    // Another examination is mid-run: this one's button waits its turn
+    // rather than starting a second download over the same connection.
+    final busyElsewhere = st.isBusy && !isThisOne;
+
+    String buttonLabel() {
+      if (running) return 'Downloading…';
+      if (paused) return 'Resume';
+      if (failed) return 'Retry';
+      if (plan.complete && !plan.anyUpdate) return 'Downloaded';
+      if (plan.behind > 0 && plan.heldSubjects > 0) {
+        return '${plan.behind} new question${plan.behind == 1 ? '' : 's'}';
+      }
+      return 'Download';
+    }
+
+    final nothingToDo = plan.complete && !plan.anyUpdate && !isThisOne;
+
+    return GlassSurface(
+      tier: GlassTier.raised,
+      padding: const EdgeInsets.all(Gap.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      plan.name,
+                      style: LipType.subheading.copyWith(color: c.text1),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${plan.heldSubjects} of ${plan.subjects.length} '
+                      'subjects on this phone · about '
+                      '${VaultDownloadState.mb(plan.bytes)} in all',
+                      style: LipType.caption.copyWith(color: c.text3),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: Gap.sm),
+              if (plan.heldSubjects > 0)
+                IconButton(
+                  tooltip: 'Remove ${plan.name} from this phone',
+                  icon: Icon(Icons.delete_outline_rounded, color: c.text3),
+                  onPressed: st.isBusy
+                      ? null
+                      : () => _confirmRemove(context, ref, plan),
+                ),
+            ],
+          ),
+
+          if (running || paused) ...[
+            const SizedBox(height: Gap.md),
+            /* FOUR HONEST NUMBERS. Per cent and megabytes come from the
+               server's own count of what is there; the subject name is the
+               one being fetched at this moment. A bar that reaches 90% and
+               stops costs more trust than no bar at all. */
+            ClipRRect(
+              borderRadius: BorderRadius.circular(Radii.sm),
+              child: LinearProgressIndicator(
+                value: st.fraction,
+                minHeight: 8,
+                backgroundColor: c.glassDeep,
+                valueColor: AlwaysStoppedAnimation(c.hues.blue.ink),
+              ),
+            ),
+            const SizedBox(height: Gap.xs),
+            Text(
+              '${st.percent}% · ${st.sizeLine}'
+              '${st.current.isEmpty ? '' : ' · ${st.current}'}',
+              style: LipType.caption.copyWith(color: c.text3),
+            ),
+          ],
+
+          if (failed && st.problem.isNotEmpty) ...[
+            const SizedBox(height: Gap.sm),
+            Text(
+              st.problem,
+              style: LipType.caption.copyWith(color: c.hues.rose.ink),
+            ),
+          ],
+
+          const SizedBox(height: Gap.md),
+          Row(
+            children: [
+              Expanded(
+                child: LipButton(
+                  label: buttonLabel(),
+                  onPressed:
+                      (!online || busyElsewhere || nothingToDo || running)
+                      ? null
+                      : () {
+                          if (paused || failed) {
+                            notifier.resume();
+                          } else {
+                            notifier.start(plan.slug);
+                          }
+                        },
+                ),
+              ),
+              /* PAUSE STOPS BEFORE THE NEXT SUBJECT, and the label says so
+                 rather than pretending it stops instantly. One subject's
+                 pack is one request; abandoning it mid-flight would throw
+                 away data the student has already paid for. */
+              if (running) ...[
+                const SizedBox(width: Gap.sm),
+                OutlinedButton.icon(
+                  onPressed: notifier.pause,
+                  icon: const Icon(Icons.pause_rounded, size: 18),
+                  label: const Text('Pause'),
+                ),
+              ],
+            ],
+          ),
+          if (running)
+            Padding(
+              padding: const EdgeInsets.only(top: Gap.xs),
+              child: Text(
+                'Pause finishes the subject it is on, then stops.',
+                style: LipType.caption.copyWith(color: c.text3),
+              ),
+            ),
+          if (!online && !nothingToDo)
+            Padding(
+              padding: const EdgeInsets.only(top: Gap.xs),
+              child: Text(
+                'Downloading needs a connection.',
+                style: LipType.caption.copyWith(color: c.text3),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmRemove(
+    BuildContext context,
+    WidgetRef ref,
+    ExamPlan plan,
+  ) async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('Remove ${plan.name}?'),
+        content: Text(
+          '${plan.heldSubjects} subject'
+          '${plan.heldSubjects == 1 ? '' : 's'} leave this phone. You can '
+          'download them again whenever you have a connection.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep them'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (yes == true) {
+      await ref.read(vaultDownloadProvider.notifier).removeExam(plan.slug);
+    }
   }
 }
 
