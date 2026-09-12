@@ -2,6 +2,8 @@ import '../../core/json.dart';
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -123,6 +125,19 @@ class EssentialDownloader extends Notifier<EssentialState> {
   /// Works out whether anything is needed. Cheap, and safe to call on every
   /// launch: one preference read, and one request only when it might be.
   Future<void> check() async {
+    /* THERE IS NOTHING TO DOWNLOAD INTO IN A BROWSER.
+       The vault is a SQLite database; drift's web backend is not shipped
+       here, so openVault() on the web throws UnsupportedError by design. This
+       method then reached for allPacks() inside a `catch (ApiFailure)` that
+       could not catch it, so every web launch raised an unhandled async error
+       — swallowed by the global handler, invisible, and pure noise. The
+       vault's tile is already hidden on the web; this is the other half of
+       that decision, said out loud. */
+    if (kIsWeb) {
+      state = const EssentialState(phase: EssentialPhase.done);
+      return;
+    }
+
     try {
       final prefs = await SharedPreferences.getInstance();
       if (prefs.getBool(_kDoneFlag) == true) {
@@ -194,6 +209,16 @@ class EssentialDownloader extends Notifier<EssentialState> {
          with no signal must reach their dashboard; the download is offered
          again the next time they open it with a connection. */
       state = EssentialState(phase: EssentialPhase.failed, problem: e.message);
+    } catch (e, st) {
+      /* AND ANYTHING ELSE. A database that will not open, a manifest of a
+         shape this build has never seen — none of it may stop a student
+         reaching their dashboard, and none of it may escape as an unhandled
+         error either. */
+      debugPrint('[lockinpoint] essential check: ${describeFailure(e, st)}');
+      state = EssentialState(
+        phase: EssentialPhase.failed,
+        problem: humanError(e, doing: 'check your offline questions'),
+      );
     }
   }
 

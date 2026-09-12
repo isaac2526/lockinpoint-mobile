@@ -6,6 +6,33 @@
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<!-- ══ WHY iOS NEEDS THESE, AND WHAT HAPPENED WITHOUT THEM ══════════
+	     image_picker is used in two places: uploading proof of a bank
+	     transfer on the activation screen, and sending a photo into a
+	     Pointgram room.
+
+	     iOS does not return an error when an app opens the photo library
+	     without a usage string. It TERMINATES THE APP — instantly, with no
+	     dialog and nothing in the log a student could report. And App Store
+	     review rejects the binary before it ever ships.
+
+	     The sentences are what the student reads in the permission dialog,
+	     so they say what the photo is FOR rather than "this app would like
+	     to access your photos".
+	  ═════════════════════════════════════════════════════════════════ -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>LockInPoint needs your photos so you can send a picture of your bank transfer to activate, or share a question with your study room.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>LockInPoint uses your camera so you can photograph a payment receipt or a question instead of finding it in your gallery.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>LockInPoint saves a receipt or a downloaded page to your photos when you ask it to.</string>
+
+	<!-- Answers Apple's export-compliance question once, here, instead of
+	     asking it by hand on every single upload. LockInPoint uses only
+	     HTTPS, which is exempt. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+
 	<key>CFBundleDisplayName</key>
 	<string>Lockinpoint</string>
 	<key>CFBundleExecutable</key>

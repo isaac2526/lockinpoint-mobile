@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:open_filex/open_filex.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../api.dart';
@@ -121,17 +122,37 @@ class DocumentOpener {
     }
   }
 
+  /// Hands a downloaded file to whatever the operating system uses to read
+  /// PDFs.
+  ///
+  /// TWO PLUGINS, BECAUSE ONE DOES NOT EXIST EVERYWHERE. open_filex ships
+  /// android and ios ONLY — its pubspec says so. On macOS, Windows and Linux
+  /// the call throws MissingPluginException, which this class caught and
+  /// reported as "That file could not be opened": so EVERY document, on every
+  /// desktop build, failed identically, with no reason and no way forward.
+  ///
+  /// url_launcher does support all three, and a file:// URI is exactly what
+  /// its desktop implementations are for. Android and iOS keep open_filex,
+  /// because it is the one that can tell "no PDF reader installed" apart from
+  /// "that did not work" — a distinction a student on a cheap Android needs.
   Future<String?> _launch(File f) async {
-    final r = await OpenFilex.open(f.path);
-    if (r.type == ResultType.done) return null;
-    /* NO PDF READER ON THE PHONE is a real state on a cheap Android, and it
-       is the student's to fix — so it is said plainly rather than reported as
-       a failure of the app. */
-    if (r.type == ResultType.noAppToOpen) {
-      return 'No app on this phone can open a PDF. Install a PDF reader and '
-          'try again — the file is already downloaded.';
+    if (Platform.isAndroid || Platform.isIOS) {
+      final r = await OpenFilex.open(f.path);
+      if (r.type == ResultType.done) return null;
+      /* NO PDF READER ON THE PHONE is a real state on a cheap Android, and it
+         is the student's to fix — so it is said plainly rather than reported
+         as a failure of the app. */
+      if (r.type == ResultType.noAppToOpen) {
+        return 'No app on this phone can open a PDF. Install a PDF reader and '
+            'try again — the file is already downloaded.';
+      }
+      return 'That file could not be opened.';
     }
-    return 'That file could not be opened.';
+
+    final ok = await launchUrl(f.uri);
+    if (ok) return null;
+    return 'Nothing on this computer is set up to open that file. It is '
+        'saved at ${f.path} if you want to open it yourself.';
   }
 }
 
