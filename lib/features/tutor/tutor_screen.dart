@@ -1,6 +1,7 @@
 import '../../core/json.dart';
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -335,10 +336,7 @@ class _TutorScreenState extends ConsumerState<TutorScreen> {
                       ),
                       itemCount: _turns.length + (_busy ? 1 : 0),
                       itemBuilder: (_, i) => i == _turns.length
-                          ? const Padding(
-                              padding: EdgeInsets.only(bottom: Gap.md),
-                              child: LipSkeleton(height: 60),
-                            )
+                          ? const _Thinking()
                           : _Bubble(turn: _turns[i]),
                     ),
             ),
@@ -398,6 +396,121 @@ class _TutorScreenState extends ConsumerState<TutorScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// ===========================================================================
+/// LUMI, THINKING
+///
+/// A grey rectangle sat here. It is what every list in this app shows while
+/// a row loads, and in a conversation it says the wrong thing entirely: a
+/// student cannot tell "she is working on it" from "this screen is broken".
+///
+/// So it is a bubble on her side of the conversation, with her name on it and
+/// three dots that move. THE DOTS ARE THE POINT — a still image after four
+/// seconds looks stuck, and Lumi takes four seconds on a hard question.
+///
+/// The line under the dots changes as the wait grows, because a wait that is
+/// ACKNOWLEDGED is a different experience from a wait that is not. Nothing
+/// here is a lie: it does not claim to know what she is doing, only how long
+/// she has been at it.
+/// ===========================================================================
+class _Thinking extends StatefulWidget {
+  const _Thinking();
+
+  @override
+  State<_Thinking> createState() => _ThinkingState();
+}
+
+class _ThinkingState extends State<_Thinking>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  )..repeat();
+
+  /// How long she has been thinking, in whole seconds. Only used to choose
+  /// the line, so it ticks once a second rather than every frame.
+  int _seconds = 0;
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _seconds++);
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    _c.dispose();
+    super.dispose();
+  }
+
+  String get _line {
+    if (_seconds < 3) return 'Lumi is thinking…';
+    if (_seconds < 8) return 'Working through it…';
+    if (_seconds < 20) return 'This one needs a moment. Still going.';
+    return 'Still going — a long answer takes longer.';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.lip;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Gap.md),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: GlassSurface(
+          tier: GlassTier.raised,
+          padding: const EdgeInsets.symmetric(
+            horizontal: Gap.md,
+            vertical: Gap.sm,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedBuilder(
+                animation: _c,
+                builder: (context, _) => Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < 3; i++)
+                      Padding(
+                        padding: EdgeInsets.only(right: i == 2 ? 0 : 4),
+                        child: Opacity(
+                          /* Each dot a third of a cycle behind the last, so
+                             the row reads as a wave rather than a blink. */
+                          opacity:
+                              0.25 +
+                              0.75 *
+                                  (0.5 +
+                                      0.5 *
+                                          math.sin(
+                                            (_c.value - i / 3) * 2 * math.pi,
+                                          )),
+                          child: Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: c.hues.violet.ink,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: Gap.md),
+              Text(_line, style: LipType.caption.copyWith(color: c.text3)),
+            ],
+          ),
         ),
       ),
     );
