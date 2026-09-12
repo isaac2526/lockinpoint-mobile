@@ -3,6 +3,7 @@ import '../../core/json.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
+import '../../core/smart_cache.dart';
 
 /// ===========================================================================
 /// THEORY AND PRACTICAL
@@ -189,9 +190,12 @@ final theoryExamsProvider = FutureProvider.family<List<TheoryExam>, String>((
   ref,
   kind,
 ) async {
-  final res = await ref
-      .read(apiProvider)
-      .get('/api/mobile/theory', query: {'kind': kind});
+  final res = (await readCached(
+    ref,
+    key: 'lip.theory.exams.$kind',
+    path: '/api/mobile/theory',
+    query: {'kind': kind},
+  )).value;
   return (asList(res['exams']))
       .whereType<Map>()
       .map((m) => TheoryExam.from(m.cast<String, dynamic>()))
@@ -204,15 +208,12 @@ final theorySubjectsProvider =
       ref,
       key,
     ) async {
-      final res = await ref
-          .read(apiProvider)
-          .get(
-            '/api/mobile/theory',
-            query: {
-              'kind': key.kind,
-              if (key.exam.isNotEmpty) 'exam': key.exam,
-            },
-          );
+      final res = (await readCached(
+        ref,
+        key: 'lip.theory.subjects.${key.kind}.${key.exam}',
+        path: '/api/mobile/theory',
+        query: {'kind': key.kind, if (key.exam.isNotEmpty) 'exam': key.exam},
+      )).value;
       return (asList(res['subjects']))
           .whereType<Map>()
           .map(
@@ -234,12 +235,12 @@ final theoryShelfProvider =
       ref,
       key,
     ) async {
-      final res = await ref
-          .read(apiProvider)
-          .get(
-            '/api/mobile/theory',
-            query: {'subject': key.subject, 'kind': key.kind},
-          );
+      final res = (await readCached(
+        ref,
+        key: 'lip.theory.shelf.${key.kind}.${key.subject}',
+        path: '/api/mobile/theory',
+        query: {'subject': key.subject, 'kind': key.kind},
+      )).value;
       return TheoryShelf(
         sessions: (asList(res['sessions']))
             .whereType<Map>()
@@ -259,16 +260,12 @@ final theoryTopicProvider =
       List<TheoryQuestion>,
       ({String subject, String kind, String topic})
     >((ref, key) async {
-      final res = await ref
-          .read(apiProvider)
-          .get(
-            '/api/mobile/theory',
-            query: {
-              'subject': key.subject,
-              'kind': key.kind,
-              'topic': key.topic,
-            },
-          );
+      final res = (await readCached(
+        ref,
+        key: 'lip.theory.topic.${key.kind}.${key.subject}.${key.topic}',
+        path: '/api/mobile/theory',
+        query: {'subject': key.subject, 'kind': key.kind, 'topic': key.topic},
+      )).value;
       return asMapList(res['questions']).map(TheoryQuestion.from).toList();
     });
 
@@ -278,9 +275,16 @@ final theorySessionProvider =
       ref,
       id,
     ) async {
-      final res = await ref
-          .read(apiProvider)
-          .get('/api/mobile/theory', query: {'session': id});
+      /* A SESSION READ ONCE IS READABLE FOR EVER. This is the one that
+         matters most on this screen: a student who opened Tutor Bello's
+         walked solution last night on wifi should be able to revise from it
+         on the bus, without having had to know in advance to keep it. */
+      final res = (await readCached(
+        ref,
+        key: 'lip.theory.session.$id',
+        path: '/api/mobile/theory',
+        query: {'session': id},
+      )).value;
       final n = asMap(res['session']);
       return (
         title: asText(n['title'], 'Session'),
@@ -293,16 +297,16 @@ final theoryPaperProvider =
       List<TheoryQuestion>,
       ({String subject, String kind, int year})
     >((ref, key) async {
-      final res = await ref
-          .read(apiProvider)
-          .get(
-            '/api/mobile/theory',
-            query: {
-              'subject': key.subject,
-              'kind': key.kind,
-              'year': '${key.year}',
-            },
-          );
+      final res = (await readCached(
+        ref,
+        key: 'lip.theory.paper.${key.kind}.${key.subject}.${key.year}',
+        path: '/api/mobile/theory',
+        query: {
+          'subject': key.subject,
+          'kind': key.kind,
+          'year': '${key.year}',
+        },
+      )).value;
       return asMapList(res['questions']).map(TheoryQuestion.from).toList();
     });
 

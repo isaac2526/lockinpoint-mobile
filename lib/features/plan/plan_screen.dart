@@ -44,6 +44,15 @@ class PlanScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Study plan')),
       body: SafeArea(
         child: plan.when(
+          /* AN ERROR WHILE RELOADING IS STILL AN ERROR.
+             An AsyncValue can be in error AND loading at the same time, and
+             `when` looks at loading FIRST — so a screen that failed to load sat
+             on a pulsing skeleton for ever while the real message ("No
+             connection") waited in a state nothing ever drew. These two flags
+             say: if we already know something, show it; a reload is not a reason
+             to blank the screen or throw away a good answer. */
+          skipLoadingOnReload: true,
+          skipLoadingOnRefresh: true,
           loading: () => const Padding(
             padding: EdgeInsets.all(Gap.lg),
             child: LipSkeleton(height: 240),
@@ -160,6 +169,8 @@ class _NoPlanYetState extends ConsumerState<_NoPlanYet> {
           builder: (context, ref, _) => ref
               .watch(_planExamsProvider)
               .when(
+                skipLoadingOnReload: true,
+                skipLoadingOnRefresh: true,
                 loading: () => const LipSkeleton(height: 44),
                 error: (e, _) => LipError(
                   message: humanError(e, doing: 'load the exams'),
@@ -192,6 +203,8 @@ class _NoPlanYetState extends ConsumerState<_NoPlanYet> {
             builder: (context, ref, _) => ref
                 .watch(_planSubjectsProvider(_examSlug!))
                 .when(
+                  skipLoadingOnReload: true,
+                  skipLoadingOnRefresh: true,
                   loading: () => const LipSkeleton(height: 88),
                   error: (e, _) => LipError(
                     message: humanError(e, doing: 'load the subjects'),

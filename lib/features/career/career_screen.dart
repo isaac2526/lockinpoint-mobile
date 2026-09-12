@@ -137,6 +137,15 @@ class _CourseSearchState extends ConsumerState<_CourseSearch> {
                       'published.',
                 )
               : offers.when(
+                  /* AN ERROR WHILE RELOADING IS STILL AN ERROR.
+                   An AsyncValue can be in error AND loading at the same time, and
+                   `when` looks at loading FIRST — so a screen that failed to load sat
+                   on a pulsing skeleton for ever while the real message ("No
+                   connection") waited in a state nothing ever drew. These two flags
+                   say: if we already know something, show it; a reload is not a reason
+                   to blank the screen or throw away a good answer. */
+                  skipLoadingOnReload: true,
+                  skipLoadingOnRefresh: true,
                   loading: () => const Padding(
                     padding: EdgeInsets.all(Gap.lg),
                     child: LipSkeleton(height: 200),
@@ -240,6 +249,8 @@ class _Careers extends ConsumerWidget {
     final shelf = ref.watch(careerShelfProvider(''));
 
     return shelf.when(
+      skipLoadingOnReload: true,
+      skipLoadingOnRefresh: true,
       loading: () => const Padding(
         padding: EdgeInsets.all(Gap.lg),
         child: LipSkeleton(height: 220),
@@ -327,6 +338,8 @@ class _CareerDetail extends ConsumerWidget {
       appBar: AppBar(title: Text(title)),
       body: SafeArea(
         child: career.when(
+          skipLoadingOnReload: true,
+          skipLoadingOnRefresh: true,
           loading: () => const Padding(
             padding: EdgeInsets.all(Gap.lg),
             child: LipSkeleton(height: 280),
@@ -408,6 +421,8 @@ class _Schools extends ConsumerWidget {
     final shelf = ref.watch(careerShelfProvider(''));
 
     return shelf.when(
+      skipLoadingOnReload: true,
+      skipLoadingOnRefresh: true,
       loading: () => const Padding(
         padding: EdgeInsets.all(Gap.lg),
         child: LipSkeleton(height: 220),
@@ -490,6 +505,8 @@ class _InstitutionDetail extends ConsumerWidget {
       appBar: AppBar(title: const Text('Institution')),
       body: SafeArea(
         child: inst.when(
+          skipLoadingOnReload: true,
+          skipLoadingOnRefresh: true,
           loading: () => const Padding(
             padding: EdgeInsets.all(Gap.lg),
             child: LipSkeleton(height: 300),

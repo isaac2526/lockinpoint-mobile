@@ -3,6 +3,7 @@ import '../../core/json.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
+import '../../core/smart_cache.dart';
 
 /// ===========================================================================
 /// THE CLASSROOM
@@ -69,8 +70,21 @@ List<Material> _materials(Object? raw, {String titleKey = 'title'}) =>
         )
         .toList();
 
+/* ═══ THE CLASSROOM, OFF SIGNAL ═══════════════════════════════════════════
+   Every one of these went straight to the network, so a student on a bus
+   could not so much as SEE the list of subjects whose notes they had already
+   kept on the phone. The shelf was an error card, and the material behind it
+   — already downloaded, already theirs — was unreachable through it.
+
+   Each read now keeps its last good answer. The materials themselves were
+   always openable offline once kept; what was missing was the way IN. */
+
 final classroomExamsProvider = FutureProvider<List<ExamRef>>((ref) async {
-  final res = await ref.read(apiProvider).get('/api/mobile/classroom');
+  final res = (await readCached(
+    ref,
+    key: 'lip.classroom.exams',
+    path: '/api/mobile/classroom',
+  )).value;
   return (asList(res['exams']))
       .whereType<Map>()
       .map((m) => ExamRef(asText(m['slug']), asText(m['name'])))
@@ -79,9 +93,12 @@ final classroomExamsProvider = FutureProvider<List<ExamRef>>((ref) async {
 
 final classroomSubjectsProvider =
     FutureProvider.family<List<SubjectRef>, String>((ref, examSlug) async {
-      final res = await ref
-          .read(apiProvider)
-          .get('/api/mobile/classroom', query: {'exam': examSlug});
+      final res = (await readCached(
+        ref,
+        key: 'lip.classroom.exam.$examSlug',
+        path: '/api/mobile/classroom',
+        query: {'exam': examSlug},
+      )).value;
       return (asList(res['subjects']))
           .whereType<Map>()
           .map((m) => SubjectRef(asText(m['id']), asText(m['name'])))
@@ -92,9 +109,12 @@ final subjectShelfProvider = FutureProvider.family<SubjectShelf, String>((
   ref,
   subjectId,
 ) async {
-  final res = await ref
-      .read(apiProvider)
-      .get('/api/mobile/classroom', query: {'subject': subjectId});
+  final res = (await readCached(
+    ref,
+    key: 'lip.classroom.subject.$subjectId',
+    path: '/api/mobile/classroom',
+    query: {'subject': subjectId},
+  )).value;
   return SubjectShelf(
     notes: _materials(res['notes']),
     videos: _materials(res['videos']),
@@ -106,9 +126,16 @@ final noteProvider = FutureProvider.family<Map<String, String>, String>((
   ref,
   noteId,
 ) async {
-  final res = await ref
-      .read(apiProvider)
-      .get('/api/mobile/classroom', query: {'note': noteId});
+  /* A NOTE READ ONCE IS READABLE FOR EVER. This is the one that matters
+     most: a student who opened a note last night on wifi should be able to
+     revise from it on the bus this morning without having had to know, in
+     advance, to press Keep. */
+  final res = (await readCached(
+    ref,
+    key: 'lip.classroom.note.$noteId',
+    path: '/api/mobile/classroom',
+    query: {'note': noteId},
+  )).value;
   final n = res['note'];
   if (n is! Map) throw ApiFailure('That note is not available.');
   return {'title': asText(n['title']), 'body': asText(n['body'])};

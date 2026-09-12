@@ -735,6 +735,15 @@ class _SubjectPicker extends ConsumerWidget {
     final setup = ref.watch(climbSetupProvider);
 
     return setup.when(
+      /* AN ERROR WHILE RELOADING IS STILL AN ERROR.
+         An AsyncValue can be in error AND loading at the same time, and
+         `when` looks at loading FIRST — so a screen that failed to load sat
+         on a pulsing skeleton for ever while the real message ("No
+         connection") waited in a state nothing ever drew. These two flags
+         say: if we already know something, show it; a reload is not a reason
+         to blank the screen or throw away a good answer. */
+      skipLoadingOnReload: true,
+      skipLoadingOnRefresh: true,
       loading: () => const LipSkeleton(height: 90),
       error: (e, _) => LipError(
         message: e is ApiFailure ? e.message : 'Could not load the subjects.',
