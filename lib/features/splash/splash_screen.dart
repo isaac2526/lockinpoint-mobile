@@ -103,7 +103,7 @@ class _LipSplashState extends State<LipSplash> with TickerProviderStateMixin {
                         children: [
                           CustomPaint(
                             size: const Size(132, 132),
-                            painter: _RingPainter(
+                            painter: RingPainter(
                               sweep: _ring.value,
                               arrival: mark.value,
                               color: c.brand,
@@ -111,8 +111,22 @@ class _LipSplashState extends State<LipSplash> with TickerProviderStateMixin {
                             ),
                           ),
                           Transform.scale(
+                            // The overshoot is WANTED here: it is what makes
+                            // the mark look like it lands rather than fades.
                             scale: 0.7 + 0.3 * mark.value,
-                            child: Opacity(opacity: mark.value, child: child),
+                            child: Opacity(
+                              /* CLAMPED, AND THIS WAS A CRASH.
+                                 Motion.spring is Cubic(.2,.9,.25,1.1) and it
+                                 says so in its own doc: it OVERSHOOTS past 1.
+                                 Opacity asserts 0..1, so every debug launch
+                                 threw "opacity >= 0.0 && opacity <= 1.0 is
+                                 not true" partway through the entrance —
+                                 a red screen on the very first frame of the
+                                 app, found by pumping the splash frame by
+                                 frame rather than by looking at it. */
+                              opacity: mark.value.clamp(0.0, 1.0),
+                              child: child,
+                            ),
                           ),
                         ],
                       ),
@@ -206,7 +220,11 @@ class _Rise extends StatelessWidget {
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: t,
     builder: (_, c) => Opacity(
-      opacity: t.value,
+      /* Clamped for the same reason the mark is: this takes ANY animation,
+         and handing it a spring curve — which overshoots by design — would
+         trip Opacity's 0..1 assertion. The next person to reach for a livelier
+         curve here should get a livelier animation, not a red screen. */
+      opacity: t.value.clamp(0.0, 1.0),
       child: Transform.translate(
         offset: Offset(0, 14 * (1 - t.value)),
         child: c,
@@ -219,8 +237,12 @@ class _Rise extends StatelessWidget {
 /// A track with a bright arc travelling around it. The arc grows as the mark
 /// arrives, so the two motions read as one gesture rather than two widgets
 /// animating near each other.
-class _RingPainter extends CustomPainter {
-  const _RingPainter({
+/// Named rather than private ONLY so a test can read `sweep` and prove the
+/// ring is still turning. A CustomPainter repaints without any widget
+/// property changing, so a frozen ring is invisible to every finder — and a
+/// stopped spinner is exactly what a hung app looks like.
+class RingPainter extends CustomPainter {
+  const RingPainter({
     required this.sweep,
     required this.arrival,
     required this.color,
@@ -262,6 +284,6 @@ class _RingPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_RingPainter old) =>
+  bool shouldRepaint(RingPainter old) =>
       old.sweep != sweep || old.arrival != arrival || old.color != color;
 }
