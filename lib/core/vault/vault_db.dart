@@ -254,7 +254,7 @@ class VaultDb extends _$VaultDb {
     required List<Map<String, dynamic>> questions,
     required List<Map<String, dynamic>> passages,
   }) async {
-    final subjectId = pack['subjectId'] as String;
+    final subjectId = asText(pack['subjectId']);
 
     await transaction(() async {
       await (delete(
@@ -278,7 +278,7 @@ class VaultDb extends _$VaultDb {
           vaultQuestions,
           questions.map(
             (q) => VaultQuestion(
-              id: q['id'] as String,
+              id: asText(q['id']),
               subjectId: subjectId,
               question: asText(q['question']),
               optionsJson: jsonEncode(q['options'] ?? const []),
@@ -297,7 +297,7 @@ class VaultDb extends _$VaultDb {
           vaultPassages,
           passages.map(
             (p) => VaultPassage(
-              id: p['id'] as String,
+              id: asText(p['id']),
               title: asText(p['title']),
               body: asText(p['body']),
             ),

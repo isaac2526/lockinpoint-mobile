@@ -505,7 +505,7 @@ class Api {
       if (data['ok'] == false) {
         throw ApiFailure(
           (asTextOrNull(data['message']))?.trim().isNotEmpty == true
-              ? data['message'] as String
+              ? asText(data['message'])
               : 'That did not work. Please try again.',
           detail: '$where → $code',
           data: data,
@@ -580,9 +580,9 @@ RefreshExchange backendRefreshExchange(Dio dio) => (refreshToken) async {
     }
   }
   if (code == 401) {
-    final why = (data is Map && data['message'] is String)
-        ? data['message'] as String
-        : 'the session has ended';
+    final why =
+        asTextOrNull(data is Map ? data['message'] : null) ??
+        'the session has ended';
     return RefreshRefused(why);
   }
   if (code == 404) {

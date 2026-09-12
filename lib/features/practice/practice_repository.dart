@@ -28,7 +28,7 @@ class ExamOption {
   final String fullName;
 
   static ExamOption fromJson(Map<String, dynamic> j) => ExamOption(
-    id: j['id'] as String,
+    id: asText(j['id']),
     slug: asText(j['slug']),
     shortName: asText(j['short_name']),
     fullName: asText(j['full_name']),
@@ -47,7 +47,7 @@ class SubjectOption {
   final bool compulsory;
 
   static SubjectOption fromJson(Map<String, dynamic> j) => SubjectOption(
-    id: j['id'] as String,
+    id: asText(j['id']),
     name: asText(j['name']),
     compulsory: j['compulsory'] == true,
   );
@@ -120,22 +120,22 @@ class ServedQuestion {
   String? mediaUrl(String slot) {
     final m = media?[slot];
     if (m is Map && m['type'] == 'image' && m['url'] is String) {
-      return m['url'] as String;
+      return asText(m['url']);
     }
     return null;
   }
 
   static ServedQuestion fromJson(Map<String, dynamic> j) => ServedQuestion(
-    id: j['id'] as String,
+    id: asText(j['id']),
     question: asText(j['question']),
-    options: ((j['options'] as List?) ?? const []).cast<String>(),
-    letters: ((j['letters'] as List?) ?? const []).cast<String>(),
+    options: asTextList(j['options']),
+    letters: asTextList(j['letters']),
     passageId: asTextOrNull(j['passage_id']),
     section: asTextOrNull(j['section']),
     year: asIntOrNull(j['year']),
     answer: (asTextOrNull(j['answer']))?.toUpperCase(),
     explanation: asTextOrNull(j['explanation']),
-    media: j['media'] as Map<String, dynamic>?,
+    media: asMapOrNull(j['media']),
   );
 }
 
@@ -215,7 +215,7 @@ class Correction {
   String? mediaUrl(String slot) {
     final m = media?[slot];
     if (m is Map && m['type'] == 'image' && m['url'] is String) {
-      return m['url'] as String;
+      return asText(m['url']);
     }
     return null;
   }
@@ -223,12 +223,12 @@ class Correction {
   static Correction fromJson(Map<String, dynamic> j) => Correction(
     id: asText(j['id']),
     question: asText(j['question']),
-    options: ((j['options'] as List?) ?? const []).cast<String>(),
+    options: asTextList(j['options']),
     chosen: (asText(j['chosen'])).toUpperCase(),
     right: (asText(j['right'])).toUpperCase(),
     isRight: j['isRight'] == true,
     explanation: asText(j['explanation']),
-    media: j['media'] as Map<String, dynamic>?,
+    media: asMapOrNull(j['media']),
   );
 }
 
@@ -256,7 +256,7 @@ class PracticeRepository {
 
   Future<List<ExamOption>> exams() async {
     final res = await _api.get('/api/public/exam-tree');
-    return ((res['exams'] as List?) ?? const [])
+    return (asList(res['exams']))
         .cast<Map<String, dynamic>>()
         .map(ExamOption.fromJson)
         .toList();
@@ -267,7 +267,7 @@ class PracticeRepository {
       '/api/public/exam-tree',
       query: {'subjects': examSlug},
     );
-    return ((res['subjects'] as List?) ?? const [])
+    return (asList(res['subjects']))
         .cast<Map<String, dynamic>>()
         .map(SubjectOption.fromJson)
         .toList();
@@ -278,22 +278,21 @@ class PracticeRepository {
       '/api/public/exam-tree',
       query: {'chooser': subjectId},
     );
-    final exam = (res['exam'] as Map?)?.cast<String, dynamic>() ?? const {};
-    final subject =
-        (res['subject'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final exam = asMap(res['exam']);
+    final subject = asMap(res['subject']);
     return ChooserData(
       subjectName: asText(subject['name']),
       examSlug: asText(exam['slug']),
       examShort: asText(exam['short_name']),
-      years: ((res['years'] as List?) ?? const [])
+      years: (asList(res['years']))
           .cast<Map<String, dynamic>>()
-          .map((y) => YearCount((y['year'] as num).toInt(), asInt(y['n'])))
+          .map((y) => YearCount(asInt(y['year']), asInt(y['n'])))
           .toList(),
-      topics: ((res['topics'] as List?) ?? const [])
+      topics: (asList(res['topics']))
           .cast<Map<String, dynamic>>()
           .map(
             (t) => TopicCount(
-              t['topic_id'] as String,
+              asText(t['topic_id']),
               asText(t['name']),
               asInt(t['n']),
               asInt(t['n_tutorial']),
@@ -343,21 +342,17 @@ class PracticeRepository {
       '/api/attempts',
       body: {'action': 'resume', 'attemptId': attemptId},
     );
-    final progress =
-        (res['progress'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final progress = asMap(res['progress']);
     return _sitting(
       res,
       asText(res['label'], 'Practice'),
       initialIndex: asInt(progress['idx']),
-      initialAnswers: ((progress['answers'] as Map?) ?? const {}).map(
-        (k, v) => MapEntry(k.toString(), v.toString()),
-      ),
-      initialChecked: ((progress['checked'] as Map?) ?? const {}).map(
-        (k, v) => MapEntry(k.toString(), v == true),
-      ),
-      initialFlags: ((progress['flags'] as Map?) ?? const {}).map(
-        (k, v) => MapEntry(k.toString(), v == true),
-      ),
+      initialAnswers: (asMap(progress['answers']))
+          .map((k, v) => MapEntry(k.toString(), v.toString())),
+      initialChecked: (asMap(progress['checked']))
+          .map((k, v) => MapEntry(k.toString(), v == true)),
+      initialFlags: (asMap(progress['flags']))
+          .map((k, v) => MapEntry(k.toString(), v == true)),
     );
   }
 
@@ -369,21 +364,18 @@ class PracticeRepository {
     Map<String, bool> initialChecked = const {},
     Map<String, bool> initialFlags = const {},
   }) => Sitting(
-    attemptId: res['attemptId'] as String,
+    attemptId: asText(res['attemptId']),
     mode: asText(res['mode'], 'practice'),
     label: label,
     duration: asInt(res['duration']),
-    questions: ((res['questions'] as List?) ?? const [])
+    questions: (asList(res['questions']))
         .cast<Map<String, dynamic>>()
         .map(ServedQuestion.fromJson)
         .toList(),
-    passages: ((res['passages'] as Map?) ?? const {}).map(
+    passages: (asMap(res['passages'])).map(
       (k, v) => MapEntry(
         k.toString(),
-        Passage(
-          title: (v as Map)['title'] as String? ?? '',
-          body: asText(v['body']),
-        ),
+        Passage(title: asText(asMap(v)['title']), body: asText(v['body'])),
       ),
     ),
     initialIndex: initialIndex,
@@ -425,12 +417,12 @@ class PracticeRepository {
       '/api/attempts',
       body: {'action': 'submit', 'attemptId': attemptId, 'answers': answers},
     );
-    final score = (res['score'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final score = asMap(res['score']);
     return SubmitResult(
       correct: asInt(score['correct']),
       total: asInt(score['total']),
       overall: asInt(score['overall']),
-      perSubject: ((score['perSubject'] as List?) ?? const [])
+      perSubject: (asList(score['perSubject']))
           .cast<Map<String, dynamic>>()
           .map(
             (p) => (
@@ -440,7 +432,7 @@ class PracticeRepository {
             ),
           )
           .toList(),
-      corrections: ((res['corrections'] as List?) ?? const [])
+      corrections: (asList(res['corrections']))
           .cast<Map<String, dynamic>>()
           .map(Correction.fromJson)
           .toList(),

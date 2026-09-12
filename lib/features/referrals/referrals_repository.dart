@@ -30,7 +30,7 @@ class Money {
     if (m is! Map) return const Money('', 0, '');
     return Money(
       asText(m['currency']),
-      (m['amount'] as num?) ?? 0,
+      asDouble(m['amount']),
       asText(m['label']),
     );
   }
@@ -80,8 +80,8 @@ class Referrals {
 
 final referralsProvider = FutureProvider<Referrals>((ref) async {
   final res = await ref.read(apiProvider).get('/api/referrals');
-  final balanceNgn = (res['balanceNgn'] as num?) ?? 0;
-  final minNgn = (res['minNgn'] as num?) ?? 0;
+  final balanceNgn = asDouble(res['balanceNgn']);
+  final minNgn = asDouble(res['minNgn']);
   return Referrals(
     code: asText(res['code']),
     joined: (asIntOrNull(res['joined'])) ?? 0,
@@ -91,12 +91,11 @@ final referralsProvider = FutureProvider<Referrals>((ref) async {
     balance: Money.from(res['balance']),
     earned: Money.from(res['earned']),
     canWithdraw: balanceNgn >= minNgn && minNgn > 0,
-    withdrawals: ((res['withdrawals'] as List?) ?? const [])
-        .whereType<Map>()
+    withdrawals: asMapList(res['withdrawals'])
         .map(
           (w) => Withdrawal(
             amount:
-                (w['amount_local'] as num?) ?? (w['amount_ngn'] as num?) ?? 0,
+                asDoubleOrNull(w['amount_local']) ?? asDouble(w['amount_ngn']),
             currency: asText(w['currency'], 'NGN'),
             status: asText(w['status'], 'pending'),
             at: DateTime.tryParse('${w['created_at'] ?? ''}'),

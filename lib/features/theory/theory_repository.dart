@@ -138,7 +138,7 @@ final theoryExamsProvider = FutureProvider.family<List<TheoryExam>, String>((
   final res = await ref
       .read(apiProvider)
       .get('/api/mobile/theory', query: {'kind': kind});
-  return ((res['exams'] as List?) ?? const [])
+  return (asList(res['exams']))
       .whereType<Map>()
       .map((m) => TheoryExam.from(m.cast<String, dynamic>()))
       .toList();
@@ -159,7 +159,7 @@ final theorySubjectsProvider =
               if (key.exam.isNotEmpty) 'exam': key.exam,
             },
           );
-      return ((res['subjects'] as List?) ?? const [])
+      return (asList(res['subjects']))
           .whereType<Map>()
           .map(
             (m) => TheorySubject(
@@ -187,11 +187,11 @@ final theoryShelfProvider =
             query: {'subject': key.subject, 'kind': key.kind},
           );
       return TheoryShelf(
-        sessions: ((res['sessions'] as List?) ?? const [])
+        sessions: (asList(res['sessions']))
             .whereType<Map>()
             .map((m) => TheorySession.from(m.cast<String, dynamic>()))
             .toList(),
-        years: ((res['years'] as List?) ?? const [])
+        years: (asList(res['years']))
             .whereType<Map>()
             .map((m) => (year: asInt(m['year']), n: asInt(m['n'])))
             .toList(),
@@ -207,10 +207,10 @@ final theorySessionProvider =
       final res = await ref
           .read(apiProvider)
           .get('/api/mobile/theory', query: {'session': id});
-      final n = (res['session'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final n = asMap(res['session']);
       return (
         title: asText(n['title'], 'Session'),
-        html: n['body_html'] as String? ?? asText(n['body']),
+        html: asTextOrNull(n['body_html']) ?? asText(n['body']),
       );
     });
 
@@ -229,15 +229,15 @@ final theoryPaperProvider =
               'year': '${key.year}',
             },
           );
-      return ((res['questions'] as List?) ?? const [])
+      return (asList(res['questions']))
           .whereType<Map>()
           .map(
             (m) => TheoryQuestion(
               id: asText(m['id']),
               number: asText(m['number']),
               html:
-                  m['question_html'] as String? ??
-                  m['question'] as String? ??
+                  asTextOrNull(m['question_html']) ??
+                  asTextOrNull(m['question']) ??
                   '',
               marks: asIntOrNull(m['marks']),
             ),
@@ -252,7 +252,7 @@ Future<TheoryAnswer> revealAnswer(Api api, String questionId) async {
     query: {'answer': questionId},
   );
   return TheoryAnswer(
-    html: res['answer_html'] as String? ?? asText(res['answer']),
+    html: asTextOrNull(res['answer_html']) ?? asText(res['answer']),
     hasAnswer: res['hasAnswer'] == true,
     marks: asIntOrNull(res['marks']),
   );

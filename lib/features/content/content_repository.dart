@@ -55,7 +55,7 @@ Future<Map<String, dynamic>> _read(Ref ref, _Cached what) async {
     // Serve what we have, then quietly bring it up to date.
     Future.microtask(fresh);
     try {
-      return jsonDecode(cached) as Map<String, dynamic>;
+      return asMap(jsonDecode(cached));
     } catch (_) {
       // A corrupt cache is thrown away, not fought with.
     }
@@ -108,7 +108,7 @@ final supportContactsProvider = FutureProvider<List<SupportContact>>((
   ref,
 ) async {
   final j = await _read(ref, _contacts);
-  final list = (j['contacts'] as List?) ?? const [];
+  final list = asList(j['contacts']);
   return list
       .whereType<Map>()
       .map((m) => SupportContact.from(m.cast<String, dynamic>()))
@@ -138,7 +138,7 @@ final carouselProvider = FutureProvider<List<Map<String, dynamic>>>((
   ref,
 ) async {
   final j = await _read(ref, _carousel);
-  return ((j['slides'] as List?) ?? const [])
+  return (asList(j['slides']))
       .whereType<Map>()
       .map((m) => m.cast<String, dynamic>())
       .toList();
@@ -151,7 +151,7 @@ final featureTilesProvider = FutureProvider<List<Map<String, dynamic>>>((
   ref,
 ) async {
   final j = await _read(ref, _tiles);
-  return ((j['tiles'] as List?) ?? const [])
+  return (asList(j['tiles']))
       .whereType<Map>()
       .map((m) => m.cast<String, dynamic>())
       .toList();

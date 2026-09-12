@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/shell.dart';
+import '../../app/theme_controller.dart';
 import '../../core/api.dart';
 import '../../core/update_check.dart';
 import '../../design/components.dart';
@@ -51,7 +52,7 @@ class DashboardController extends AsyncNotifier<Map<String, dynamic>> {
     if (cached != null) {
       Future.microtask(refresh);
       try {
-        return jsonDecode(cached) as Map<String, dynamic>;
+        return asMap(jsonDecode(cached));
       } catch (_) {
         // A corrupt snapshot is thrown away, not fought with.
       }
@@ -194,11 +195,11 @@ class _Content extends ConsumerWidget {
       );
     }
 
-    final student = (data['student'] as Map).cast<String, dynamic>();
+    final student = asMap(data['student']);
     /* `counts` is the size of the platform and no longer leads this screen —
        see the note on the stat row below. `you` is this student's own state. */
-    final you = ((data['you'] as Map?) ?? const {}).cast<String, dynamic>();
-    final resume = data['resume'] as Map?;
+    final you = (asMap(data['you'])).cast<String, dynamic>();
+    final resume = asMapOrNull(data['resume']);
 
     final name = asText(student['name'], 'Champion');
     final streak = asInt(student['streak']);
@@ -233,6 +234,17 @@ class _Content extends ConsumerWidget {
               const SizedBox(width: Gap.sm),
               const LipWordmark(size: 24),
               const Spacer(),
+              /* THE THEME CONTROL, BESIDE NOTIFICATIONS — asked for in those
+                 words. It used to be two bare text buttons at the bottom of
+                 this page, which is where nobody looks for a setting.
+
+                 THREE CHOICES, NOT A TOGGLE. A two-way switch cannot express
+                 "follow my phone", and that is the option most people
+                 actually want once they have one. A new install still opens
+                 in LIGHT — the brand's first impression is the white face —
+                 and the choice is remembered from then on. */
+              const _ThemeButton(),
+              const SizedBox(width: Gap.xs),
               const _BellButton(),
               const SizedBox(width: Gap.xs),
               _ProfileButton(initial: name.isEmpty ? '?' : name[0]),
@@ -318,7 +330,7 @@ class _Content extends ConsumerWidget {
         ),
         if ((asInt(you['dueToday'])) > 0) ...[
           const SizedBox(height: Gap.md),
-          _DueToday(count: (you['dueToday'] as num).toInt()),
+          _DueToday(count: asInt(you['dueToday'])),
         ],
         const SizedBox(height: Gap.xl),
 
@@ -859,6 +871,66 @@ class _UpdateBanner extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Light / Dark / Follow my phone, from the top bar.
+///
+/// A menu rather than a cycling toggle: a student should be able to SEE which
+/// of the three is active and pick another directly, instead of tapping until
+/// the right one comes round.
+class _ThemeButton extends ConsumerWidget {
+  const _ThemeButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
+    final mode = ref.watch(themeControllerProvider).value ?? ThemeMode.light;
+
+    return PopupMenuButton<ThemeMode>(
+      tooltip: 'Appearance',
+      // Anchored below so the menu never covers the bar it came from, and
+      // never lands under a neighbouring card.
+      position: PopupMenuPosition.under,
+      icon: Icon(
+        switch (mode) {
+          ThemeMode.light => Icons.light_mode_rounded,
+          ThemeMode.dark => Icons.dark_mode_rounded,
+          ThemeMode.system => Icons.brightness_auto_rounded,
+        },
+        size: 21,
+        color: c.text2,
+      ),
+      onSelected: (m) => ref.read(themeControllerProvider.notifier).set(m),
+      itemBuilder: (_) => [
+        for (final (m, icon, label) in const [
+          (ThemeMode.light, Icons.light_mode_rounded, 'Light'),
+          (ThemeMode.dark, Icons.dark_mode_rounded, 'Dark'),
+          // Said in plain words. "System" is a word an engineer chose.
+          (ThemeMode.system, Icons.brightness_auto_rounded, 'Follow my phone'),
+        ])
+          PopupMenuItem<ThemeMode>(
+            value: m,
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: m == mode ? c.brand : c.text3),
+                const SizedBox(width: Gap.md),
+                Text(
+                  label,
+                  style: LipType.body.copyWith(
+                    color: m == mode ? c.brand : c.text1,
+                    fontWeight: m == mode ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+                if (m == mode) ...[
+                  const Spacer(),
+                  Icon(Icons.check_rounded, size: 16, color: c.brand),
+                ],
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

@@ -102,8 +102,7 @@ class _Content extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.lip;
-    final student =
-        (data['student'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final student = asMap(data['student']);
 
     final first = asText(student['name'], 'Champion');
     final surname = asText(student['surname']);

@@ -57,7 +57,7 @@ class SubjectShelf {
 }
 
 List<Material> _materials(Object? raw, {String titleKey = 'title'}) =>
-    ((raw as List?) ?? const [])
+    (asList(raw))
         .whereType<Map>()
         .map(
           (m) => Material(
@@ -71,7 +71,7 @@ List<Material> _materials(Object? raw, {String titleKey = 'title'}) =>
 
 final classroomExamsProvider = FutureProvider<List<ExamRef>>((ref) async {
   final res = await ref.read(apiProvider).get('/api/mobile/classroom');
-  return ((res['exams'] as List?) ?? const [])
+  return (asList(res['exams']))
       .whereType<Map>()
       .map((m) => ExamRef(asText(m['slug']), asText(m['name'])))
       .toList();
@@ -82,7 +82,7 @@ final classroomSubjectsProvider =
       final res = await ref
           .read(apiProvider)
           .get('/api/mobile/classroom', query: {'exam': examSlug});
-      return ((res['subjects'] as List?) ?? const [])
+      return (asList(res['subjects']))
           .whereType<Map>()
           .map((m) => SubjectRef(asText(m['id']), asText(m['name'])))
           .toList();

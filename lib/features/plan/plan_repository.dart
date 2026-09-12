@@ -32,7 +32,7 @@ class PlanItem {
     label: asText(m['label']),
     kind: asText(m['kind'], 'practice'),
     targetQuestions:
-        (m['targetQuestions'] ?? m['target_questions'] ?? 0) as int? ?? 0,
+        asIntOrNull(m['targetQuestions'] ?? m['target_questions'] ?? 0) ?? 0,
     done: (m['doneAt'] ?? m['done_at']) != null,
   );
 
@@ -102,11 +102,8 @@ final studyPlanProvider = FutureProvider<StudyPlan?>((ref) async {
       '${p['targetDate'] ?? p['target_date'] ?? ''}',
     ),
     minutesPerDay:
-        (p['minutesPerDay'] ?? p['minutes_per_day'] ?? 30) as int? ?? 30,
-    items: ((res['items'] as List?) ?? const [])
-        .whereType<Map>()
-        .map(PlanItem.from)
-        .toList(),
+        asIntOrNull(p['minutesPerDay'] ?? p['minutes_per_day'] ?? 30) ?? 30,
+    items: (asList(res['items'])).whereType<Map>().map(PlanItem.from).toList(),
   );
 });
 

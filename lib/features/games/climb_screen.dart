@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
+import '../../core/json.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
 import '../../design/rich_text.dart';
@@ -246,6 +247,10 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
   String? _picked;
   bool _busy = false;
   Map<String, int>? _classSays;
+
+  /// True when the server flagged the split as an estimate rather than a
+  /// real tally. Shown, never hidden.
+  bool _classIsEstimate = false;
   int _left = 0;
   Timer? _clock;
 
@@ -323,6 +328,7 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
           _picked = null;
           _revealed = null;
           _classSays = null;
+          _classIsEstimate = false;
         });
         _armClock();
       }
@@ -345,12 +351,23 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
       setState(() {
         final st = res['state'];
         if (st is Map) _s = ClimbState.from(st.cast<String, dynamic>());
-        // Ask the class comes back as a distribution; Ask Lumi as a sentence.
-        final dist = res['distribution'] ?? res['class'];
+        /* ASK THE CLASS WAS SPENT AND SHOWED NOTHING.
+           The server answers with `classVote: { percentages, real, sample }`
+           — it has since the lifeline was written. This read `distribution`
+           and `class`, neither of which is ever sent, so the map stayed null,
+           the panel never drew, and the student had burned one of their three
+           lifelines for a blank screen with no error to explain it. */
+        final vote = res['classVote'];
+        final dist = vote is Map ? vote['percentages'] : null;
         if (dist is Map) {
           _classSays = {
-            for (final e in dist.entries) '${e.key}': (e.value as num).toInt(),
+            for (final e in dist.entries) '${e.key}': asInt(e.value),
           };
+          /* The route says outright when fewer than twelve real students have
+             answered: the split is then a weighted estimate leaning correct,
+             and passing that off as the class's real opinion would be a lie
+             the student pays a lifeline for. */
+          _classIsEstimate = vote is Map && vote['real'] == false;
         }
         final hint = res['hint'] ?? res['answer'] ?? res['message'];
         if (hint is String && hint.isNotEmpty) _message = hint;
@@ -482,6 +499,17 @@ class _ClimbScreenState extends ConsumerState<ClimbScreen> {
                       height: 1.45,
                     ),
                   ),
+                  /* SAID OUT LOUD when the split is a weighted estimate
+                     rather than a real tally. The student spent a lifeline
+                     for it; they are owed the truth about what they bought. */
+                  if (_classSays != null && _classIsEstimate) ...[
+                    const SizedBox(height: Gap.md),
+                    Text(
+                      'Too few classmates have answered this one yet — this '
+                      'is an estimate, not the real split.',
+                      style: LipType.label.copyWith(color: c.warning),
+                    ),
+                  ],
                   const SizedBox(height: Gap.lg),
                   ..._s.options.map((o) {
                     final chosen = _picked == o.letter;

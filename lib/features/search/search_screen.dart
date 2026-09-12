@@ -64,7 +64,7 @@ class SearchRepository {
       query: {'q': query.trim(), 'p': '$page'},
     );
     return SearchResults(
-      rows: ((res['rows'] as List?) ?? const [])
+      rows: (asList(res['rows']))
           .cast<Map<String, dynamic>>()
           .map(SearchHit.fromJson)
           .toList(),

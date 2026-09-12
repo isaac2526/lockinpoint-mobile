@@ -98,6 +98,23 @@ double asDouble(Object? v, [double fallback = 0]) {
   return fallback;
 }
 
+/// Anything -> a real number, or null when the field is genuinely absent.
+///
+/// Needed wherever one amount falls back to another: a withdrawal carries
+/// `amount_local` when the student's currency was known at the time and only
+/// `amount_ngn` when it was not. [asDouble] would turn the missing one into
+/// zero and the fallback would never fire, so the student would be shown a
+/// payout of nothing.
+double? asDoubleOrNull(Object? v) {
+  if (v is double) return v.isFinite ? v : null;
+  if (v is num) return v.toDouble();
+  if (v is String) {
+    final d = double.tryParse(v.trim());
+    if (d != null && d.isFinite) return d;
+  }
+  return null;
+}
+
 /// Anything -> true or false.
 ///
 /// A backend may say true, "true", 1, or "1" for the same flag, and has at
@@ -126,6 +143,25 @@ Map<String, dynamic> asMap(Object? v) {
   if (v is Map<String, dynamic>) return v;
   if (v is Map) return v.map((k, val) => MapEntry('$k', val));
   return const {};
+}
+
+/// Anything -> a plain list, WITHOUT touching the entries.
+///
+/// The drop-in replacement for `(x as List?) ?? const []`, which was written
+/// about sixty times in this app and throws the moment the server answers
+/// with an object or an error string where a list was expected — exactly
+/// what an endpoint does when it fails and returns `{"error": ...}`.
+List<Object?> asList(Object? v) => v is List ? v : const [];
+
+/// Anything -> a string map, or null when the object genuinely was not sent.
+///
+/// [asMap] is right when the caller reads fields out of it; this is right
+/// when the caller tests the whole thing for null, because an empty map is
+/// not the same answer as "no media on this question".
+Map<String, dynamic>? asMapOrNull(Object? v) {
+  if (v is Map<String, dynamic>) return v;
+  if (v is Map) return v.map((k, val) => MapEntry('$k', val));
+  return null;
 }
 
 /// Anything -> a list of string maps, with non-map entries DROPPED.

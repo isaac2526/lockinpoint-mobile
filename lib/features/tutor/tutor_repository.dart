@@ -84,7 +84,7 @@ Future<LumiReply> askLumi(
       ok: false,
       text: e.message,
       needActivation: e.data?['needActivation'] == true,
-      coolSeconds: (e.data?['cool'] as num?)?.toInt(),
+      coolSeconds: asIntOrNull(e.data?['cool']),
     );
   }
 }

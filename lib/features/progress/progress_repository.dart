@@ -40,7 +40,7 @@ class Attempt {
     percent: asDouble(j['percent'], 0),
     overall: asIntOrNull(j['overall']),
     isJamb: j['isJamb'] == true,
-    perSubject: ((j['perSubject'] as List?) ?? const [])
+    perSubject: (asList(j['perSubject']))
         .whereType<Map>()
         .map((m) => SubjectScore.from(m.cast<String, dynamic>()))
         .toList(),
@@ -110,18 +110,18 @@ class Progress {
   final String? insight;
 
   static Progress from(Map<String, dynamic> j) {
-    final s = (j['summary'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final s = asMap(j['summary']);
     return Progress(
       sittings: asInt(s['sittings']),
       questions: asInt(s['questions']),
       correct: asInt(s['correct']),
       accuracy: asDouble(s['accuracy'], 0),
       minutes: asInt(s['minutes']),
-      attempts: ((j['attempts'] as List?) ?? const [])
+      attempts: (asList(j['attempts']))
           .whereType<Map>()
           .map((m) => Attempt.from(m.cast<String, dynamic>()))
           .toList(),
-      subjects: ((j['subjects'] as List?) ?? const [])
+      subjects: (asList(j['subjects']))
           .whereType<Map>()
           .map((m) => SubjectScore.from(m.cast<String, dynamic>()))
           .toList(),

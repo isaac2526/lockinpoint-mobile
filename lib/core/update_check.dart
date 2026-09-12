@@ -74,8 +74,7 @@ Future<AppUpdate> checkForUpdate(Api api, {String? platformKey}) async {
 
   try {
     final res = await api.get('/api/public/downloads');
-    for (final p
-        in ((res['platforms'] as List?) ?? const []).whereType<Map>()) {
+    for (final p in (asList(res['platforms'])).whereType<Map>()) {
       if ((asText(p['platform'])).toLowerCase() != want) continue;
 
       /* AN ADMIN CAN TAKE A DOWNLOAD OFFLINE, and a row that is not

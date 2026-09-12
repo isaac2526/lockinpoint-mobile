@@ -78,9 +78,7 @@ class _TutorScreenState extends ConsumerState<TutorScreen> {
     final api = ref.read(apiProvider);
     try {
       final list = await api.get('/api/ai/chats');
-      final chats = ((list['chats'] as List?) ?? const [])
-          .whereType<Map>()
-          .toList();
+      final chats = (asList(list['chats'])).whereType<Map>().toList();
       if (chats.isEmpty || !mounted) return;
       await _open(LumiChat.from(chats.first));
     } on ApiFailure {

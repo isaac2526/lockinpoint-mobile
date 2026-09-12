@@ -148,15 +148,15 @@ class LeaderboardRepository {
       '/api/leaderboard',
       query: {if (scope.isNotEmpty) 'scope': scope},
     );
-    final rows = ((res['rows'] as List?) ?? const [])
+    final rows = (asList(res['rows']))
         .whereType<Map>()
         .map((m) => LadderRow.fromJson(m.cast<String, dynamic>()))
         .toList();
-    final meJson = (res['me'] as Map?)?.cast<String, dynamic>();
+    final meJson = asMapOrNull(res['me']);
     return Ladder(
       rows: rows,
       me: meJson == null ? null : LadderRow.fromJson(meJson),
-      scopes: ((res['scopes'] as List?) ?? const [])
+      scopes: (asList(res['scopes']))
           .whereType<Map>()
           .map((m) => LadderScope.fromJson(m.cast<String, dynamic>()))
           .toList(),

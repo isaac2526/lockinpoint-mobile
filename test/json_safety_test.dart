@@ -86,6 +86,18 @@ void main() {
       expect(asDouble('72.5'), 72.5);
       expect(asDouble(72), 72.0);
     });
+
+    test('asDoubleOrNull tells "absent" apart from "zero"', () {
+      // A withdrawal falls back from amount_local to amount_ngn. If the
+      // missing field read as 0 instead of null the fallback would never
+      // fire and the student would be shown a payout of nothing.
+      expect(asDoubleOrNull(null), isNull);
+      expect(asDoubleOrNull('nonsense'), isNull);
+      expect(asDoubleOrNull(double.nan), isNull);
+      expect(asDoubleOrNull(0), 0.0);
+      // PostgREST sends every numeric column as a STRING to keep precision.
+      expect(asDoubleOrNull('2500.00'), 2500.0);
+    });
   });
 
   group('asBool', () {
@@ -204,6 +216,7 @@ void main() {
       expect(() => asInt(v), returnsNormally);
       expect(() => asIntOrNull(v), returnsNormally);
       expect(() => asDouble(v), returnsNormally);
+      expect(() => asDoubleOrNull(v), returnsNormally);
       expect(() => asBool(v), returnsNormally);
       expect(() => asMap(v), returnsNormally);
       expect(() => asMapList(v), returnsNormally);

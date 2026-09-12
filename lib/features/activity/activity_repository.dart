@@ -58,10 +58,7 @@ final activityProvider = FutureProvider.family<ActivityPage, int>((
       .read(apiProvider)
       .get('/api/mobile/activity', query: {'page': page});
   return ActivityPage(
-    rows: ((res['rows'] as List?) ?? const [])
-        .whereType<Map>()
-        .map(ActivityRow.from)
-        .toList(),
+    rows: (asList(res['rows'])).whereType<Map>().map(ActivityRow.from).toList(),
     total: (asIntOrNull(res['total'])) ?? 0,
     hasMore: res['hasMore'] == true,
   );

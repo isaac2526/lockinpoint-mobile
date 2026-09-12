@@ -62,12 +62,12 @@ class GramGate {
   );
 
   static GramGate fromJson(Map<String, dynamic> j) {
-    final me = (j['me'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final me = asMap(j['me']);
     return GramGate(
       enabled: j['enabled'] != false,
       locked: j['locked'] == true,
       passed: j['passed'] == true,
-      online: ((j['online'] as List?) ?? const [])
+      online: (asList(j['online']))
           .whereType<Map>()
           .map(
             (m) => (

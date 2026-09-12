@@ -40,12 +40,12 @@ class GramRoom {
     unread: (asIntOrNull(m['unread'])) ?? 0,
     last: m['last'] is Map
         ? [
-            (m['last'] as Map)['who'] as String?,
-            (m['last'] as Map)['body'] as String?,
+            asTextOrNull(asMap(m['last'])['who']),
+            asTextOrNull(asMap(m['last'])['body']),
           ].where((s) => s != null && s.isNotEmpty).join(': ')
         : '',
     locked: m['locked'] == true,
-    joinMode: m['join_mode'] as String? ?? asText(m['joinMode'], 'open'),
+    joinMode: asTextOrNull(m['join_mode']) ?? asText(m['joinMode'], 'open'),
   );
 
   final String id;
@@ -92,13 +92,9 @@ class GramMessage {
     deleted: m['deleted'] == true,
     type: asText(m['type'], 'text'),
     at: DateTime.tryParse('${m['at'] ?? ''}'),
-    options:
-        ((m['meta'] as Map?)?['options'] as List?)
-            ?.map((e) => e.toString())
-            .toList() ??
-        const [],
+    options: asTextList(asMap(m['meta'])['options']),
     mediaUrl: asText(m['media_url']),
-    quiz: GramQuiz.from(m['meta'] as Map?),
+    quiz: GramQuiz.from(asMapOrNull(m['meta'])),
   );
 
   final String id;
@@ -145,18 +141,14 @@ class GramQuiz {
   final String answer;
 
   static GramQuiz? from(Map<dynamic, dynamic>? meta) {
-    final q = (meta?['q'] as Map?)?.cast<String, dynamic>();
+    final q = asMapOrNull(meta?['q']);
     if (q == null) return null;
-    final options = ((q['options'] as List?) ?? const [])
-        .map((e) => e.toString())
-        .toList();
+    final options = (asList(q['options'])).map((e) => e.toString()).toList();
     if (options.isEmpty) return null;
     return GramQuiz(
       question: asText(q['question']),
       options: options,
-      letters: ((q['letters'] as List?) ?? const [])
-          .map((e) => e.toString())
-          .toList(),
+      letters: (asList(q['letters'])).map((e) => e.toString()).toList(),
       answer: (asText(q['answer'])).toUpperCase(),
     );
   }
@@ -243,7 +235,7 @@ final gramLobbyProvider = FutureProvider<GramLobby>((ref) async {
   try {
     final res = await api.get('/api/gram/groups');
     return GramLobby(
-      rooms: ((res['groups'] as List?) ?? const [])
+      rooms: (asList(res['groups']))
           .whereType<Map>()
           .map(GramRoom.from)
           .toList(),
@@ -280,7 +272,7 @@ Future<GramFeed> loadRoom(
      bubble, sixty times a second, on the cheapest phone we sell to. */
   final reactions = <String, Map<String, int>>{};
   final myReactions = <String, String>{};
-  for (final r in ((res['reactions'] as List?) ?? const []).whereType<Map>()) {
+  for (final r in (asList(res['reactions'])).whereType<Map>()) {
     final mid = asText(r['message_id']);
     final icon = asText(r['icon']);
     if (mid.isEmpty || icon.isEmpty) continue;
@@ -291,7 +283,7 @@ Future<GramFeed> loadRoom(
 
   final votes = <String, Map<int, int>>{};
   final myVotes = <String, int>{};
-  for (final v in ((res['votes'] as List?) ?? const []).whereType<Map>()) {
+  for (final v in (asList(res['votes'])).whereType<Map>()) {
     final mid = asText(v['message_id']);
     final idx = asIntOrNull(v['option_index']);
     if (mid.isEmpty || idx == null) continue;
@@ -301,7 +293,7 @@ Future<GramFeed> loadRoom(
   }
 
   return GramFeed(
-    messages: ((res['messages'] as List?) ?? const [])
+    messages: (asList(res['messages']))
         .whereType<Map>()
         .map((m) => GramMessage.from(m, myId))
         .toList(),
@@ -311,7 +303,7 @@ Future<GramFeed> loadRoom(
     myReactions: myReactions,
     votes: votes,
     myVotes: myVotes,
-    typing: ((res['typing'] as List?) ?? const [])
+    typing: (asList(res['typing']))
         .whereType<Map>()
         .map(
           (m) => (

@@ -135,8 +135,8 @@ class EssentialDownloader extends Notifier<EssentialState> {
 
     try {
       final res = await ref.read(apiProvider).get('/api/mobile/vault');
-      final text = (res['text'] as Map?) ?? const {};
-      final plans = ((text['packs'] as List?) ?? const [])
+      final text = asMap(res['text']);
+      final plans = (asList(text['packs']))
           .whereType<Map>()
           .map(
             (m) => VaultPackPlan(

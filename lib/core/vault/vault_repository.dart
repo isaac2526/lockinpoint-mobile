@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api.dart';
+import '../json.dart';
 import '../../features/practice/practice_repository.dart';
 import 'vault_db.dart';
 
@@ -56,12 +57,12 @@ class VaultRepository {
       query: {'subject': subjectId, 'limit': '$limit'},
     );
 
-    final pack = (res['pack'] as Map).cast<String, dynamic>();
-    final questions = ((res['questions'] as List?) ?? const [])
+    final pack = asMap(res['pack']);
+    final questions = (asList(res['questions']))
         .whereType<Map>()
         .map((m) => m.cast<String, dynamic>())
         .toList();
-    final passages = ((res['passages'] as List?) ?? const [])
+    final passages = (asList(res['passages']))
         .whereType<Map>()
         .map((m) => m.cast<String, dynamic>())
         .toList();
@@ -109,16 +110,14 @@ class VaultRepository {
         ServedQuestion(
           id: r.id,
           question: r.question,
-          options: (jsonDecode(r.optionsJson) as List).cast<String>(),
-          letters: (jsonDecode(r.lettersJson) as List).cast<String>(),
+          options: asTextList(jsonDecode(r.optionsJson)),
+          letters: asTextList(jsonDecode(r.lettersJson)),
           passageId: r.passageId,
           section: r.section,
           year: r.year,
           answer: r.answer,
           explanation: r.explanation,
-          media: r.mediaJson == null
-              ? null
-              : (jsonDecode(r.mediaJson!) as Map).cast<String, dynamic>(),
+          media: r.mediaJson == null ? null : asMap(jsonDecode(r.mediaJson!)),
         ),
       );
       final pid = r.passageId;

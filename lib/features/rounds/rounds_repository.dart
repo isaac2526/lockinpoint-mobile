@@ -42,7 +42,7 @@ class Round {
     description: asText(m['description']),
     startsAt: DateTime.tryParse('${m['startsAt'] ?? ''}'),
     endsAt: DateTime.tryParse('${m['endsAt'] ?? ''}'),
-    prizes: ((m['prizes'] as List?) ?? const [])
+    prizes: (asList(m['prizes']))
         .whereType<Map>()
         .map(
           (p) => Prize(
@@ -98,7 +98,7 @@ final roundsProvider = FutureProvider<RoundsView>((ref) async {
   final r = res['round'];
   return RoundsView(
     round: r is Map ? Round.from(r) : null,
-    winners: ((res['winners'] as List?) ?? const [])
+    winners: (asList(res['winners']))
         .whereType<Map>()
         .map(
           (w) => Winner(

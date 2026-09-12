@@ -336,9 +336,7 @@ class _CareerDetail extends ConsumerWidget {
             onRetry: () => ref.invalidate(careerProvider(slug)),
           ),
           data: (k) {
-            final courses = ((k['courses'] as List?) ?? const [])
-                .whereType<Map>()
-                .toList();
+            final courses = (asList(k['courses'])).whereType<Map>().toList();
             return ListView(
               padding: const EdgeInsets.fromLTRB(
                 Gap.lg,
@@ -351,14 +349,14 @@ class _CareerDetail extends ConsumerWidget {
                   GlassSurface(
                     hue: c.hues.orange,
                     child: Text(
-                      k['summary'] as String,
+                      asText(k['summary']),
                       style: LipType.body.copyWith(color: c.text1, height: 1.5),
                     ),
                   ),
                 if ((asText(k['body'])).isNotEmpty) ...[
                   const SizedBox(height: Gap.lg),
                   Text(
-                    readableHtml(k['body'] as String),
+                    readableHtml(asText(k['body'])),
                     style: LipType.body.copyWith(color: c.text2, height: 1.6),
                   ),
                 ],

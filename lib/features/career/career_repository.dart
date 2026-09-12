@@ -104,11 +104,11 @@ final careerShelfProvider = FutureProvider.family<CareerShelf, String>((
       .read(apiProvider)
       .get('/api/mobile/career', query: {if (query.isNotEmpty) 'q': query});
   return CareerShelf(
-    careers: ((res['careers'] as List?) ?? const [])
+    careers: (asList(res['careers']))
         .whereType<Map>()
         .map((m) => CareerRef.from(m.cast<String, dynamic>()))
         .toList(),
-    institutions: ((res['institutions'] as List?) ?? const [])
+    institutions: (asList(res['institutions']))
         .whereType<Map>()
         .map((m) => InstitutionRef.from(m.cast<String, dynamic>()))
         .toList(),
@@ -125,7 +125,7 @@ final courseOffersProvider = FutureProvider.family<List<CourseOffer>, String>((
   final res = await ref
       .read(apiProvider)
       .get('/api/mobile/career', query: {'course': course.trim()});
-  return ((res['offers'] as List?) ?? const [])
+  return (asList(res['offers']))
       .whereType<Map>()
       .map((m) => CourseOffer.from(m.cast<String, dynamic>()))
       .toList();
@@ -157,13 +157,13 @@ final institutionProvider = FutureProvider.family<InstitutionDetail, String>((
   final res = await ref
       .read(apiProvider)
       .get('/api/mobile/career', query: {'inst': id});
-  final i = (res['institution'] as Map?)?.cast<String, dynamic>() ?? const {};
+  final i = asMap(res['institution']);
   return InstitutionDetail(
     name: asText(i['name']),
     about: asText(i['about']),
     aggregate: asText(i['aggregate']),
     state: asText(i['state']),
-    departments: ((res['departments'] as List?) ?? const [])
+    departments: (asList(res['departments']))
         .whereType<Map>()
         .map(
           (d) => (
@@ -183,7 +183,7 @@ final careerProvider = FutureProvider.family<Map<String, dynamic>, String>((
   final res = await ref
       .read(apiProvider)
       .get('/api/mobile/career', query: {'career': slug});
-  return (res['career'] as Map?)?.cast<String, dynamic>() ?? const {};
+  return asMap(res['career']);
 });
 
 /// The admin editor stores prose as HTML. The app ships no renderer for it,

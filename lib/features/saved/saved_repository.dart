@@ -44,11 +44,11 @@ class SavedQuestion {
   static SavedQuestion from(Map<String, dynamic> j) => SavedQuestion(
     id: asText(j['id']),
     question: asText(j['question']),
-    options: ((j['options'] as List?) ?? const []).map((o) => '$o').toList(),
+    options: asTextList(j['options']),
     answer: (asText(j['answer'])).toUpperCase(),
     explanation: asText(j['explanation']),
     subject: asText(j['subject']),
-    year: j['year'] is int ? j['year'] as int : null,
+    year: asIntOrNull(j['year']),
   );
 }
 
@@ -66,7 +66,7 @@ final savedQuestionsProvider = FutureProvider.family<SavedPage, int>((
       .read(apiProvider)
       .get('/api/mobile/saved', query: {'page': '$page'});
   return SavedPage(
-    questions: ((res['questions'] as List?) ?? const [])
+    questions: (asList(res['questions']))
         .whereType<Map>()
         .map((m) => SavedQuestion.from(m.cast<String, dynamic>()))
         .toList(),

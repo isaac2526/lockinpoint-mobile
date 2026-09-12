@@ -41,11 +41,11 @@ class GameQuestion {
   static GameQuestion from(Map<String, dynamic> j) => GameQuestion(
     id: asText(j['id']),
     question: asText(j['question']),
-    options: ((j['options'] as List?) ?? const []).map((o) => '$o').toList(),
-    letters: ((j['letters'] as List?) ?? const []).map((o) => '$o').toList(),
+    options: asTextList(j['options']),
+    letters: asTextList(j['letters']),
     answer: (asText(j['answer'])).toUpperCase(),
     explanation: asText(j['explanation']),
-    year: j['year'] is int ? j['year'] as int : null,
+    year: asIntOrNull(j['year']),
   );
 }
 
@@ -68,7 +68,7 @@ Future<List<GameQuestion>> gamePool(
       if (fourOnly) 'four': '1',
     },
   );
-  return ((res['questions'] as List?) ?? const [])
+  return (asList(res['questions']))
       .whereType<Map>()
       .map((m) => GameQuestion.from(m.cast<String, dynamic>()))
       .toList();
@@ -128,22 +128,19 @@ class ClimbState {
       id: asText(s['id']),
       rung: asInt(s['rung'], 1),
       total: asInt(s['total'], 15),
-      ladder: ((s['ladder'] as List?) ?? const [])
-          .map((e) => (e as num).toInt())
-          .toList(),
+      ladder: (asList(s['ladder'])).map((e) => asInt(e)).toList(),
       firstNet: asInt(s['firstNet'], 5),
       secondNet: asIntOrNull(s['secondNet']),
       banked: asInt(s['banked']),
       status: asText(s['status'], 'playing'),
       score: asInt(s['score']),
       lifelines: {
-        for (final e in ((s['lifelines'] as Map?) ?? const {}).entries)
-          '${e.key}': e.value == true,
+        for (final e in asMap(s['lifelines']).entries) e.key: e.value == true,
       },
       seconds: asIntOrNull(s['seconds']),
       question: q is Map ? (asText(q['question'])) : '',
       options: q is Map
-          ? ((q['options'] as List?) ?? const [])
+          ? (asList(q['options']))
                 .whereType<Map>()
                 .map((o) => (letter: '${o['letter']}', text: '${o['text']}'))
                 .toList()
@@ -214,17 +211,17 @@ class ClimbApi {
       'exam': ?exam,
       'subject': ?subject,
     });
-    return ClimbState.from((res['state'] as Map).cast<String, dynamic>());
+    return ClimbState.from(asMap(res['state']));
   }
 
   Future<ClimbState> state(String gameId) async {
     final res = await _post({'op': 'state', 'gameId': gameId});
-    return ClimbState.from((res['state'] as Map).cast<String, dynamic>());
+    return ClimbState.from(asMap(res['state']));
   }
 
   Future<ClimbState> setNet(String gameId, int rung) async {
     final res = await _post({'op': 'set_net', 'gameId': gameId, 'rung': rung});
-    return ClimbState.from((res['state'] as Map).cast<String, dynamic>());
+    return ClimbState.from(asMap(res['state']));
   }
 
   /// Spend a lifeline. The server decides what it reveals — Fifty-Fifty comes
@@ -260,7 +257,7 @@ class ClimbApi {
   /// Stop and keep what is banked. A real decision, so the UI confirms it.
   Future<ClimbState> walk(String gameId) async {
     final res = await _post({'op': 'walk', 'gameId': gameId});
-    return ClimbState.from((res['state'] as Map).cast<String, dynamic>());
+    return ClimbState.from(asMap(res['state']));
   }
 }
 
@@ -319,7 +316,7 @@ class ClimbSetup {
   }
 
   static ClimbSetup from(Map<String, dynamic> j) => ClimbSetup(
-    subjects: ((j['subjects'] as List?) ?? const [])
+    subjects: (asList(j['subjects']))
         .whereType<Map>()
         .map((m) => ClimbSubject.from(m.cast<String, dynamic>()))
         .toList(),

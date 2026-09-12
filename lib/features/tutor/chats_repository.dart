@@ -25,7 +25,7 @@ class LumiChat {
     id: asText(m['id']),
     title: (asText(m['title'])).trim().isEmpty
         ? 'New chat'
-        : m['title'] as String,
+        : asText(m['title']),
   );
 }
 
@@ -40,10 +40,7 @@ class ChatList {
 final lumiChatsProvider = FutureProvider<ChatList>((ref) async {
   final res = await ref.read(apiProvider).get('/api/ai/chats');
   return ChatList(
-    chats: ((res['chats'] as List?) ?? const [])
-        .whereType<Map>()
-        .map(LumiChat.from)
-        .toList(),
+    chats: (asList(res['chats'])).whereType<Map>().map(LumiChat.from).toList(),
     max: (asIntOrNull(res['max'])) ?? 15,
   );
 });
@@ -51,7 +48,7 @@ final lumiChatsProvider = FutureProvider<ChatList>((ref) async {
 /// One conversation's messages, oldest first.
 Future<List<({String role, String text})>> loadChat(Api api, String id) async {
   final res = await api.get('/api/ai/chats', query: {'id': id});
-  return ((res['messages'] as List?) ?? const [])
+  return (asList(res['messages']))
       .whereType<Map>()
       .map((m) => (role: asText(m['role'], 'user'), text: asText(m['text'])))
       .toList();

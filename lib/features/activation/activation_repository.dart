@@ -148,10 +148,10 @@ class ActivationOffer {
     return ActivationOffer(
       activated: j['activated'] == true,
       productKey: asText(j['productKey']),
-      amount: price is Map ? price['amount'] as num? : null,
+      amount: asDoubleOrNull(asMapOrNull(price)?['amount']),
       currency: price is Map ? (asText(price['currency'])) : '',
       note: price is Map ? (asText(price['note'])) : '',
-      accounts: ((j['accounts'] as List?) ?? const [])
+      accounts: (asList(j['accounts']))
           .whereType<Map>()
           .map((m) => BankAccount.from(m.cast<String, dynamic>()))
           .toList(),
@@ -212,7 +212,7 @@ Future<String> sendTransferProof(
     '/api/activate/transfer',
     body: {'proof_path': stored, 'note': note},
   );
-  return claim['message'] as String? ??
+  return asTextOrNull(claim['message']) ??
       'Noted. An admin will confirm your transfer and activate you.';
 }
 

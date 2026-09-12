@@ -59,7 +59,7 @@ final noticeFeedProvider =
 /// How many are unread, for the bell. Never throws and never blocks a screen.
 final unreadCountProvider = Provider<int>((ref) {
   final v = ref.watch(noticeFeedProvider).value;
-  return (v?['count'] as num?)?.toInt() ?? 0;
+  return asInt(v?['count'], 0);
 });
 
 class NotificationsScreen extends ConsumerWidget {
@@ -110,7 +110,7 @@ class NotificationsScreen extends ConsumerWidget {
               ],
             ),
             data: (d) {
-              final items = ((d['items'] as List?) ?? const [])
+              final items = (asList(d['items']))
                   .whereType<Map>()
                   .map((m) => m.cast<String, dynamic>())
                   .toList();
@@ -175,7 +175,7 @@ class _NoticeCard extends StatelessWidget {
     final look = noticeLook(kind);
     final hue = look.hue.of(c);
     final seen = n['seen'] == true;
-    final actions = ((n['actions'] as List?) ?? const [])
+    final actions = (asList(n['actions']))
         .whereType<Map>()
         .map((m) => m.cast<String, dynamic>())
         .toList();
@@ -233,7 +233,7 @@ class _NoticeCard extends StatelessWidget {
 
           if (asText(n['body']).isNotEmpty) ...[
             const SizedBox(height: Gap.md),
-            _Body(n['body'] as String),
+            _Body(asText(n['body'])),
           ],
 
           if (attribution.isNotEmpty) ...[

@@ -97,7 +97,7 @@ class _HarvestScreenState extends ConsumerState<HarvestScreen> {
         _sending = false;
         _given += 1;
         _thanks =
-            res['message'] as String? ??
+            asTextOrNull(res['message']) ??
             'Received — thank you for feeding the harvest!';
         /* THE SCHOOL STAYS, EVERYTHING ELSE CLEARS. A student remembering
            six questions from one exam should type the school once. */

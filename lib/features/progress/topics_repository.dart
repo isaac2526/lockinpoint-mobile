@@ -42,7 +42,7 @@ class TopicRow {
     subject: asText(m['subject']),
     seen: (asIntOrNull(m['seen'])) ?? 0,
     correct: (asIntOrNull(m['correct'])) ?? 0,
-    percent: ((m['percent'] as num?) ?? 0).toDouble(),
+    percent: (asDouble(m['percent'])).toDouble(),
   );
 
   final String topicId;
@@ -77,13 +77,13 @@ class TopicStrength {
 final topicStrengthProvider = FutureProvider<TopicStrength>((ref) async {
   final res = await ref.read(apiProvider).get('/api/mobile/topics');
   List<TopicRow> list(Object? raw) =>
-      ((raw as List?) ?? const []).whereType<Map>().map(TopicRow.from).toList();
+      (asList(raw)).whereType<Map>().map(TopicRow.from).toList();
   return TopicStrength(
     minSeen: (asIntOrNull(res['minSeen'])) ?? 6,
     rows: list(res['rows']),
     weakest: list(res['weakest']),
     strongest: list(res['strongest']),
-    unproven: ((res['unproven'] as List?) ?? const [])
+    unproven: (asList(res['unproven']))
         .whereType<Map>()
         .map(
           (m) =>

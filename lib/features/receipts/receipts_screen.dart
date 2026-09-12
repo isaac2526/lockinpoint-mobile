@@ -51,7 +51,7 @@ class Receipt {
 
   static Receipt fromJson(Map<String, dynamic> j) => Receipt(
     reference: asText(j['reference']),
-    amount: (j['amount'] as num?) ?? 0,
+    amount: asDouble(j['amount']),
     currency: asText(j['currency'], 'NGN'),
     label: asText(j['label'], 'Payment'),
     status: asText(j['status']),
@@ -102,7 +102,7 @@ class Receipt {
 
 final receiptsProvider = FutureProvider.autoDispose<List<Receipt>>((ref) async {
   final res = await ref.read(apiProvider).get('/api/mobile/receipts');
-  return ((res['receipts'] as List?) ?? const [])
+  return (asList(res['receipts']))
       .whereType<Map>()
       .map((m) => Receipt.fromJson(m.cast<String, dynamic>()))
       .toList();

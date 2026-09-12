@@ -57,13 +57,9 @@ class PlaceAsk {
 
   static PlaceAsk fromJson(Map<String, dynamic> j) => PlaceAsk(
     complete: j['complete'] != false,
-    missing: ((j['missing'] as List?) ?? const [])
-        .map((e) => e.toString())
-        .toList(),
+    missing: (asList(j['missing'])).map((e) => e.toString()).toList(),
     countryCode: asText(j['country_code']),
-    states: ((j['states'] as List?) ?? const [])
-        .map((e) => e.toString())
-        .toList(),
+    states: (asList(j['states'])).map((e) => e.toString()).toList(),
   );
 }
 
