@@ -32,7 +32,7 @@ void main() {
   ///
   /// Opacity and Transform.scale ARE rebuilt every frame by the
   /// AnimatedBuilders here, so their values are the honest signal.
-  String _frame(WidgetTester tester) {
+  String frameOf(WidgetTester tester) {
     final o = tester
         .widgetList<Opacity>(find.byType(Opacity))
         .map((w) => w.opacity.toStringAsFixed(3))
@@ -49,11 +49,11 @@ void main() {
   ) async {
     await pump(tester);
     await tester.pump();
-    final early = _frame(tester);
+    final early = frameOf(tester);
     expect(early, isNotEmpty, reason: 'nothing on the splash is animated');
 
     await tester.pump(const Duration(milliseconds: 300));
-    final mid = _frame(tester);
+    final mid = frameOf(tester);
 
     expect(
       mid,
