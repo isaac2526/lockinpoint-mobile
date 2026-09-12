@@ -148,21 +148,27 @@ class VaultRepository {
       questions.add(
         ServedQuestion(
           id: r.id,
-          question: r.question,
-          options: asTextList(jsonDecode(r.optionsJson)),
+          /* THE MARKUP FIRST, the readable text as the fallback. A pack
+             downloaded by an older build has no HTML stored, and for those
+             rows the plain text is exactly what was there before — their
+             formatting returns on the next update of that subject. */
+          question: r.questionHtml ?? r.question,
+          options: asTextList(jsonDecode(r.optionsHtmlJson ?? r.optionsJson)),
           letters: asTextList(jsonDecode(r.lettersJson)),
           passageId: r.passageId,
           section: r.section,
           year: r.year,
           answer: r.answer,
-          explanation: r.explanation,
+          explanation: r.explanationHtml ?? r.explanation,
           media: r.mediaJson == null ? null : asMap(jsonDecode(r.mediaJson!)),
         ),
       );
       final pid = r.passageId;
       if (pid != null && !passages.containsKey(pid)) {
         final p = await _db.passage(pid);
-        if (p != null) passages[pid] = Passage(title: p.title, body: p.body);
+        if (p != null) {
+          passages[pid] = Passage(title: p.title, body: p.bodyHtml ?? p.body);
+        }
       }
     }
 

@@ -52,7 +52,24 @@ class Packs extends Table {
 class VaultQuestions extends Table {
   TextColumn get id => text()();
   TextColumn get subjectId => text()();
+
+  /// The READABLE text — indices as real characters, no tags. Kept because
+  /// search, previews and the pending-result payload all want it.
   TextColumn get question => text()();
+
+  /* AND THE MARKUP, WHICH THE VAULT USED TO THROW AWAY.
+     The pack has always sent both `question` and `question_html`; only the
+     plain one was stored. So a student who downloaded a subject lost every
+     bold term, every italic, every list and every table in it — the screen
+     renders with LipHtml either way, so the SAME question was formatted
+     online and flat offline. Nothing looked broken; it just quietly read
+     worse in the one place a student without data has to read it.
+
+     Nullable, because a pack fetched by an older build has no HTML to
+     restore and the plain text is the correct fallback. */
+  TextColumn get questionHtml => text().nullable()();
+  TextColumn get optionsHtmlJson => text().nullable()();
+  TextColumn get explanationHtml => text().nullable()();
 
   /// Options and letters as JSON arrays. A join table for four strings would
   /// cost more to read than it saves, and these are never queried by option.
@@ -74,6 +91,11 @@ class VaultPassages extends Table {
   TextColumn get id => text()();
   TextColumn get title => text()();
   TextColumn get body => text()();
+
+  /// Same story as the question: a comprehension passage is the one piece of
+  /// content most likely to carry italics and paragraph breaks, and offline
+  /// it was arriving as one flat block.
+  TextColumn get bodyHtml => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -152,7 +174,7 @@ class VaultDb extends _$VaultDb {
   VaultDb.forTesting(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   /* VERSION 2 ADDS SAVED MATERIALS.
      Created rather than recreated: an upgrade must not touch packs,
@@ -165,6 +187,18 @@ class VaultDb extends _$VaultDb {
     onCreate: (m) => m.createAll(),
     onUpgrade: (m, from, to) async {
       if (from < 2) await m.createTable(vaultMaterials);
+      /* VERSION 3 KEEPS THE MARKUP. Columns are ADDED, never a table
+         recreated: a student with forty subjects downloaded and three unsent
+         sittings must not lose any of it to a schema change. The new columns
+         are null on every existing row, and null means "fall back to the
+         plain text", which is exactly what those rows held before. Their
+         formatting comes back on the next update of that subject. */
+      if (from < 3) {
+        await m.addColumn(vaultQuestions, vaultQuestions.questionHtml);
+        await m.addColumn(vaultQuestions, vaultQuestions.optionsHtmlJson);
+        await m.addColumn(vaultQuestions, vaultQuestions.explanationHtml);
+        await m.addColumn(vaultPassages, vaultPassages.bodyHtml);
+      }
     },
   );
 
@@ -293,6 +327,14 @@ class VaultDb extends _$VaultDb {
               id: asText(q['id']),
               subjectId: subjectId,
               question: asText(q['question']),
+              /* Both halves kept. asTextOrNull, not asText: an empty string
+                 here would look like "formatted as nothing" and beat the
+                 plain-text fallback. */
+              questionHtml: asTextOrNull(q['question_html']),
+              optionsHtmlJson: q['options_html'] == null
+                  ? null
+                  : jsonEncode(q['options_html']),
+              explanationHtml: asTextOrNull(q['explanation_html']),
               optionsJson: jsonEncode(q['options'] ?? const []),
               lettersJson: jsonEncode(q['letters'] ?? const []),
               passageId: asTextOrNull(q['passage_id']),
@@ -312,6 +354,7 @@ class VaultDb extends _$VaultDb {
               id: asText(p['id']),
               title: asText(p['title']),
               body: asText(p['body']),
+              bodyHtml: asTextOrNull(p['body_html']),
             ),
           ),
         );

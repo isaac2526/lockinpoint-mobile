@@ -125,16 +125,27 @@ class ServedQuestion {
     return null;
   }
 
+  /* ONE CONTRACT: `question` IS ALWAYS THE MARKUP.
+     /api/attempts sanitises in place, so online its `question` already IS the
+     HTML. /api/mobile/pack sends TWO fields — `question` as readable plain
+     text for search and previews, `question_html` as the markup — and this
+     read the plain one. Both paths feed the same LipHtml widget, so the very
+     same question came out formatted online and flat offline: bold terms,
+     italics, lists and tables all gone the moment a student went off signal.
+     Prefer the markup, fall back to whatever was sent. */
   static ServedQuestion fromJson(Map<String, dynamic> j) => ServedQuestion(
     id: asText(j['id']),
-    question: asText(j['question']),
-    options: asTextList(j['options']),
+    question: asTextOrNull(j['question_html']) ?? asText(j['question']),
+    options: j['options_html'] is List
+        ? asTextList(j['options_html'])
+        : asTextList(j['options']),
     letters: asTextList(j['letters']),
     passageId: asTextOrNull(j['passage_id']),
     section: asTextOrNull(j['section']),
     year: asIntOrNull(j['year']),
     answer: (asTextOrNull(j['answer']))?.toUpperCase(),
-    explanation: asTextOrNull(j['explanation']),
+    explanation:
+        asTextOrNull(j['explanation_html']) ?? asTextOrNull(j['explanation']),
     media: asMapOrNull(j['media']),
   );
 }
@@ -375,7 +386,12 @@ class PracticeRepository {
     passages: (asMap(res['passages'])).map(
       (k, v) => MapEntry(
         k.toString(),
-        Passage(title: asText(asMap(v)['title']), body: asText(v['body'])),
+        Passage(
+          title: asText(asMap(v)['title']),
+          // The markup where the route sends it; /api/attempts sanitises in
+          // place so its `body` already IS the markup.
+          body: asTextOrNull(asMap(v)['body_html']) ?? asText(asMap(v)['body']),
+        ),
       ),
     ),
     initialIndex: initialIndex,

@@ -514,6 +514,39 @@ class $VaultQuestionsTable extends VaultQuestions
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _questionHtmlMeta = const VerificationMeta(
+    'questionHtml',
+  );
+  @override
+  late final GeneratedColumn<String> questionHtml = GeneratedColumn<String>(
+    'question_html',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _optionsHtmlJsonMeta = const VerificationMeta(
+    'optionsHtmlJson',
+  );
+  @override
+  late final GeneratedColumn<String> optionsHtmlJson = GeneratedColumn<String>(
+    'options_html_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _explanationHtmlMeta = const VerificationMeta(
+    'explanationHtml',
+  );
+  @override
+  late final GeneratedColumn<String> explanationHtml = GeneratedColumn<String>(
+    'explanation_html',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _optionsJsonMeta = const VerificationMeta(
     'optionsJson',
   );
@@ -603,6 +636,9 @@ class $VaultQuestionsTable extends VaultQuestions
     id,
     subjectId,
     question,
+    questionHtml,
+    optionsHtmlJson,
+    explanationHtml,
     optionsJson,
     lettersJson,
     passageId,
@@ -644,6 +680,33 @@ class $VaultQuestionsTable extends VaultQuestions
       );
     } else if (isInserting) {
       context.missing(_questionMeta);
+    }
+    if (data.containsKey('question_html')) {
+      context.handle(
+        _questionHtmlMeta,
+        questionHtml.isAcceptableOrUnknown(
+          data['question_html']!,
+          _questionHtmlMeta,
+        ),
+      );
+    }
+    if (data.containsKey('options_html_json')) {
+      context.handle(
+        _optionsHtmlJsonMeta,
+        optionsHtmlJson.isAcceptableOrUnknown(
+          data['options_html_json']!,
+          _optionsHtmlJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('explanation_html')) {
+      context.handle(
+        _explanationHtmlMeta,
+        explanationHtml.isAcceptableOrUnknown(
+          data['explanation_html']!,
+          _explanationHtmlMeta,
+        ),
+      );
     }
     if (data.containsKey('options_json')) {
       context.handle(
@@ -727,6 +790,18 @@ class $VaultQuestionsTable extends VaultQuestions
         DriftSqlType.string,
         data['${effectivePrefix}question'],
       )!,
+      questionHtml: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}question_html'],
+      ),
+      optionsHtmlJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}options_html_json'],
+      ),
+      explanationHtml: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}explanation_html'],
+      ),
       optionsJson: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}options_json'],
@@ -771,7 +846,13 @@ class $VaultQuestionsTable extends VaultQuestions
 class VaultQuestion extends DataClass implements Insertable<VaultQuestion> {
   final String id;
   final String subjectId;
+
+  /// The READABLE text — indices as real characters, no tags. Kept because
+  /// search, previews and the pending-result payload all want it.
   final String question;
+  final String? questionHtml;
+  final String? optionsHtmlJson;
+  final String? explanationHtml;
 
   /// Options and letters as JSON arrays. A join table for four strings would
   /// cost more to read than it saves, and these are never queried by option.
@@ -787,6 +868,9 @@ class VaultQuestion extends DataClass implements Insertable<VaultQuestion> {
     required this.id,
     required this.subjectId,
     required this.question,
+    this.questionHtml,
+    this.optionsHtmlJson,
+    this.explanationHtml,
     required this.optionsJson,
     required this.lettersJson,
     this.passageId,
@@ -802,6 +886,15 @@ class VaultQuestion extends DataClass implements Insertable<VaultQuestion> {
     map['id'] = Variable<String>(id);
     map['subject_id'] = Variable<String>(subjectId);
     map['question'] = Variable<String>(question);
+    if (!nullToAbsent || questionHtml != null) {
+      map['question_html'] = Variable<String>(questionHtml);
+    }
+    if (!nullToAbsent || optionsHtmlJson != null) {
+      map['options_html_json'] = Variable<String>(optionsHtmlJson);
+    }
+    if (!nullToAbsent || explanationHtml != null) {
+      map['explanation_html'] = Variable<String>(explanationHtml);
+    }
     map['options_json'] = Variable<String>(optionsJson);
     map['letters_json'] = Variable<String>(lettersJson);
     if (!nullToAbsent || passageId != null) {
@@ -830,6 +923,15 @@ class VaultQuestion extends DataClass implements Insertable<VaultQuestion> {
       id: Value(id),
       subjectId: Value(subjectId),
       question: Value(question),
+      questionHtml: questionHtml == null && nullToAbsent
+          ? const Value.absent()
+          : Value(questionHtml),
+      optionsHtmlJson: optionsHtmlJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(optionsHtmlJson),
+      explanationHtml: explanationHtml == null && nullToAbsent
+          ? const Value.absent()
+          : Value(explanationHtml),
       optionsJson: Value(optionsJson),
       lettersJson: Value(lettersJson),
       passageId: passageId == null && nullToAbsent
@@ -860,6 +962,9 @@ class VaultQuestion extends DataClass implements Insertable<VaultQuestion> {
       id: serializer.fromJson<String>(json['id']),
       subjectId: serializer.fromJson<String>(json['subjectId']),
       question: serializer.fromJson<String>(json['question']),
+      questionHtml: serializer.fromJson<String?>(json['questionHtml']),
+      optionsHtmlJson: serializer.fromJson<String?>(json['optionsHtmlJson']),
+      explanationHtml: serializer.fromJson<String?>(json['explanationHtml']),
       optionsJson: serializer.fromJson<String>(json['optionsJson']),
       lettersJson: serializer.fromJson<String>(json['lettersJson']),
       passageId: serializer.fromJson<String?>(json['passageId']),
@@ -877,6 +982,9 @@ class VaultQuestion extends DataClass implements Insertable<VaultQuestion> {
       'id': serializer.toJson<String>(id),
       'subjectId': serializer.toJson<String>(subjectId),
       'question': serializer.toJson<String>(question),
+      'questionHtml': serializer.toJson<String?>(questionHtml),
+      'optionsHtmlJson': serializer.toJson<String?>(optionsHtmlJson),
+      'explanationHtml': serializer.toJson<String?>(explanationHtml),
       'optionsJson': serializer.toJson<String>(optionsJson),
       'lettersJson': serializer.toJson<String>(lettersJson),
       'passageId': serializer.toJson<String?>(passageId),
@@ -892,6 +1000,9 @@ class VaultQuestion extends DataClass implements Insertable<VaultQuestion> {
     String? id,
     String? subjectId,
     String? question,
+    Value<String?> questionHtml = const Value.absent(),
+    Value<String?> optionsHtmlJson = const Value.absent(),
+    Value<String?> explanationHtml = const Value.absent(),
     String? optionsJson,
     String? lettersJson,
     Value<String?> passageId = const Value.absent(),
@@ -904,6 +1015,13 @@ class VaultQuestion extends DataClass implements Insertable<VaultQuestion> {
     id: id ?? this.id,
     subjectId: subjectId ?? this.subjectId,
     question: question ?? this.question,
+    questionHtml: questionHtml.present ? questionHtml.value : this.questionHtml,
+    optionsHtmlJson: optionsHtmlJson.present
+        ? optionsHtmlJson.value
+        : this.optionsHtmlJson,
+    explanationHtml: explanationHtml.present
+        ? explanationHtml.value
+        : this.explanationHtml,
     optionsJson: optionsJson ?? this.optionsJson,
     lettersJson: lettersJson ?? this.lettersJson,
     passageId: passageId.present ? passageId.value : this.passageId,
@@ -918,6 +1036,15 @@ class VaultQuestion extends DataClass implements Insertable<VaultQuestion> {
       id: data.id.present ? data.id.value : this.id,
       subjectId: data.subjectId.present ? data.subjectId.value : this.subjectId,
       question: data.question.present ? data.question.value : this.question,
+      questionHtml: data.questionHtml.present
+          ? data.questionHtml.value
+          : this.questionHtml,
+      optionsHtmlJson: data.optionsHtmlJson.present
+          ? data.optionsHtmlJson.value
+          : this.optionsHtmlJson,
+      explanationHtml: data.explanationHtml.present
+          ? data.explanationHtml.value
+          : this.explanationHtml,
       optionsJson: data.optionsJson.present
           ? data.optionsJson.value
           : this.optionsJson,
@@ -941,6 +1068,9 @@ class VaultQuestion extends DataClass implements Insertable<VaultQuestion> {
           ..write('id: $id, ')
           ..write('subjectId: $subjectId, ')
           ..write('question: $question, ')
+          ..write('questionHtml: $questionHtml, ')
+          ..write('optionsHtmlJson: $optionsHtmlJson, ')
+          ..write('explanationHtml: $explanationHtml, ')
           ..write('optionsJson: $optionsJson, ')
           ..write('lettersJson: $lettersJson, ')
           ..write('passageId: $passageId, ')
@@ -958,6 +1088,9 @@ class VaultQuestion extends DataClass implements Insertable<VaultQuestion> {
     id,
     subjectId,
     question,
+    questionHtml,
+    optionsHtmlJson,
+    explanationHtml,
     optionsJson,
     lettersJson,
     passageId,
@@ -974,6 +1107,9 @@ class VaultQuestion extends DataClass implements Insertable<VaultQuestion> {
           other.id == this.id &&
           other.subjectId == this.subjectId &&
           other.question == this.question &&
+          other.questionHtml == this.questionHtml &&
+          other.optionsHtmlJson == this.optionsHtmlJson &&
+          other.explanationHtml == this.explanationHtml &&
           other.optionsJson == this.optionsJson &&
           other.lettersJson == this.lettersJson &&
           other.passageId == this.passageId &&
@@ -988,6 +1124,9 @@ class VaultQuestionsCompanion extends UpdateCompanion<VaultQuestion> {
   final Value<String> id;
   final Value<String> subjectId;
   final Value<String> question;
+  final Value<String?> questionHtml;
+  final Value<String?> optionsHtmlJson;
+  final Value<String?> explanationHtml;
   final Value<String> optionsJson;
   final Value<String> lettersJson;
   final Value<String?> passageId;
@@ -1001,6 +1140,9 @@ class VaultQuestionsCompanion extends UpdateCompanion<VaultQuestion> {
     this.id = const Value.absent(),
     this.subjectId = const Value.absent(),
     this.question = const Value.absent(),
+    this.questionHtml = const Value.absent(),
+    this.optionsHtmlJson = const Value.absent(),
+    this.explanationHtml = const Value.absent(),
     this.optionsJson = const Value.absent(),
     this.lettersJson = const Value.absent(),
     this.passageId = const Value.absent(),
@@ -1015,6 +1157,9 @@ class VaultQuestionsCompanion extends UpdateCompanion<VaultQuestion> {
     required String id,
     required String subjectId,
     required String question,
+    this.questionHtml = const Value.absent(),
+    this.optionsHtmlJson = const Value.absent(),
+    this.explanationHtml = const Value.absent(),
     required String optionsJson,
     required String lettersJson,
     this.passageId = const Value.absent(),
@@ -1033,6 +1178,9 @@ class VaultQuestionsCompanion extends UpdateCompanion<VaultQuestion> {
     Expression<String>? id,
     Expression<String>? subjectId,
     Expression<String>? question,
+    Expression<String>? questionHtml,
+    Expression<String>? optionsHtmlJson,
+    Expression<String>? explanationHtml,
     Expression<String>? optionsJson,
     Expression<String>? lettersJson,
     Expression<String>? passageId,
@@ -1047,6 +1195,9 @@ class VaultQuestionsCompanion extends UpdateCompanion<VaultQuestion> {
       if (id != null) 'id': id,
       if (subjectId != null) 'subject_id': subjectId,
       if (question != null) 'question': question,
+      if (questionHtml != null) 'question_html': questionHtml,
+      if (optionsHtmlJson != null) 'options_html_json': optionsHtmlJson,
+      if (explanationHtml != null) 'explanation_html': explanationHtml,
       if (optionsJson != null) 'options_json': optionsJson,
       if (lettersJson != null) 'letters_json': lettersJson,
       if (passageId != null) 'passage_id': passageId,
@@ -1063,6 +1214,9 @@ class VaultQuestionsCompanion extends UpdateCompanion<VaultQuestion> {
     Value<String>? id,
     Value<String>? subjectId,
     Value<String>? question,
+    Value<String?>? questionHtml,
+    Value<String?>? optionsHtmlJson,
+    Value<String?>? explanationHtml,
     Value<String>? optionsJson,
     Value<String>? lettersJson,
     Value<String?>? passageId,
@@ -1077,6 +1231,9 @@ class VaultQuestionsCompanion extends UpdateCompanion<VaultQuestion> {
       id: id ?? this.id,
       subjectId: subjectId ?? this.subjectId,
       question: question ?? this.question,
+      questionHtml: questionHtml ?? this.questionHtml,
+      optionsHtmlJson: optionsHtmlJson ?? this.optionsHtmlJson,
+      explanationHtml: explanationHtml ?? this.explanationHtml,
       optionsJson: optionsJson ?? this.optionsJson,
       lettersJson: lettersJson ?? this.lettersJson,
       passageId: passageId ?? this.passageId,
@@ -1100,6 +1257,15 @@ class VaultQuestionsCompanion extends UpdateCompanion<VaultQuestion> {
     }
     if (question.present) {
       map['question'] = Variable<String>(question.value);
+    }
+    if (questionHtml.present) {
+      map['question_html'] = Variable<String>(questionHtml.value);
+    }
+    if (optionsHtmlJson.present) {
+      map['options_html_json'] = Variable<String>(optionsHtmlJson.value);
+    }
+    if (explanationHtml.present) {
+      map['explanation_html'] = Variable<String>(explanationHtml.value);
     }
     if (optionsJson.present) {
       map['options_json'] = Variable<String>(optionsJson.value);
@@ -1137,6 +1303,9 @@ class VaultQuestionsCompanion extends UpdateCompanion<VaultQuestion> {
           ..write('id: $id, ')
           ..write('subjectId: $subjectId, ')
           ..write('question: $question, ')
+          ..write('questionHtml: $questionHtml, ')
+          ..write('optionsHtmlJson: $optionsHtmlJson, ')
+          ..write('explanationHtml: $explanationHtml, ')
           ..write('optionsJson: $optionsJson, ')
           ..write('lettersJson: $lettersJson, ')
           ..write('passageId: $passageId, ')
@@ -1184,8 +1353,19 @@ class $VaultPassagesTable extends VaultPassages
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _bodyHtmlMeta = const VerificationMeta(
+    'bodyHtml',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, title, body];
+  late final GeneratedColumn<String> bodyHtml = GeneratedColumn<String>(
+    'body_html',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, title, body, bodyHtml];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1219,6 +1399,12 @@ class $VaultPassagesTable extends VaultPassages
     } else if (isInserting) {
       context.missing(_bodyMeta);
     }
+    if (data.containsKey('body_html')) {
+      context.handle(
+        _bodyHtmlMeta,
+        bodyHtml.isAcceptableOrUnknown(data['body_html']!, _bodyHtmlMeta),
+      );
+    }
     return context;
   }
 
@@ -1240,6 +1426,10 @@ class $VaultPassagesTable extends VaultPassages
         DriftSqlType.string,
         data['${effectivePrefix}body'],
       )!,
+      bodyHtml: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}body_html'],
+      ),
     );
   }
 
@@ -1253,10 +1443,16 @@ class VaultPassage extends DataClass implements Insertable<VaultPassage> {
   final String id;
   final String title;
   final String body;
+
+  /// Same story as the question: a comprehension passage is the one piece of
+  /// content most likely to carry italics and paragraph breaks, and offline
+  /// it was arriving as one flat block.
+  final String? bodyHtml;
   const VaultPassage({
     required this.id,
     required this.title,
     required this.body,
+    this.bodyHtml,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1264,6 +1460,9 @@ class VaultPassage extends DataClass implements Insertable<VaultPassage> {
     map['id'] = Variable<String>(id);
     map['title'] = Variable<String>(title);
     map['body'] = Variable<String>(body);
+    if (!nullToAbsent || bodyHtml != null) {
+      map['body_html'] = Variable<String>(bodyHtml);
+    }
     return map;
   }
 
@@ -1272,6 +1471,9 @@ class VaultPassage extends DataClass implements Insertable<VaultPassage> {
       id: Value(id),
       title: Value(title),
       body: Value(body),
+      bodyHtml: bodyHtml == null && nullToAbsent
+          ? const Value.absent()
+          : Value(bodyHtml),
     );
   }
 
@@ -1284,6 +1486,7 @@ class VaultPassage extends DataClass implements Insertable<VaultPassage> {
       id: serializer.fromJson<String>(json['id']),
       title: serializer.fromJson<String>(json['title']),
       body: serializer.fromJson<String>(json['body']),
+      bodyHtml: serializer.fromJson<String?>(json['bodyHtml']),
     );
   }
   @override
@@ -1293,20 +1496,27 @@ class VaultPassage extends DataClass implements Insertable<VaultPassage> {
       'id': serializer.toJson<String>(id),
       'title': serializer.toJson<String>(title),
       'body': serializer.toJson<String>(body),
+      'bodyHtml': serializer.toJson<String?>(bodyHtml),
     };
   }
 
-  VaultPassage copyWith({String? id, String? title, String? body}) =>
-      VaultPassage(
-        id: id ?? this.id,
-        title: title ?? this.title,
-        body: body ?? this.body,
-      );
+  VaultPassage copyWith({
+    String? id,
+    String? title,
+    String? body,
+    Value<String?> bodyHtml = const Value.absent(),
+  }) => VaultPassage(
+    id: id ?? this.id,
+    title: title ?? this.title,
+    body: body ?? this.body,
+    bodyHtml: bodyHtml.present ? bodyHtml.value : this.bodyHtml,
+  );
   VaultPassage copyWithCompanion(VaultPassagesCompanion data) {
     return VaultPassage(
       id: data.id.present ? data.id.value : this.id,
       title: data.title.present ? data.title.value : this.title,
       body: data.body.present ? data.body.value : this.body,
+      bodyHtml: data.bodyHtml.present ? data.bodyHtml.value : this.bodyHtml,
     );
   }
 
@@ -1315,37 +1525,42 @@ class VaultPassage extends DataClass implements Insertable<VaultPassage> {
     return (StringBuffer('VaultPassage(')
           ..write('id: $id, ')
           ..write('title: $title, ')
-          ..write('body: $body')
+          ..write('body: $body, ')
+          ..write('bodyHtml: $bodyHtml')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, title, body);
+  int get hashCode => Object.hash(id, title, body, bodyHtml);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is VaultPassage &&
           other.id == this.id &&
           other.title == this.title &&
-          other.body == this.body);
+          other.body == this.body &&
+          other.bodyHtml == this.bodyHtml);
 }
 
 class VaultPassagesCompanion extends UpdateCompanion<VaultPassage> {
   final Value<String> id;
   final Value<String> title;
   final Value<String> body;
+  final Value<String?> bodyHtml;
   final Value<int> rowid;
   const VaultPassagesCompanion({
     this.id = const Value.absent(),
     this.title = const Value.absent(),
     this.body = const Value.absent(),
+    this.bodyHtml = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   VaultPassagesCompanion.insert({
     required String id,
     required String title,
     required String body,
+    this.bodyHtml = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        title = Value(title),
@@ -1354,12 +1569,14 @@ class VaultPassagesCompanion extends UpdateCompanion<VaultPassage> {
     Expression<String>? id,
     Expression<String>? title,
     Expression<String>? body,
+    Expression<String>? bodyHtml,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (title != null) 'title': title,
       if (body != null) 'body': body,
+      if (bodyHtml != null) 'body_html': bodyHtml,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1368,12 +1585,14 @@ class VaultPassagesCompanion extends UpdateCompanion<VaultPassage> {
     Value<String>? id,
     Value<String>? title,
     Value<String>? body,
+    Value<String?>? bodyHtml,
     Value<int>? rowid,
   }) {
     return VaultPassagesCompanion(
       id: id ?? this.id,
       title: title ?? this.title,
       body: body ?? this.body,
+      bodyHtml: bodyHtml ?? this.bodyHtml,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1390,6 +1609,9 @@ class VaultPassagesCompanion extends UpdateCompanion<VaultPassage> {
     if (body.present) {
       map['body'] = Variable<String>(body.value);
     }
+    if (bodyHtml.present) {
+      map['body_html'] = Variable<String>(bodyHtml.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1402,6 +1624,7 @@ class VaultPassagesCompanion extends UpdateCompanion<VaultPassage> {
           ..write('id: $id, ')
           ..write('title: $title, ')
           ..write('body: $body, ')
+          ..write('bodyHtml: $bodyHtml, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2739,6 +2962,9 @@ typedef $$VaultQuestionsTableCreateCompanionBuilder =
       required String id,
       required String subjectId,
       required String question,
+      Value<String?> questionHtml,
+      Value<String?> optionsHtmlJson,
+      Value<String?> explanationHtml,
       required String optionsJson,
       required String lettersJson,
       Value<String?> passageId,
@@ -2754,6 +2980,9 @@ typedef $$VaultQuestionsTableUpdateCompanionBuilder =
       Value<String> id,
       Value<String> subjectId,
       Value<String> question,
+      Value<String?> questionHtml,
+      Value<String?> optionsHtmlJson,
+      Value<String?> explanationHtml,
       Value<String> optionsJson,
       Value<String> lettersJson,
       Value<String?> passageId,
@@ -2786,6 +3015,21 @@ class $$VaultQuestionsTableFilterComposer
 
   ColumnFilters<String> get question => $composableBuilder(
     column: $table.question,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get questionHtml => $composableBuilder(
+    column: $table.questionHtml,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get optionsHtmlJson => $composableBuilder(
+    column: $table.optionsHtmlJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get explanationHtml => $composableBuilder(
+    column: $table.explanationHtml,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2854,6 +3098,21 @@ class $$VaultQuestionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get questionHtml => $composableBuilder(
+    column: $table.questionHtml,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get optionsHtmlJson => $composableBuilder(
+    column: $table.optionsHtmlJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get explanationHtml => $composableBuilder(
+    column: $table.explanationHtml,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get optionsJson => $composableBuilder(
     column: $table.optionsJson,
     builder: (column) => ColumnOrderings(column),
@@ -2912,6 +3171,21 @@ class $$VaultQuestionsTableAnnotationComposer
 
   GeneratedColumn<String> get question =>
       $composableBuilder(column: $table.question, builder: (column) => column);
+
+  GeneratedColumn<String> get questionHtml => $composableBuilder(
+    column: $table.questionHtml,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get optionsHtmlJson => $composableBuilder(
+    column: $table.optionsHtmlJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get explanationHtml => $composableBuilder(
+    column: $table.explanationHtml,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get optionsJson => $composableBuilder(
     column: $table.optionsJson,
@@ -2978,6 +3252,9 @@ class $$VaultQuestionsTableTableManager
                 Value<String> id = const Value.absent(),
                 Value<String> subjectId = const Value.absent(),
                 Value<String> question = const Value.absent(),
+                Value<String?> questionHtml = const Value.absent(),
+                Value<String?> optionsHtmlJson = const Value.absent(),
+                Value<String?> explanationHtml = const Value.absent(),
                 Value<String> optionsJson = const Value.absent(),
                 Value<String> lettersJson = const Value.absent(),
                 Value<String?> passageId = const Value.absent(),
@@ -2991,6 +3268,9 @@ class $$VaultQuestionsTableTableManager
                 id: id,
                 subjectId: subjectId,
                 question: question,
+                questionHtml: questionHtml,
+                optionsHtmlJson: optionsHtmlJson,
+                explanationHtml: explanationHtml,
                 optionsJson: optionsJson,
                 lettersJson: lettersJson,
                 passageId: passageId,
@@ -3006,6 +3286,9 @@ class $$VaultQuestionsTableTableManager
                 required String id,
                 required String subjectId,
                 required String question,
+                Value<String?> questionHtml = const Value.absent(),
+                Value<String?> optionsHtmlJson = const Value.absent(),
+                Value<String?> explanationHtml = const Value.absent(),
                 required String optionsJson,
                 required String lettersJson,
                 Value<String?> passageId = const Value.absent(),
@@ -3019,6 +3302,9 @@ class $$VaultQuestionsTableTableManager
                 id: id,
                 subjectId: subjectId,
                 question: question,
+                questionHtml: questionHtml,
+                optionsHtmlJson: optionsHtmlJson,
+                explanationHtml: explanationHtml,
                 optionsJson: optionsJson,
                 lettersJson: lettersJson,
                 passageId: passageId,
@@ -3059,6 +3345,7 @@ typedef $$VaultPassagesTableCreateCompanionBuilder =
       required String id,
       required String title,
       required String body,
+      Value<String?> bodyHtml,
       Value<int> rowid,
     });
 typedef $$VaultPassagesTableUpdateCompanionBuilder =
@@ -3066,6 +3353,7 @@ typedef $$VaultPassagesTableUpdateCompanionBuilder =
       Value<String> id,
       Value<String> title,
       Value<String> body,
+      Value<String?> bodyHtml,
       Value<int> rowid,
     });
 
@@ -3090,6 +3378,11 @@ class $$VaultPassagesTableFilterComposer
 
   ColumnFilters<String> get body => $composableBuilder(
     column: $table.body,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get bodyHtml => $composableBuilder(
+    column: $table.bodyHtml,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -3117,6 +3410,11 @@ class $$VaultPassagesTableOrderingComposer
     column: $table.body,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get bodyHtml => $composableBuilder(
+    column: $table.bodyHtml,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$VaultPassagesTableAnnotationComposer
@@ -3136,6 +3434,9 @@ class $$VaultPassagesTableAnnotationComposer
 
   GeneratedColumn<String> get body =>
       $composableBuilder(column: $table.body, builder: (column) => column);
+
+  GeneratedColumn<String> get bodyHtml =>
+      $composableBuilder(column: $table.bodyHtml, builder: (column) => column);
 }
 
 class $$VaultPassagesTableTableManager
@@ -3172,11 +3473,13 @@ class $$VaultPassagesTableTableManager
                 Value<String> id = const Value.absent(),
                 Value<String> title = const Value.absent(),
                 Value<String> body = const Value.absent(),
+                Value<String?> bodyHtml = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => VaultPassagesCompanion(
                 id: id,
                 title: title,
                 body: body,
+                bodyHtml: bodyHtml,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -3184,11 +3487,13 @@ class $$VaultPassagesTableTableManager
                 required String id,
                 required String title,
                 required String body,
+                Value<String?> bodyHtml = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => VaultPassagesCompanion.insert(
                 id: id,
                 title: title,
                 body: body,
+                bodyHtml: bodyHtml,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
