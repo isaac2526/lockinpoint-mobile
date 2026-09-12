@@ -70,13 +70,42 @@ class TheorySession {
 }
 
 /// What one subject holds: the tutor's sessions, and the imported papers.
+/// A topic that ACTUALLY HOLDS THEORY QUESTIONS.
+///
+/// `theory_questions.topic_id` has existed since the table was created and
+/// nothing had ever read it — so a student revising one topic before a class
+/// test could only walk whole past papers, year by year, and pick the
+/// relevant questions out by eye.
+///
+/// The list is built from the QUESTIONS, not from the syllabus, so a topic on
+/// this shelf has at least one question behind it by construction. A shelf of
+/// dead ends is worse than a short shelf.
+class TheoryTopic {
+  const TheoryTopic({required this.id, required this.name, required this.n});
+
+  final String id;
+  final String name;
+  final int n;
+
+  static TheoryTopic from(Map<String, dynamic> j) => TheoryTopic(
+    id: asText(j['id']),
+    name: asText(j['name']),
+    n: asInt(j['n']),
+  );
+}
+
 class TheoryShelf {
-  const TheoryShelf({required this.sessions, required this.years});
+  const TheoryShelf({
+    required this.sessions,
+    required this.years,
+    this.topics = const [],
+  });
 
   final List<TheorySession> sessions;
   final List<({int year, int n})> years;
+  final List<TheoryTopic> topics;
 
-  bool get isEmpty => sessions.isEmpty && years.isEmpty;
+  bool get isEmpty => sessions.isEmpty && years.isEmpty && topics.isEmpty;
 }
 
 class TheorySubject {
@@ -109,12 +138,37 @@ class TheoryQuestion {
     required this.number,
     required this.html,
     this.marks,
+    this.year,
+    this.series = '',
   });
 
   final String id;
   final String number;
   final String html;
   final int? marks;
+
+  /// Set only when the questions came from a TOPIC rather than from one
+  /// year's paper: across years, two questions numbered "3" are otherwise
+  /// indistinguishable.
+  final int? year;
+  final String series;
+
+  static TheoryQuestion from(Map<String, dynamic> m) => TheoryQuestion(
+    id: asText(m['id']),
+    number: asText(m['number']),
+    html: asTextOrNull(m['question_html']) ?? asTextOrNull(m['question']) ?? '',
+    marks: asIntOrNull(m['marks']),
+    year: asIntOrNull(m['year']),
+    series: asText(m['series']),
+  );
+
+  /// "2019 · 3", or just "3" inside a single year's paper.
+  String get label {
+    final n = number.isEmpty ? '' : number;
+    if (year == null) return n;
+    final y = series.isEmpty || series == 'main' ? '$year' : '$year $series';
+    return n.isEmpty ? y : '$y · $n';
+  }
 }
 
 class TheoryAnswer {
@@ -195,7 +249,27 @@ final theoryShelfProvider =
             .whereType<Map>()
             .map((m) => (year: asInt(m['year']), n: asInt(m['n'])))
             .toList(),
+        topics: asMapList(res['topics']).map(TheoryTopic.from).toList(),
       );
+    });
+
+/// One topic's questions, across every year the bank holds.
+final theoryTopicProvider =
+    FutureProvider.family<
+      List<TheoryQuestion>,
+      ({String subject, String kind, String topic})
+    >((ref, key) async {
+      final res = await ref
+          .read(apiProvider)
+          .get(
+            '/api/mobile/theory',
+            query: {
+              'subject': key.subject,
+              'kind': key.kind,
+              'topic': key.topic,
+            },
+          );
+      return asMapList(res['questions']).map(TheoryQuestion.from).toList();
     });
 
 /// One written session, opened.
@@ -229,20 +303,7 @@ final theoryPaperProvider =
               'year': '${key.year}',
             },
           );
-      return (asList(res['questions']))
-          .whereType<Map>()
-          .map(
-            (m) => TheoryQuestion(
-              id: asText(m['id']),
-              number: asText(m['number']),
-              html:
-                  asTextOrNull(m['question_html']) ??
-                  asTextOrNull(m['question']) ??
-                  '',
-              marks: asIntOrNull(m['marks']),
-            ),
-          )
-          .toList();
+      return asMapList(res['questions']).map(TheoryQuestion.from).toList();
     });
 
 /// Asked for deliberately, one question at a time.

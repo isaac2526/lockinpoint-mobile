@@ -299,6 +299,38 @@ class TheoryShelfScreen extends ConsumerWidget {
                         ),
                       const SizedBox(height: Gap.lg),
                     ],
+                    /* BY TOPIC — the step that was never here.
+                       theory_questions has carried a topic_id since the table
+                       was created and nothing read it, so a student revising
+                       ONE topic before a class test had to walk whole past
+                       papers year by year and pick the relevant questions out
+                       by eye. Only topics with questions behind them are
+                       listed, so no chip here is a dead end. */
+                    if (shelf.topics.isNotEmpty) ...[
+                      const LipLabel('By topic'),
+                      const SizedBox(height: Gap.sm),
+                      Wrap(
+                        spacing: Gap.sm,
+                        runSpacing: Gap.sm,
+                        children: [
+                          for (final t in shelf.topics)
+                            LipChip(
+                              t.name,
+                              count: t.n,
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => TheoryTopicScreen(
+                                    subject: subject,
+                                    kind: kind,
+                                    topic: t,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: Gap.lg),
+                    ],
                     if (shelf.years.isNotEmpty) ...[
                       const LipLabel('Past papers'),
                       const SizedBox(height: Gap.sm),
@@ -460,6 +492,66 @@ class TheoryPaperScreen extends ConsumerWidget {
   }
 }
 
+/// ===========================================================================
+/// ONE TOPIC, ACROSS EVERY YEAR
+///
+/// The same page as a past paper, from the other direction: instead of "the
+/// whole 2019 paper", "every Redox question there is". Each question carries
+/// its year, because across years two questions numbered "3" are otherwise
+/// indistinguishable.
+/// ===========================================================================
+class TheoryTopicScreen extends ConsumerWidget {
+  const TheoryTopicScreen({
+    super.key,
+    required this.subject,
+    required this.kind,
+    required this.topic,
+  });
+  final TheorySubject subject;
+  final String kind;
+  final TheoryTopic topic;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final key = (subject: subject.id, kind: kind, topic: topic.id);
+    final qs = ref.watch(theoryTopicProvider(key));
+
+    return Scaffold(
+      appBar: AppBar(title: Text('${subject.name} · ${topic.name}')),
+      body: SafeArea(
+        child: qs.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.all(Gap.lg),
+            child: LipSkeleton(height: 260),
+          ),
+          error: (e, _) => LipError(
+            message: humanError(e, doing: 'open this topic'),
+            onRetry: () => ref.invalidate(theoryTopicProvider(key)),
+          ),
+          data: (list) => list.isEmpty
+              ? LipEmpty(
+                  icon: Icons.edit_note_rounded,
+                  title: 'Nothing under ${topic.name} yet',
+                  message:
+                      'No theory question has been filed under this topic so '
+                      'far. Try a past paper instead.',
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(
+                    Gap.lg,
+                    Gap.lg,
+                    Gap.lg,
+                    Gap.huge,
+                  ),
+                  itemCount: list.length,
+                  itemBuilder: (_, i) => _Question(q: list[i]),
+                ),
+        ),
+      ),
+    );
+  }
+}
+
 /// One question, and the answer it will not show until asked.
 class _Question extends ConsumerStatefulWidget {
   const _Question({required this.q});
@@ -504,9 +596,11 @@ class _QuestionState extends ConsumerState<_Question> {
           children: [
             Row(
               children: [
-                if (q.number.isNotEmpty)
+                // "2019 · 3" inside a topic, plain "3" inside one paper —
+                // across years the number alone identifies nothing.
+                if (q.label.isNotEmpty)
                   Text(
-                    q.number,
+                    q.label,
                     style: LipType.bodyStrong.copyWith(
                       color: c.hues.orange.ink,
                     ),

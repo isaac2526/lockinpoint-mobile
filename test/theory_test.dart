@@ -52,6 +52,29 @@ class _Papers extends Fake implements Api {
         },
       };
     }
+    if (query.containsKey('topic')) {
+      return {
+        'ok': true,
+        'questions': [
+          {
+            'id': 'tq1',
+            'number': '3',
+            'year': 2019,
+            'series': 'main',
+            'question_html': '<p>Define momentum.</p>',
+            'marks': 3,
+          },
+          {
+            'id': 'tq2',
+            'number': '3',
+            'year': 2017,
+            'series': 'nov',
+            'question_html': '<p>State the law.</p>',
+            'marks': 2,
+          },
+        ],
+      };
+    }
     if (query.containsKey('year')) {
       return {
         'ok': true,
@@ -76,6 +99,11 @@ class _Papers extends Fake implements Api {
         'years': papers
             ? [
                 {'year': 2019, 'n': 8},
+              ]
+            : const [],
+        'topics': papers
+            ? [
+                {'id': 'tp1', 'name': 'Momentum', 'n': 5},
               ]
             : const [],
       };
@@ -244,5 +272,44 @@ void main() {
   test('a paper with no scheme is said plainly, not shown as an empty box', () {
     const a = TheoryAnswer(html: '', hasAnswer: false);
     expect(a.hasAnswer, isFalse);
+  });
+  testWidgets('a topic opens its questions from every year at once', (
+    tester,
+  ) async {
+    final api = await _open(tester);
+
+    // exam -> subject -> shelf
+    await tester.tap(find.text('WAEC'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Physics'));
+    await tester.pumpAndSettle();
+
+    // The topic chip is on the shelf, and it is not a dead end: the server
+    // only lists topics that have questions behind them.
+    expect(find.text('BY TOPIC'), findsOneWidget);
+    await tester.tap(find.text('Momentum'));
+    await tester.pumpAndSettle();
+
+    expect(api.asked.any((q) => q['topic'] == 'tp1'), isTrue);
+
+    /* THE YEAR IS ON THE QUESTION. Across years two questions numbered "3"
+       are indistinguishable, and both of these are numbered 3. */
+    expect(find.text('2019 · 3'), findsOneWidget);
+    expect(find.text('2017 nov · 3'), findsOneWidget);
+  });
+
+  testWidgets('inside one paper the number stands alone', (tester) async {
+    await _open(tester);
+    await tester.tap(find.text('WAEC'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Physics'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('2019'));
+    await tester.pumpAndSettle();
+
+    // No year prefix here — the whole page IS the year. The fixture's
+    // question is numbered 1, and "2019 · 1" must NOT appear.
+    expect(find.text('1'), findsOneWidget);
+    expect(find.text('2019 · 1'), findsNothing);
   });
 }
