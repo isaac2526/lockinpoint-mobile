@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
+import 'arena_setup.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
 import '../../design/rich_text.dart';
@@ -138,7 +139,15 @@ class GamesScreen extends ConsumerWidget {
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Games arena')),
+      appBar: AppBar(
+        title: const Text('Games arena'),
+        /* THE CHOICE IS REMEMBERED, SO IT MUST BE VISIBLE AND CHANGEABLE.
+           A setting asked once and then never shown again is not a
+           convenience, it is a trap: a student who picked Chemistry in
+           January and now wants Physics would have no idea why every game is
+           Chemistry. The bar says which it is, and tapping it re-asks. */
+        actions: [const _ArenaScopeButton()],
+      ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.lg, Gap.lg, Gap.huge),
@@ -170,11 +179,18 @@ class GamesScreen extends ConsumerWidget {
                   hue: c.hues.purple,
                   title: m.title,
                   blurb: m.blurb,
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => QuickGameScreen(mode: m),
-                    ),
-                  ),
+                  /* ASKED BEFORE THE GAME STARTS, not after a Yoruba
+                     question has already been put in front of a science
+                     candidate. Remembered, so it is asked once. */
+                  onTap: () async {
+                    final choice = await ensureArenaChoice(context, ref);
+                    if (choice == null || !context.mounted) return;
+                    await Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => QuickGameScreen(mode: m),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -188,6 +204,37 @@ class GamesScreen extends ConsumerWidget {
 // ============================================================================
 // THE QUICK GAMES
 // ============================================================================
+
+/// What the arena is set to, and the way to change it.
+class _ArenaScopeButton extends ConsumerWidget {
+  const _ArenaScopeButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
+    final choice = ref.watch(arenaChoiceProvider).value;
+    if (choice == null || !choice.isSet) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(right: Gap.sm),
+      child: TextButton.icon(
+        onPressed: () async {
+          final picked = await showModalBottomSheet<ArenaChoice>(
+            context: context,
+            isScrollControlled: true,
+            builder: (_) => const ArenaSetupSheet(),
+          );
+          if (picked != null) ref.invalidate(arenaChoiceProvider);
+        },
+        icon: Icon(Icons.tune_rounded, size: 17, color: c.text2),
+        label: Text(
+          choice.label,
+          style: LipType.caption.copyWith(color: c.text2),
+        ),
+      ),
+    );
+  }
+}
 
 class QuickGameScreen extends ConsumerStatefulWidget {
   const QuickGameScreen({super.key, required this.mode});
@@ -233,10 +280,16 @@ class _QuickGameScreenState extends ConsumerState<QuickGameScreen> {
       _qs = null;
     });
     try {
+      /* THE STUDENT'S OWN EXAM AND SUBJECT. /api/games/pool has accepted
+         both since the day it was written and the app sent neither, so the
+         arena served whatever was in the bank. */
+      final choice = await ref.read(arenaChoiceProvider.future);
       final qs = await gamePool(
         api,
         count: widget.mode.count,
         daily: widget.mode.daily,
+        examSlug: choice.examSlug,
+        subjectId: choice.subjectId,
       );
       if (!mounted) return;
       setState(() {

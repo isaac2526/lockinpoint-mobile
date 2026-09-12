@@ -54,11 +54,21 @@ class GameQuestion {
 /// `daily` makes it the same plate for every student today — that is the whole
 /// point of the Daily Ten, and it is the server that guarantees it, not a
 /// shuffle here.
+/// The arena's questions.
+///
+/// [examSlug] AND [subjectId] WERE NEVER SENT. /api/games/pool has accepted
+/// both since it was written — it says so in its own header — and the app
+/// asked for neither, so a WAEC science candidate was handed Yoruba,
+/// Literature and anything else that happened to be in the bank. Being asked
+/// a question from a subject you do not offer is not a game; it is a reason
+/// to close the app.
 Future<List<GameQuestion>> gamePool(
   Api api, {
   int count = 15,
   bool daily = false,
   bool fourOnly = false,
+  String examSlug = '',
+  String subjectId = '',
 }) async {
   final res = await api.get(
     '/api/games/pool',
@@ -66,6 +76,8 @@ Future<List<GameQuestion>> gamePool(
       'count': '$count',
       if (daily) 'day': '1',
       if (fourOnly) 'four': '1',
+      if (examSlug.isNotEmpty) 'exam': examSlug,
+      if (subjectId.isNotEmpty) 'subject': subjectId,
     },
   );
   return (asList(res['questions']))
