@@ -9,7 +9,20 @@ import '../../design/glass.dart';
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
+import '../practice/practice_repository.dart';
 import 'plan_repository.dart';
+
+/// The exams, for the planner's own picker. Shared with Practice — one
+/// list of exams in the product, not two that can disagree.
+final _planExamsProvider = FutureProvider<List<ExamOption>>(
+  (ref) => ref.watch(practiceRepositoryProvider).exams(),
+);
+
+final _planSubjectsProvider =
+    FutureProvider.family<List<SubjectOption>, String>(
+      (ref, examSlug) =>
+          ref.watch(practiceRepositoryProvider).subjects(examSlug),
+    );
 
 /// ===========================================================================
 /// THE STUDY PLAN · fourteen days, built from this student's own weak topics.
@@ -59,6 +72,13 @@ class _NoPlanYetState extends ConsumerState<_NoPlanYet> {
   bool _busy = false;
   String _problem = '';
 
+  /// The exam being offered, and the subjects inside it this student sits.
+  /// Optional: a student with a history of attempts already tells the server
+  /// what they sit, and the server prefers their weak topics to anything
+  /// chosen here. This is what makes a plan possible on DAY ONE.
+  String? _examSlug;
+  final Set<String> _subjects = {};
+
   Future<void> _build() async {
     final when = _date;
     if (when == null) {
@@ -70,7 +90,12 @@ class _NoPlanYetState extends ConsumerState<_NoPlanYet> {
       _problem = '';
     });
     try {
-      await buildPlan(ref, targetDate: when, minutesPerDay: _minutes);
+      await buildPlan(
+        ref,
+        targetDate: when,
+        minutesPerDay: _minutes,
+        subjectIds: _subjects.toList(),
+      );
     } on ApiFailure catch (e) {
       if (mounted) setState(() => _problem = e.message);
     } finally {
@@ -129,13 +154,103 @@ class _NoPlanYetState extends ConsumerState<_NoPlanYet> {
         ),
 
         const SizedBox(height: Gap.lg),
+        const LipLabel('Which exam are you sitting?'),
+        const SizedBox(height: Gap.sm),
+        Consumer(
+          builder: (context, ref, _) => ref
+              .watch(_planExamsProvider)
+              .when(
+                loading: () => const LipSkeleton(height: 44),
+                error: (e, _) => LipError(
+                  message: humanError(e, doing: 'load the exams'),
+                  onRetry: () => ref.invalidate(_planExamsProvider),
+                ),
+                data: (exams) => Wrap(
+                  spacing: Gap.sm,
+                  runSpacing: Gap.sm,
+                  children: [
+                    for (final x in exams)
+                      LipChip(
+                        x.shortName.isEmpty ? x.fullName : x.shortName,
+                        selected: _examSlug == x.slug,
+                        onTap: () => setState(() {
+                          _examSlug = x.slug;
+                          // The old exam's subjects are not this exam's.
+                          _subjects.clear();
+                        }),
+                      ),
+                  ],
+                ),
+              ),
+        ),
+
+        if (_examSlug != null) ...[
+          const SizedBox(height: Gap.lg),
+          const LipLabel('Which subjects?'),
+          const SizedBox(height: Gap.sm),
+          Consumer(
+            builder: (context, ref, _) => ref
+                .watch(_planSubjectsProvider(_examSlug!))
+                .when(
+                  loading: () => const LipSkeleton(height: 88),
+                  error: (e, _) => LipError(
+                    message: humanError(e, doing: 'load the subjects'),
+                    onRetry: () =>
+                        ref.invalidate(_planSubjectsProvider(_examSlug!)),
+                  ),
+                  data: (subjects) => Wrap(
+                    spacing: Gap.sm,
+                    runSpacing: Gap.sm,
+                    children: [
+                      for (final sub in subjects)
+                        LipChip(
+                          sub.name,
+                          selected: _subjects.contains(sub.id),
+                          onTap: () => setState(
+                            () => _subjects.contains(sub.id)
+                                ? _subjects.remove(sub.id)
+                                : _subjects.add(sub.id),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+          ),
+          const SizedBox(height: Gap.xs),
+          Text(
+            'Tick the ones you actually offer. Once you have sat a few '
+            'papers the plan is rebuilt from your own weak topics instead.',
+            style: LipType.caption.copyWith(color: c.text3),
+          ),
+        ],
+
+        const SizedBox(height: Gap.lg),
         const LipLabel('How long a day, honestly?'),
         const SizedBox(height: Gap.sm),
+        /* UP TO FIFTEEN HOURS. This stopped at two, which is not the day of
+           anybody in the last fortnight before an exam — the person most
+           likely to be sitting here. A holiday candidate reading all day
+           could not describe their day to the planner at all. */
         Wrap(
           spacing: Gap.sm,
           runSpacing: Gap.sm,
           children: [
-            for (final m in const [15, 30, 45, 60, 90, 120])
+            for (final m in const [
+              15,
+              30,
+              45,
+              60,
+              90,
+              120,
+              180,
+              240,
+              300,
+              360,
+              480,
+              600,
+              720,
+              900,
+            ])
               LipChip(
                 m < 60
                     ? '$m min'
@@ -147,8 +262,11 @@ class _NoPlanYetState extends ConsumerState<_NoPlanYet> {
         ),
         const SizedBox(height: Gap.xs),
         Text(
-          'Be honest. A plan built on two hours you do not have is a plan you '
-          'abandon on day three.',
+          _minutes >= 480
+              ? 'A long day. Break it up — and if you miss one, rebuild '
+                    'rather than trying to catch up.'
+              : 'Be honest. A plan built on hours you do not have is a plan '
+                    'you abandon on day three.',
           style: LipType.caption.copyWith(color: c.text3),
         ),
 

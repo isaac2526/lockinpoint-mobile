@@ -117,18 +117,45 @@ Future<void> buildPlan(
   WidgetRef ref, {
   required DateTime targetDate,
   required int minutesPerDay,
+  List<String> subjectIds = const [],
 }) async {
   await ref
       .read(apiProvider)
       .post(
         '/api/mobile/plan',
-        body: {
-          'targetDate': targetDate.toIso8601String().substring(0, 10),
-          'minutesPerDay': minutesPerDay,
-        },
+        body: planBuildBody(
+          targetDate: targetDate,
+          minutesPerDay: minutesPerDay,
+          subjectIds: subjectIds,
+        ),
       );
   ref.invalidate(studyPlanProvider);
 }
+
+/// The body that builds a fortnight — pulled out so it can be tested without
+/// a widget tree, the same way [planTickBody] is.
+///
+/// The DATE IS SENT AS A DAY, not as a moment. An ISO timestamp would carry
+/// the phone's clock time and time zone into a column that stores a date, and
+/// a student in Lagos picking the 4th at 23:00 would have had a plan ending
+/// on the 5th.
+Map<String, Object> planBuildBody({
+  required DateTime targetDate,
+  required int minutesPerDay,
+  List<String> subjectIds = const [],
+}) => {
+  'targetDate': targetDate.toIso8601String().substring(0, 10),
+  /* CLAMPED HERE TOO, not just on the server. Ten minutes to fifteen hours;
+     the server clamps to the same range, and two clamps that agree is one
+     less way for the two to drift. */
+  'minutesPerDay': minutesPerDay.clamp(10, 900),
+  /* SENT SO THE PLANNER NEVER HAS TO REFUSE. A student with no attempts
+     behind them used to be told "sit a few papers first" — turned away on
+     the day they installed the app, by the very screen they opened to be
+     told what to do. With their subjects in hand the server tops the
+     fortnight up from the syllabus instead. */
+  if (subjectIds.isNotEmpty) 'subjectIds': subjectIds,
+};
 
 /// The body that ticks one day off — pulled out so it can be tested without
 /// a widget tree, because getting it wrong is silent and expensive.

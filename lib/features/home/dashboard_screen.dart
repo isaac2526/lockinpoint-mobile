@@ -332,6 +332,14 @@ class _Content extends ConsumerWidget {
           const SizedBox(height: Gap.md),
           _DueToday(count: asInt(you['dueToday'])),
         ],
+        const SizedBox(height: Gap.lg),
+
+        /* THE QUOTE OF THE DAY. The `quotes` table, its admin desk and the
+           /api/public/quote route all existed; nothing in this app had ever
+           read them, so every quote Tutor Bello wrote reached the website
+           and stopped there. */
+        const _QuoteOfTheDay(),
+
         const SizedBox(height: Gap.xl),
 
         // ---- everything LockInPoint does, in colour -------------------
@@ -347,7 +355,7 @@ class _Content extends ConsumerWidget {
         const _ChannelCard(),
 
         const SizedBox(height: Gap.xl),
-        _Footer(email: asText(student['email'])),
+        const _Footer(),
       ],
     );
   }
@@ -575,8 +583,7 @@ class _ProfileButton extends StatelessWidget {
 }
 
 class _Footer extends ConsumerWidget {
-  const _Footer({required this.email});
-  final String email;
+  const _Footer();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -592,10 +599,35 @@ class _Footer extends ConsumerWidget {
        two to hit by accident — sitting at the bottom of the screen a student
        scrolls every day — was the one that signed them straight out, on a
        phone where signing back in means finding a password. */
+    /* AND THE EMAIL ADDRESS IS GONE FROM HERE TOO.
+       Printing the student's own address at the bottom of their home screen
+       told them nothing they did not know, and it is the one line on this
+       page a person would not want a classmate reading over their shoulder.
+       It is on the Profile screen, where an account detail belongs.
+
+       WHAT IS HERE INSTEAD is the way to reach Tutor Bello: the channel row
+       an admin edits in the backend. No row, no button. */
+    final contacts = ref.watch(supportContactsProvider).value ?? const [];
+    final channel =
+        contacts.where((k) => k.kind == 'channel').firstOrNull ??
+        contacts.where((k) => k.kind == 'whatsapp').firstOrNull;
+
     return Column(
       children: [
-        Text(email, style: LipType.caption.copyWith(color: c.text3)),
-        const SizedBox(height: Gap.xs),
+        if (channel != null) ...[
+          TextButton.icon(
+            onPressed: () =>
+                launchUrl(channel.uri, mode: LaunchMode.externalApplication),
+            icon: Icon(Icons.chat_rounded, size: 18, color: c.hues.green.ink),
+            label: Text(
+              channel.label.isEmpty
+                  ? 'Join our WhatsApp channel'
+                  : channel.label,
+              style: LipType.small.copyWith(color: c.hues.green.ink),
+            ),
+          ),
+          const SizedBox(height: Gap.xs),
+        ],
         TextButton(
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute<void>(builder: (_) => const ProfileScreen()),
@@ -641,18 +673,87 @@ class _Skeleton extends StatelessWidget {
 /// now — and when the team runs no channel there is simply NO CARD, which is
 /// better than a card that opens a link nobody maintains.
 /// ===========================================================================
+/// ===========================================================================
+/// THE QUOTE OF THE DAY
+///
+/// Same quote for everybody, all day, chosen by date rather than at random —
+/// a "quote of the day" that changes every time you blink is not one.
+///
+/// It renders NOTHING until it has one, and nothing if there is none: a
+/// skeleton where a quote might go is worse than the gap it fills.
+/// ===========================================================================
+class _QuoteOfTheDay extends ConsumerWidget {
+  const _QuoteOfTheDay();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.lip;
+    final q = ref.watch(quoteOfTheDayProvider).value;
+    final text = asText(q?['text']).trim();
+    if (text.isEmpty) return const SizedBox.shrink();
+    final author = asText(q?['author']).trim();
+
+    return GlassSurface(
+      hue: c.hues.amber,
+      padding: const EdgeInsets.all(Gap.lg),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.format_quote_rounded,
+            size: 22,
+            color: c.hues.amber.ink.withValues(alpha: 0.55),
+          ),
+          const SizedBox(width: Gap.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  text,
+                  style: LipType.body.copyWith(
+                    color: c.text1,
+                    height: 1.5,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+                if (author.isNotEmpty) ...[
+                  const SizedBox(height: Gap.xs),
+                  Text(
+                    '— $author',
+                    style: LipType.caption.copyWith(color: c.text3),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ChannelCard extends ConsumerWidget {
   const _ChannelCard();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.lip;
-    final channel = ref
-        .watch(supportContactsProvider)
-        .value
-        ?.where((k) => k.kind == 'channel')
-        .firstOrNull;
+    /* A WHATSAPP ROW COUNTS AS THE CHANNEL.
+       This looked only for kind == 'channel', so an admin who set the
+       WhatsApp channel up as a `whatsapp` contact — which is what the
+       contacts desk offers, and what the link builder already knows how to
+       turn into a wa.me address — got no card at all. Either kind works;
+       an explicit `channel` row still wins. */
+    final contacts = ref.watch(supportContactsProvider).value ?? const [];
+    final channel =
+        contacts.where((k) => k.kind == 'channel').firstOrNull ??
+        contacts.where((k) => k.kind == 'whatsapp').firstOrNull;
     if (channel == null) return const SizedBox.shrink();
+    final isWhatsApp =
+        channel.kind == 'whatsapp' ||
+        channel.uri.host.contains('whatsapp') ||
+        channel.uri.host == 'wa.me';
 
     return Padding(
       padding: const EdgeInsets.only(top: Gap.lg),
@@ -674,7 +775,7 @@ class _ChannelCard extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(Radii.md),
               ),
               child: Icon(
-                Icons.campaign_rounded,
+                isWhatsApp ? Icons.chat_rounded : Icons.campaign_rounded,
                 size: 20,
                 color: c.hues.green.ink,
               ),

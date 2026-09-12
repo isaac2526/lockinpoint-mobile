@@ -94,7 +94,22 @@ class _AppShellState extends ConsumerState<AppShell> with RestorationMixin {
   final RestorableInt _tabIndex = RestorableInt(0);
 
   int get _tab => _tabIndex.value;
-  set _tab(int v) => _tabIndex.value = v;
+  set _tab(int v) {
+    _tabIndex.value = v;
+    _opened.add(v);
+  }
+
+  /* TABS COST NOTHING UNTIL THEY ARE OPENED.
+     IndexedStack builds every child immediately — it only decides which one
+     to PAINT. So each tab's initState ran at launch and every tab that talks
+     to the server talked to it before the student had touched anything:
+     Practice asked for exams, Ranking for the board, Profile for the account,
+     and Lumi for the chat list. Four requests, on a cheap phone on mobile
+     data, to draw one screen — and four bills.
+
+     A tab is built on the first visit and kept forever after, so switching
+     back is still instant and nothing is lost. Home is open by definition. */
+  final Set<int> _opened = {0};
 
   @override
   String get restorationId => 'app_shell';
@@ -102,6 +117,13 @@ class _AppShellState extends ConsumerState<AppShell> with RestorationMixin {
   @override
   void restoreState(RestorationBucket? oldBucket, bool initialRestore) {
     registerForRestoration(_tabIndex, 'tab');
+    // A restored process comes back on the tab it left, so that one counts as
+    // opened — and an index from an older build with fewer tabs must not
+    // point past the end of the stack.
+    if (_tabIndex.value < 0 || _tabIndex.value >= _tabs.length) {
+      _tabIndex.value = 0;
+    }
+    _opened.add(_tabIndex.value);
   }
 
   @override
@@ -125,12 +147,23 @@ class _AppShellState extends ConsumerState<AppShell> with RestorationMixin {
     });
   }
 
+  /* FIVE TABS, AND LUMI IS ONE OF THEM.
+     She was reachable only from a tile on the dashboard and from inside a
+     question — so the single thing in this app a student would open twenty
+     times a day was three taps deep. She sits in the MIDDLE, where a thumb
+     rests, and the tab order after it is unchanged so nobody has to relearn
+     where Profile is. */
   static const _tabs = [
     (icon: Icons.home_rounded, off: Icons.home_outlined, label: 'Home'),
     (
       icon: Icons.rocket_launch_rounded,
       off: Icons.rocket_launch_outlined,
       label: 'Practice',
+    ),
+    (
+      icon: Icons.auto_awesome_rounded,
+      off: Icons.auto_awesome_outlined,
+      label: 'Ask Lumi',
     ),
     (
       icon: Icons.leaderboard_rounded,
@@ -143,6 +176,14 @@ class _AppShellState extends ConsumerState<AppShell> with RestorationMixin {
       label: 'Profile',
     ),
   ];
+
+  Widget _tabBody(int i) => switch (i) {
+    0 => const DashboardScreen(embedded: true),
+    1 => const PracticeFlowScreen(embedded: true),
+    2 => const TutorScreen(embedded: true),
+    3 => const LeaderboardScreen(embedded: true),
+    _ => const ProfileScreen(embedded: true),
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -187,11 +228,9 @@ class _AppShellState extends ConsumerState<AppShell> with RestorationMixin {
           Expanded(
             child: IndexedStack(
               index: _tab,
-              children: const [
-                DashboardScreen(embedded: true),
-                PracticeFlowScreen(embedded: true),
-                LeaderboardScreen(embedded: true),
-                ProfileScreen(embedded: true),
+              children: [
+                for (var i = 0; i < _tabs.length; i++)
+                  _opened.contains(i) ? _tabBody(i) : const SizedBox.shrink(),
               ],
             ),
           ),

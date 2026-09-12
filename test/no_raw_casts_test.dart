@@ -20,9 +20,7 @@ void main() {
     // These are the casts that crash on a value the server changed. A cast to
     // a widget, a controller or a sealed type is a different thing entirely
     // and is left alone.
-    final risky = RegExp(
-      r'\bas (?:String|int|num|double|bool|List|Map)\b',
-    );
+    final risky = RegExp(r'\bas (?:String|int|num|double|bool|List|Map)\b');
 
     final offenders = <String>[];
     for (final f in Directory('lib').listSync(recursive: true)) {

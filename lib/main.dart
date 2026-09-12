@@ -78,7 +78,12 @@ class LockInPointApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final mode = ref.watch(themeControllerProvider).value ?? ThemeMode.system;
+    /* LIGHT UNTIL THE STORED CHOICE ARRIVES — not `system`.
+       The controller reads SharedPreferences asynchronously, so for the first
+       frames `.value` is null. Falling back to `system` here meant a phone in
+       dark mode opened the app DARK and then snapped to light a moment later,
+       on every cold start, for a student who had never chosen anything. */
+    final mode = ref.watch(themeControllerProvider).value ?? ThemeMode.light;
 
     return MaterialApp(
       title: 'LockInPoint',

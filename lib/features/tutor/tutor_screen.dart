@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/shell.dart' show openAppMenu;
 import '../../core/api.dart';
 import '../../design/components.dart';
 import '../../design/lumi_markdown.dart';
@@ -33,12 +34,22 @@ import 'tutor_repository.dart';
 ///                   times and conclude the app is broken.
 /// ===========================================================================
 class TutorScreen extends ConsumerStatefulWidget {
-  const TutorScreen({super.key, this.questionId, this.opening});
+  const TutorScreen({
+    super.key,
+    this.questionId,
+    this.opening,
+    this.embedded = false,
+  });
 
   /// Set when Lumi is opened from inside a question. The server looks the
   /// question up itself — the app never sends the stem, and never the answer.
   final String? questionId;
   final String? opening;
+
+  /// True when Lumi is a TAB in the bottom bar rather than a pushed route.
+  /// An embedded screen shows the menu where the back arrow would be, because
+  /// a tab has nowhere to go back to.
+  final bool embedded;
 
   @override
   ConsumerState<TutorScreen> createState() => _TutorScreenState();
@@ -268,6 +279,14 @@ class _TutorScreenState extends ConsumerState<TutorScreen> {
               ),
           ],
         ),
+        automaticallyImplyLeading: !widget.embedded,
+        leading: widget.embedded
+            ? IconButton(
+                onPressed: openAppMenu,
+                icon: const Icon(Icons.menu_rounded),
+                tooltip: 'Menu',
+              )
+            : null,
         actions: [
           // Only when Lumi is a conversation. Opened from a question she is a
           // nudge about that question, and a chat list would be noise.
