@@ -348,6 +348,48 @@ class PracticeRepository {
     return _sitting(res, label);
   }
 
+  /// ========================================================================
+  /// THE JAMB PAPER · four subjects, one clock, one score over 400.
+  ///
+  /// The app's own welcome screen promises "a complete JAMB mock of 180
+  /// questions scored over 400" and prints 180 as a headline figure — and
+  /// until now nothing in the app could start one. /api/attempts has accepted
+  /// `jamb_mock` and `jamb_mini` since it was written: it serves 60 questions
+  /// for the compulsory subject and 40 for each of the other three, sets the
+  /// clock to two hours, and scores the result over 400. The website has had
+  /// the door all along and the phone had none.
+  ///
+  /// The counts, the duration and the scale are ALL decided by the server. A
+  /// phone that computed its own 180 would drift from the hall the first time
+  /// JAMB changed a paper, and the student would be the last to know.
+  ///
+  /// [subjectIds] is English FIRST, then the three the student chose. The
+  /// route reads the compulsory flag itself, so the order is a courtesy to
+  /// the label rather than a rule — but a paper that names its subjects in
+  /// the order the student picked them reads like their own paper.
+  /// ========================================================================
+  Future<Sitting> startJamb({
+    required List<String> subjectIds,
+    required String label,
+
+    /// null for the full mock. A mini mock sends the per-subject count the
+    /// student chose — 10, 20, 40 or 60 — exactly as the website does.
+    int? perSubject,
+  }) async {
+    final res = await _api.post(
+      '/api/attempts',
+      body: {
+        'action': 'start',
+        'mode': perSubject == null ? 'jamb_mock' : 'jamb_mini',
+        'examSlug': 'jamb',
+        'subjectIds': subjectIds,
+        'label': label,
+        if (perSubject != null) 'per': '$perSubject',
+      },
+    );
+    return _sitting(res, label);
+  }
+
   Future<Sitting> resume(String attemptId) async {
     final res = await _api.post(
       '/api/attempts',

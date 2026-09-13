@@ -35,6 +35,11 @@ class PracticeFlowScreen extends ConsumerStatefulWidget {
 
 enum _Source { year, topic, random, tutorial }
 
+/// WHICH ROAD OUT OF JAMB. The website forks here and the app never did: a
+/// student who chose JAMB was walked straight into one subject, with no way to
+/// reach the four-subject paper the welcome screen promises them.
+enum _Road { subject, mock, mini }
+
 class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
   int _step = 0;
 
@@ -48,6 +53,19 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
   int? _year;
   TopicCount? _topic;
   int _count = 20;
+
+  /// Null until a JAMB student has chosen between one subject and the paper.
+  /// Every other examination has one road, so it is set the moment they pick.
+  _Road? _road;
+
+  /// The three subjects beside Use of English. Never four: the compulsory one
+  /// is not a choice, and a student who could deselect it would be sitting a
+  /// paper JAMB does not set.
+  final List<SubjectOption> _picked = [];
+
+  /// Questions per subject in a mini mock. The full mock does not ask — the
+  /// server sets 60 for the compulsory subject and 40 for each of the rest.
+  int _per = 10;
 
   /// Which room: the untimed one that marks as you go, or the timed one that
   /// behaves like the real hall.
@@ -86,6 +104,19 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
     setState(() => _exams = list);
   });
 
+  /// JAMB is the only examination with two roads, and it is not hardcoded by
+  /// name: an exam forks when the server marks one of its subjects compulsory,
+  /// which is exactly what makes a four-subject paper possible. The same
+  /// property drives the website's own fork.
+  bool get _forks => (_subjects ?? const []).any((s) => s.compulsory);
+
+  SubjectOption? get _compulsory {
+    for (final s in _subjects ?? const <SubjectOption>[]) {
+      if (s.compulsory) return s;
+    }
+    return null;
+  }
+
   Future<void> _pickExam(ExamOption exam) => _guard(() async {
     final list = await _repo.subjects(exam.slug);
     setState(() {
@@ -93,6 +124,9 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
       _subjects = list;
       _subject = null;
       _chooser = null;
+      _picked.clear();
+      // An exam with no compulsory subject has one road, so do not ask.
+      _road = list.any((s) => s.compulsory) ? null : _Road.subject;
       _step = 1;
     });
   });
@@ -126,6 +160,34 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
     ].where((s) => s.isNotEmpty).join(' · ');
   }
 
+  /// What the student is about to sit, named on the button and on the paper.
+  String get _jambLabel {
+    final names = [
+      if (_compulsory != null) _compulsory!.name,
+      ..._picked.map((s) => s.name),
+    ].join(' + ');
+    return _road == _Road.mini
+        ? 'JAMB Mini Mock · $names'
+        : 'JAMB Full Mock · $names';
+  }
+
+  Future<void> _startJamb() => _guard(() async {
+    final english = _compulsory;
+    if (english == null || _picked.length != 3) return;
+    final sitting = await _repo.startJamb(
+      // English first, then the three in the order the student chose them.
+      subjectIds: [english.id, ..._picked.map((s) => s.id)],
+      label: _jambLabel,
+      perSubject: _road == _Road.mini ? _per : null,
+    );
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => PracticeSessionScreen(sitting: sitting),
+      ),
+    );
+  });
+
   Future<void> _start() => _guard(() async {
     final sitting = await _repo.start(
       examSlug: _exam!.slug,
@@ -152,6 +214,14 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
          to pop, and popping would tear the shell out from under the student. */
       if (widget.embedded) return;
       Navigator.of(context).pop();
+    } else if (_step == 1 && _forks && _road != null) {
+      // Inside the JAMB fork, Back returns to the fork rather than all the
+      // way out to the exam list — the student chose JAMB on purpose.
+      setState(() {
+        _road = null;
+        _picked.clear();
+        _error = null;
+      });
     } else {
       setState(() {
         _step -= 1;
@@ -195,11 +265,19 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
                       children: [
                         Text(switch (_step) {
                           0 => 'Choose your exam',
-                          1 => _exam?.shortName ?? 'Choose your subject',
+                          1 =>
+                            _road == null || _road == _Road.subject
+                                ? _exam?.shortName ?? 'Choose your subject'
+                                : 'Your JAMB combination',
                           _ => _chooser?.subjectName ?? 'Set up your session',
                         }, style: LipType.heading.copyWith(color: c.text1)),
                         Text(
-                          'Step ${_step + 1} of 3',
+                          // The paper is two steps, not three: exam, then the
+                          // combination. Saying "of 3" would leave a student
+                          // waiting for a step that never comes.
+                          _road == _Road.mock || _road == _Road.mini
+                              ? 'Step 2 of 2'
+                              : 'Step ${_step + 1} of 3',
                           style: LipType.label.copyWith(color: c.text3),
                         ),
                       ],
@@ -250,6 +328,8 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
     }
     return switch (_step) {
       0 => _examStep(),
+      1 when _forks && _road == null => _forkStep(),
+      1 when _road == _Road.mock || _road == _Road.mini => _combinationStep(),
       1 => _subjectStep(),
       _ => _chooserStep(),
     };
@@ -283,6 +363,169 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
           ),
         );
       },
+    );
+  }
+
+  /// ========================================================================
+  /// THE FORK · one subject, or the paper.
+  ///
+  /// The app's welcome screen promises "a complete JAMB mock of 180 questions
+  /// scored over 400" and prints 180 as a headline figure. Until this screen
+  /// existed there was no way to reach one from inside the app: choosing JAMB
+  /// walked straight into a single-subject chooser, and /api/attempts had
+  /// accepted `jamb_mock` and `jamb_mini` the whole time. The website has
+  /// forked here since it was written; this is the same fork, same order.
+  /// ========================================================================
+  Widget _forkStep() {
+    final c = context.lip;
+    final english = _compulsory?.name ?? 'Use of English';
+    return ListView(
+      padding: const EdgeInsets.all(Gap.md),
+      children: [
+        Text(
+          'Two ways to sit ${_exam?.shortName ?? 'this exam'}. Both draw from '
+          'the same bank of real past questions.',
+          style: LipType.small.copyWith(color: c.text2),
+        ),
+        const SizedBox(height: Gap.lg),
+        Entrance(
+          index: 0,
+          child: LipChoiceCard(
+            icon: Icons.auto_stories_rounded,
+            title: 'Practise one subject',
+            subtitle: 'Pick a subject, then a year, a topic or a random mix',
+            selected: false,
+            onTap: _busy ? null : () => setState(() => _road = _Road.subject),
+          ),
+        ),
+        const SizedBox(height: Gap.md),
+        Entrance(
+          index: 1,
+          child: LipChoiceCard(
+            icon: Icons.workspace_premium_rounded,
+            title: 'Full UTME mock - 4 subjects',
+            // The counts are the server's. Naming them here is a description
+            // of what it does, not a second opinion about it.
+            subtitle:
+                '$english plus three you choose · 180 questions on one two '
+                'hour clock, scored over 400',
+            selected: false,
+            onTap: _busy ? null : () => setState(() => _road = _Road.mock),
+          ),
+        ),
+        const SizedBox(height: Gap.md),
+        Entrance(
+          index: 2,
+          child: LipChoiceCard(
+            icon: Icons.speed_rounded,
+            title: 'Mini mock',
+            subtitle:
+                'The same four subjects, fewer questions each · for a warm up '
+                'rather than a full sitting',
+            selected: false,
+            onTap: _busy ? null : () => setState(() => _road = _Road.mini),
+          ),
+        ),
+        const SizedBox(height: Gap.xl),
+      ],
+    );
+  }
+
+  /// ========================================================================
+  /// THE COMBINATION · English is in, and exactly three more.
+  ///
+  /// A FOURTH PICK IS REFUSED RATHER THAN SILENTLY SWAPPED. Quietly dropping
+  /// the first subject to make room for a fourth is the kind of helpfulness
+  /// that loses a student the subject they meant to sit and tells them
+  /// nothing. Tapping a chosen subject again unpicks it, which is the only
+  /// unsurprising way to change your mind.
+  /// ========================================================================
+  Widget _combinationStep() {
+    final c = context.lip;
+    final english = _compulsory;
+    final rest = (_subjects ?? const <SubjectOption>[])
+        .where((s) => !s.compulsory)
+        .toList();
+    final ready = _picked.length == 3;
+
+    return ListView(
+      padding: const EdgeInsets.all(Gap.md),
+      children: [
+        if (english != null) ...[
+          LipChip(
+            '${english.name} - always in',
+            selected: true,
+            tone: ChipTone.gold,
+          ),
+          const SizedBox(height: Gap.md),
+        ],
+        LipLabel(
+          ready ? '3 of 3 chosen' : 'Pick 3 more · ${_picked.length} of 3',
+        ),
+        const SizedBox(height: Gap.sm),
+        Wrap(
+          spacing: Gap.sm,
+          runSpacing: Gap.sm,
+          children: [
+            for (final s in rest)
+              LipChip(
+                s.name,
+                selected: _picked.any((p) => p.id == s.id),
+                onTap: _busy
+                    ? null
+                    : () => setState(() {
+                        final at = _picked.indexWhere((p) => p.id == s.id);
+                        if (at >= 0) {
+                          _picked.removeAt(at);
+                        } else if (_picked.length < 3) {
+                          _picked.add(s);
+                        }
+                      }),
+              ),
+          ],
+        ),
+        if (_road == _Road.mini) ...[
+          const SizedBox(height: Gap.lg),
+          const LipLabel('How many questions per subject'),
+          const SizedBox(height: Gap.sm),
+          Wrap(
+            spacing: Gap.sm,
+            children: [
+              for (final n in const [10, 20, 40, 60])
+                LipChip(
+                  '$n',
+                  selected: _per == n,
+                  onTap: () => setState(() => _per = n),
+                ),
+            ],
+          ),
+        ],
+        const SizedBox(height: Gap.lg),
+        GlassSurface(
+          tier: GlassTier.deep,
+          padding: const EdgeInsets.all(Gap.md),
+          child: Text(
+            ready
+                ? _jambLabel
+                : 'Choose three subjects beside '
+                      '${english?.name ?? 'the compulsory one'}.',
+            style: LipType.smallStrong.copyWith(color: c.text2),
+          ),
+        ),
+        const SizedBox(height: Gap.md),
+        LipButton(
+          // Named, so the student knows exactly what they are about to sit
+          // before the clock starts rather than after it.
+          label: ready
+              ? 'Start: ${english?.name ?? 'English'} + 3 subjects'
+              : 'Pick three subjects',
+          icon: Icons.timer_rounded,
+          gold: true,
+          busy: _busy,
+          onPressed: ready ? _startJamb : null,
+        ),
+        const SizedBox(height: Gap.xl),
+      ],
     );
   }
 

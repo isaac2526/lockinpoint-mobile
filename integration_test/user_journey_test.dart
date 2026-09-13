@@ -421,7 +421,9 @@ void main() {
     await tapWhenReady(tester, find.text('Full UTME mock - 4 subjects'));
 
     await see(tester, find.text('Use of English - always in'));
-    await see(tester, find.textContaining('Pick 3 more'));
+    // LipLabel paints its text uppercase, so the drive has to look for what
+    // is actually on the screen rather than for the string in the source.
+    await see(tester, find.textContaining('PICK 3 MORE'));
 
     for (final s in ['Physics', 'Chemistry', 'Biology']) {
       await tapWhenReady(tester, find.text(s));
