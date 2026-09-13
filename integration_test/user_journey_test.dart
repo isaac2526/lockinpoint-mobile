@@ -192,6 +192,19 @@ void main() {
         }
         continue;
       }
+      /* THE RESULT SCREEN HAS NO BACK OF ANY KIND — and until case 6 could
+         actually finish a paper, no run had ever reached one, so the unwind
+         had never met it. It offers one way out, a full width button, and
+         without this the drive stalled on the result of the mock and the NEXT
+         case failed with "nothing to tap: Mathematics" — a failure one case
+         away from its cause, which is the same shape as the two already
+         written down above. */
+      final done = find.widgetWithText(FilledButton, 'Back to the dashboard');
+      if (done.evaluate().isNotEmpty) {
+        await tester.tap(done.last);
+        await settle(tester, 1.5);
+        continue;
+      }
       if (back.evaluate().isEmpty) {
         // The practice flow's step arrow is an IconButton with a tooltip, not
         // a BackButton, so the generic unwind walked straight past it.
