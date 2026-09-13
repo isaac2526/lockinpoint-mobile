@@ -76,6 +76,19 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
   Sitting get sitting => widget.sitting;
   ServedQuestion get q => sitting.questions[_idx];
 
+  /// The name of the subject the current question came from, or null on a
+  /// single-subject sitting where saying it would be noise. Resolved through
+  /// the paper's own subject list rather than guessed from the label.
+  String? get _subjectName {
+    if (sitting.subjects.length < 2) return null;
+    final id = q.subjectId;
+    if (id == null || id.isEmpty) return null;
+    for (final s in sitting.subjects) {
+      if (s.id == id) return s.name;
+    }
+    return null;
+  }
+
   /// A resumed sitting arrives without the answer key, and a timed CBT never
   /// carries one at all — marking is the server's job at submit. The screen
   /// says which room the student is in rather than pretending.
@@ -366,6 +379,21 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
                         ],
                       ),
                     ),
+                    /* WHICH SUBJECT THIS QUESTION IS. Only a paper built from
+                       more than one subject needs saying, and a JAMB mock is
+                       unreadable without it: 180 questions arrive as one
+                       stream and nothing on screen marks where English ends
+                       and Physics begins. */
+                    if (_subjectName != null) ...[
+                      const SizedBox(width: Gap.sm),
+                      Flexible(
+                        child: LipChip(
+                          _subjectName!,
+                          tone: ChipTone.brand,
+                          selected: true,
+                        ),
+                      ),
+                    ],
                     if (sitting.timed) _Clock(left: _left),
                     IconButton(
                       onPressed: _openGrid,
@@ -855,8 +883,12 @@ class _ResultView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.lip;
-    final good = result.overall >= 70;
-    final mid = result.overall >= 50;
+    /* ONE THRESHOLD, TWO SCALES. A JAMB paper is scored over 400 and
+       everything else over 100, so comparing the raw number against 70 read
+       "265%" as a triumph and painted every mock green. `fraction` divides by
+       whichever scale the server says this result is on. */
+    final good = result.fraction >= 0.70;
+    final mid = result.fraction >= 0.50;
     return Scaffold(
       body: SafeArea(
         child: ListView(
@@ -885,7 +917,7 @@ class _ResultView extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  '${result.overall}%',
+                  result.isJamb ? '${result.overall}' : '${result.overall}%',
                   style: LipType.monoBig.copyWith(
                     fontSize: 30,
                     color: good
@@ -897,6 +929,18 @@ class _ResultView extends StatelessWidget {
                 ),
               ),
             ),
+            if (result.isJamb) ...[
+              const SizedBox(height: Gap.sm),
+              Center(
+                child: Text(
+                  // A mini mock's figure is an ESTIMATE scaled up from fewer
+                  // questions. Calling it the same thing as a full sitting
+                  // would be the flattering lie.
+                  result.projected ? 'projected, out of 400' : 'out of 400',
+                  style: LipType.caption.copyWith(color: c.text3),
+                ),
+              ),
+            ],
             const SizedBox(height: Gap.lg),
             Center(
               child: Text(

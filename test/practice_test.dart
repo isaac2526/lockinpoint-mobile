@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lockinpoint/core/api.dart';
 import 'package:lockinpoint/design/theme.dart';
 import 'package:lockinpoint/features/practice/practice_repository.dart';
 import 'package:lockinpoint/features/practice/practice_session_screen.dart';
@@ -377,4 +378,170 @@ void main() {
       expect(find.text('Leave anyway'), findsOneWidget);
     });
   });
+
+  /* =======================================================================
+     A JAMB PAPER IS NOT A PERCENTAGE, AND IT IS NOT ONE SUBJECT.
+
+     /api/attempts scores a mock over 400 and says so in `score.isJamb`; it
+     also returns the paper's `subjects` and a `subject_id` on every question.
+     This app read none of the three. So a mock printed "265%" inside a ring
+     whose thresholds (70 good, 50 fair) painted EVERY mock green, and 180
+     questions arrived as one stream with nothing saying where English ended
+     and Physics began.
+     ======================================================================= */
+
+  test('a JAMB result is read on its own scale, not as a percentage', () {
+    const jamb = SubmitResult(
+      correct: 120,
+      total: 180,
+      overall: 265,
+      isJamb: true,
+      perSubject: [],
+    );
+    // 265/400 is a good-but-not-brilliant paper. Read as a percentage it is
+    // 265%, which clears every threshold there is.
+    expect(jamb.fraction, closeTo(0.6625, 0.0001));
+    expect(
+      jamb.fraction >= 0.70,
+      isFalse,
+      reason: '265/400 is not a distinction',
+    );
+    expect(jamb.fraction >= 0.50, isTrue);
+
+    const ordinary = SubmitResult(
+      correct: 16,
+      total: 20,
+      overall: 80,
+      perSubject: [],
+    );
+    expect(ordinary.isJamb, isFalse);
+    expect(ordinary.fraction, closeTo(0.80, 0.0001));
+  });
+
+  test('a sitting keeps the subjects the route sends, and drops empties', () {
+    const paper = Sitting(
+      attemptId: 'a',
+      mode: 'jamb_mock',
+      label: 'JAMB Full Mock',
+      questions: [],
+      passages: {},
+      subjects: [
+        (id: 'eng', name: 'Use of English'),
+        (id: 'phy', name: 'Physics'),
+      ],
+      duration: 7200,
+    );
+    expect(paper.subjects.length, 2);
+    expect(paper.subjects.first.name, 'Use of English');
+
+    // A one-subject sitting carries none, which is what keeps the rail off
+    // every ordinary paper.
+    const single = Sitting(
+      attemptId: 'b',
+      mode: 'practice',
+      label: 'WAEC · Mathematics',
+      questions: [],
+      passages: {},
+    );
+    expect(single.subjects, isEmpty);
+  });
+
+  test('a served question remembers which subject it came from', () {
+    final q = ServedQuestion.fromJson(const {
+      'id': 'q1',
+      'question': 'What is 2 + 2?',
+      'options': ['3', '4'],
+      'letters': ['A', 'B'],
+      'subject_id': 'mth',
+    });
+    expect(q.subjectId, 'mth');
+
+    // Absent on a single-subject sitting, and that must not become the string
+    // "null" on a chip.
+    final plain = ServedQuestion.fromJson(const {
+      'id': 'q2',
+      'question': 'Why?',
+      'options': ['a'],
+      'letters': ['A'],
+    });
+    expect(plain.subjectId, isNull);
+  });
+
+  test(
+    'the SUBMIT PARSER reads isJamb and the subjects off the wire',
+    () async {
+      /* The arithmetic tests above build a SubmitResult by hand, so they cannot
+       fail if the parser stops reading the flag — and the parser is where the
+       bug actually was. This drives the real repository against a fake wire. */
+      final api = _Wire({
+        'submit': {
+          'ok': true,
+          'score': {
+            'correct': 120,
+            'total': 180,
+            'overall': 265,
+            'isJamb': true,
+            'projected': false,
+            'perSubject': [],
+          },
+          'corrections': [],
+        },
+        'start': {
+          'ok': true,
+          'attemptId': 'a-1',
+          'mode': 'jamb_mock',
+          'duration': 7200,
+          'subjects': [
+            {'id': 'eng', 'name': 'Use of English'},
+            {'id': 'phy', 'name': 'Physics'},
+          ],
+          'questions': [
+            {
+              'id': 'q1',
+              'question': 'Q',
+              'options': ['a', 'b'],
+              'letters': ['A', 'B'],
+              'subject_id': 'phy',
+            },
+          ],
+        },
+      });
+      final repo = PracticeRepository(api);
+
+      final sitting = await repo.startJamb(
+        subjectIds: const ['eng', 'phy', 'chm', 'bio'],
+        label: 'JAMB Full Mock',
+      );
+      expect(sitting.subjects.map((s) => s.name), [
+        'Use of English',
+        'Physics',
+      ]);
+      expect(sitting.questions.single.subjectId, 'phy');
+      expect(
+        sitting.duration,
+        7200,
+        reason: 'the two hour clock is the server\'s',
+      );
+      expect(api.lastBody!['mode'], 'jamb_mock');
+      expect(api.lastBody!.containsKey('per'), isFalse);
+
+      final out = await repo.submit(attemptId: 'a-1', answers: const {});
+      expect(out.isJamb, isTrue);
+      expect(out.overall, 265);
+      expect(out.fraction, closeTo(0.6625, 0.0001));
+    },
+  );
+}
+
+/// One /api/attempts, answering by the `action` it is asked for.
+class _Wire extends Fake implements Api {
+  _Wire(this.byAction);
+  final Map<String, Map<String, dynamic>> byAction;
+  Map<String, dynamic>? lastBody;
+
+  @override
+  Future<Map<String, dynamic>> post(String path, {Object? body}) async {
+    lastBody = (body as Map).cast<String, dynamic>();
+    return byAction[lastBody!['action']] ?? {'ok': true};
+  }
 }

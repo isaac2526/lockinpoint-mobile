@@ -98,6 +98,7 @@ class ServedQuestion {
     required this.question,
     required this.options,
     required this.letters,
+    this.subjectId,
     this.passageId,
     this.section,
     this.year,
@@ -110,6 +111,12 @@ class ServedQuestion {
   final String question;
   final List<String> options;
   final List<String> letters;
+
+  /// Which of the paper's subjects this question came from. One-subject
+  /// sittings never need it; a four-subject JAMB paper is unreadable without
+  /// it, because 180 questions arrive as one stream and nothing says where
+  /// English ends and Physics begins.
+  final String? subjectId;
   final String? passageId;
   final String? section;
   final int? year;
@@ -140,6 +147,7 @@ class ServedQuestion {
         ? asTextList(j['options_html'])
         : asTextList(j['options']),
     letters: asTextList(j['letters']),
+    subjectId: asTextOrNull(j['subject_id']),
     passageId: asTextOrNull(j['passage_id']),
     section: asTextOrNull(j['section']),
     year: asIntOrNull(j['year']),
@@ -164,6 +172,7 @@ class Sitting {
     required this.label,
     required this.questions,
     required this.passages,
+    this.subjects = const [],
     this.duration = 0,
     this.initialIndex = 0,
     this.initialAnswers = const {},
@@ -176,6 +185,16 @@ class Sitting {
   final String label;
   final List<ServedQuestion> questions;
   final Map<String, Passage> passages;
+
+  /// THE PAPER'S SUBJECTS, IN THE ORDER IT WAS BUILT.
+  ///
+  /// /api/attempts has returned `subjects: at.config?.subjects` on every start
+  /// and every resume since JAMB mocks existed, and this app threw it away —
+  /// so a four-subject paper arrived as one undifferentiated stream of 180
+  /// questions with nothing on screen saying which subject was being asked.
+  /// Empty for an ordinary single-subject sitting, which is why nothing else
+  /// had to change.
+  final List<({String id, String name})> subjects;
 
   /// Seconds left on the clock. Zero means untimed practice.
   ///
@@ -249,12 +268,33 @@ class SubmitResult {
     required this.total,
     required this.overall,
     required this.perSubject,
+    this.isJamb = false,
+    this.projected = false,
     this.corrections = const [],
   });
 
   final int correct;
   final int total;
+
+  /// OUT OF 400 FOR A JAMB PAPER, OUT OF 100 FOR EVERYTHING ELSE.
+  ///
+  /// The route says which in `score.isJamb`, and this app ignored it — so a
+  /// mock printed "265%" inside a ring whose thresholds (70 good, 50 fair)
+  /// painted every single mock green. A student cannot read their own result
+  /// off a screen that is using the wrong scale.
   final int overall;
+
+  /// True when [overall] is a JAMB score over 400 rather than a percentage.
+  final bool isJamb;
+
+  /// A MINI mock's score is an ESTIMATE of the full paper, scaled up from
+  /// fewer questions. Presenting it as the same thing as a full sitting would
+  /// be the flattering lie.
+  final bool projected;
+
+  /// [overall] as a fraction of its own scale, so one threshold reads both.
+  double get fraction => overall / (isJamb ? 400 : 100);
+
   final List<({String name, int correct, int total})> perSubject;
   final List<Correction> corrections;
 
@@ -425,6 +465,10 @@ class PracticeRepository {
         .cast<Map<String, dynamic>>()
         .map(ServedQuestion.fromJson)
         .toList(),
+    subjects: asMapList(res['subjects'])
+        .map((m) => (id: asText(m['id']), name: asText(m['name'])))
+        .where((s) => s.name.isNotEmpty)
+        .toList(),
     passages: (asMap(res['passages'])).map(
       (k, v) => MapEntry(
         k.toString(),
@@ -480,6 +524,8 @@ class PracticeRepository {
       correct: asInt(score['correct']),
       total: asInt(score['total']),
       overall: asInt(score['overall']),
+      isJamb: score['isJamb'] == true,
+      projected: score['projected'] == true,
       perSubject: (asList(score['perSubject']))
           .cast<Map<String, dynamic>>()
           .map(
