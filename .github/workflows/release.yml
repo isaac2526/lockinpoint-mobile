@@ -71,6 +71,11 @@ jobs:
       # resources, so analyze was clean and every test passed on a tree that
       # could not be built at all.
       # ---------------------------------------------------------------------
+      # BEFORE GRADLE, NOT AFTER IT. Four minutes into an appbundle build is a
+      # bad time to learn that a debug host or a pasted key is in the source.
+      - name: Nothing in this tree blocks a publish
+        run: dart tool/release_ready.dart
+
       - name: Every Android resource reference resolves
         run: dart tool/check_android_res.dart
 

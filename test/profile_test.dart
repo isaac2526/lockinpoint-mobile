@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lockinpoint/core/config.dart';
 import 'package:lockinpoint/design/theme.dart';
 import 'package:lockinpoint/features/content/content_repository.dart';
 import 'package:lockinpoint/features/home/dashboard_screen.dart';
@@ -269,5 +270,32 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Adaeze Okafor'), findsOneWidget);
     semantics.dispose();
+  });
+
+  testWidgets('carries the four pages a store reviewer looks for', (
+    tester,
+  ) async {
+    /* GOOGLE PLAY REFUSES A LISTING THAT HAS NO ROUTE TO DELETING AN ACCOUNT
+       FROM INSIDE THE APP. A URL pasted into the Play Console is not enough on
+       its own, and the refusal arrives after review rather than at upload, so
+       the cost of missing it is days rather than minutes. The privacy policy
+       and the terms are the same story on both stores.
+
+       This holds the four rows, and it holds the ADDRESSES too: a row that
+       opens the wrong page passes an eyeball and fails a reviewer. */
+    await _pump(tester);
+    for (final title in const [
+      'How LockInPoint works',
+      'Privacy policy',
+      'Terms of use',
+      'Delete my account',
+    ]) {
+      await see(tester, title);
+    }
+
+    expect(AppConfig.privacyPolicy, '${AppConfig.apiBase}/privacy');
+    expect(AppConfig.termsOfUse, '${AppConfig.apiBase}/terms');
+    expect(AppConfig.deleteAccount, '${AppConfig.apiBase}/account/delete');
+    expect(AppConfig.helpPage, '${AppConfig.apiBase}/help');
   });
 }

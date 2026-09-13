@@ -31,11 +31,11 @@ class AppConfig {
   /// named a build that had not existed for months, which makes a server log
   /// worse than useless: it points confidently at the wrong version. The
   /// check now runs in `check` on every push.
-  static const appVersion = '2.1.0';
+  static const appVersion = '2.2.0';
 
   /// The build number, which is what an update check compares. Names are for
   /// people; only this ever increases, and only this can be ordered.
-  static const buildNumber = 17;
+  static const buildNumber = 18;
 
   static const userAgent = 'LockInPoint/$appVersion+$buildNumber (Flutter)';
 
@@ -53,4 +53,21 @@ class AppConfig {
   /// open, so the app simply points at it. The student app stays a student
   /// app: nothing here can hold a guardian session.
   static const guardianPortal = '$apiBase/guardian';
+
+  /* THE PAGES A STORE REVIEWER LOOKS FOR INSIDE THE APP.
+
+     Google Play's data-deletion policy asks for TWO routes to deleting an
+     account: a public web URL entered in the Play Console, and a route a
+     signed-in user can find inside the app itself. A listing that offers only
+     the console URL is rejected, and it is rejected after review rather than
+     at upload, which costs days.
+
+     They are the website's own pages rather than screens of their own, for the
+     same reason the Guardian Portal is: a policy that has to be edited in two
+     places eventually says two different things, and the one in the shipped
+     APK is the one that cannot be corrected. */
+  static const privacyPolicy = '$apiBase/privacy';
+  static const termsOfUse = '$apiBase/terms';
+  static const deleteAccount = '$apiBase/account/delete';
+  static const helpPage = '$apiBase/help';
 }

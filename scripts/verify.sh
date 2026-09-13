@@ -38,6 +38,13 @@ flutter analyze --fatal-infos || fail=1
 step "Test  ·  flutter test"
 flutter test || fail=1
 
+# WHAT SHIPS, AND WHAT MUST NOT. A build that compiles is not a build fit to
+# publish: a debug base URL left in, a key pasted into a constant, a test
+# account still wired up, a missing iOS usage description. None of those breaks
+# the build and every one is visible to anybody who unzips the artifact.
+step "Release ready  ·  dart tool/release_ready.dart"
+dart tool/release_ready.dart || fail=1
+
 # The User-Agent every request carries is a const in config.dart, so it can
 # drift from the pubspec version silently. Then the server's logs name a build
 # that is not the one installed — which is worse than no version at all.

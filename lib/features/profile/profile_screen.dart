@@ -509,6 +509,54 @@ class _ContactCard extends ConsumerWidget {
           subtitle: k.description.isNotEmpty ? k.description : k.value,
           onTap: () => launchUrl(k.uri, mode: LaunchMode.externalApplication),
         ),
+      /* THE FOUR PAGES EVERY APP IS EXPECTED TO CARRY AND THIS ONE DID NOT.
+
+         Google Play's data-deletion policy asks for a route to deleting an
+         account from INSIDE the app, not only a URL pasted into the Play
+         Console — and a listing missing it is refused after review rather than
+         at upload. The privacy policy and the terms are the same story on both
+         stores. "Delete my account" sits last and is tinted like a warning,
+         because it is the one row here a student cannot undo. */
+      _LinkRow(
+        icon: Icons.menu_book_rounded,
+        color: c.hues.blue.ink,
+        title: 'How LockInPoint works',
+        subtitle: 'Practice, CBT, Theory, the Classroom and Lumi, explained',
+        onTap: () => launchUrl(
+          Uri.parse(AppConfig.helpPage),
+          mode: LaunchMode.externalApplication,
+        ),
+      ),
+      _LinkRow(
+        icon: Icons.lock_rounded,
+        color: c.hues.slate.ink,
+        title: 'Privacy policy',
+        subtitle: 'What is held about you, and who it reaches',
+        onTap: () => launchUrl(
+          Uri.parse(AppConfig.privacyPolicy),
+          mode: LaunchMode.externalApplication,
+        ),
+      ),
+      _LinkRow(
+        icon: Icons.gavel_rounded,
+        color: c.hues.slate.ink,
+        title: 'Terms of use',
+        subtitle: 'The rules of activation, referrals and materials',
+        onTap: () => launchUrl(
+          Uri.parse(AppConfig.termsOfUse),
+          mode: LaunchMode.externalApplication,
+        ),
+      ),
+      _LinkRow(
+        icon: Icons.person_remove_rounded,
+        color: c.hues.rose.ink,
+        title: 'Delete my account',
+        subtitle: 'Ask for your account and your data to be removed',
+        onTap: () => launchUrl(
+          Uri.parse(AppConfig.deleteAccount),
+          mode: LaunchMode.externalApplication,
+        ),
+      ),
     ];
 
     return GlassSurface(

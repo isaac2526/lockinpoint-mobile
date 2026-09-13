@@ -47,6 +47,15 @@ jobs:
       - name: Every Android resource reference resolves
         run: dart tool/check_android_res.dart
 
+      # The publish rules, checked rather than remembered: the production base
+      # URL, no key or keystore in the source, no test account or debug gate
+      # bypass, the application id and bundle id that can never change, the
+      # iOS usage descriptions, and the three links a store reviewer looks for
+      # inside the app. Needs no Android SDK and no network, so it runs here
+      # in seconds rather than being discovered at upload.
+      - name: Nothing in this tree blocks a publish
+        run: dart tool/release_ready.dart
+
       # scripts/verify.sh has carried this check from the beginning and no
       # workflow has ever run the script, so it never fired: AppConfig said
       # 1.0.13 while the app was 2.0.1, and every request from every phone
