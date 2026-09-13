@@ -345,10 +345,18 @@ void main() {
        snackbar "arrives in the next build" for screens that shipped long
        ago, and Classroom appeared twice — one live, one dead. */
     expect(await drawerHas(tester, 'Classroom'), isTrue);
-    expect(await drawerHas(tester, 'Activation & payment'), isTrue);
-    // One screen, one row: "Activate" and "Activation & payment" both opened
-    // the same activation screen from the same menu.
-    expect(await drawerHas(tester, 'Activate'), isFalse);
+
+    /* ONE SCREEN, ONE ROW — and this test named the wrong survivor.
+       "Activate" and "Activation & payment" both opened the same activation
+       screen from the same menu. The duplicate was removed and the row that
+       stayed is 'Activate · Card, transfer or a key' (shell.dart:410). This
+       case asked for the other name, so the first time it ever ran — the
+       driver file was missing until now — it failed on a rename that had
+       already been decided, while the menu-walk table further down THIS FILE
+       (line 721) has said 'Activate' all along. The guarantee is unchanged:
+       one row, and the name it no longer goes by is gone. */
+    expect(await drawerHas(tester, 'Activate'), isTrue);
+    expect(await drawerHas(tester, 'Activation & payment'), isFalse);
   });
 
   testWidgets('3 · a drawer row NAVIGATES', (tester) async {

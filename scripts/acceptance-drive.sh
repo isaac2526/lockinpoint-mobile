@@ -43,8 +43,27 @@ rm -f "$HOME/.local/share/com.lockinpoint.lockinpoint/vault.sqlite" \
 node tool/fake_backend.js "$PORT" &
 sleep 1
 
-flutter test integration_test/user_journey_test.dart \
-  -d "$DEVICE" \
-  --dart-define=LIP_API="http://127.0.0.1:$PORT" \
-  ${ONLY:+--plain-name "$ONLY"} \
-  --reporter expanded
+# A HARD CEILING, BECAUSE A FAILURE HERE USED TO COST TWENTY-TWO MINUTES.
+#
+# The first time this drive ever ran, case 2 failed and the process then sat
+# there until the job's own 25 minute timeout killed it — the app under test
+# keeps live timers and streams, so `flutter test -d linux` never got its exit.
+# The whole job was reported as "cancelled", which reads like an infrastructure
+# blip rather than a failing test, and the failure that caused it was twenty
+# minutes up the log.
+#
+# 900s is generous for a walk that takes about ninety seconds when it passes.
+# Exit 124 is timeout's own code and says so plainly.
+set +e
+timeout --signal=TERM --kill-after=30s 900 \
+  flutter test integration_test/user_journey_test.dart \
+    -d "$DEVICE" \
+    --dart-define=LIP_API="http://127.0.0.1:$PORT" \
+    ${ONLY:+--plain-name "$ONLY"} \
+    --reporter expanded
+rc=$?
+set -e
+if [ "$rc" = 124 ] || [ "$rc" = 137 ]; then
+  echo "the drive did not finish within 900s — it hung rather than failed." >&2
+fi
+exit "$rc"
