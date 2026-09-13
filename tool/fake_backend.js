@@ -153,8 +153,24 @@ const server = http.createServer(async (req, res) => {
        which needs to find Use of English in that list — showed its "the JAMB
        bank has no English subject" empty state. A stand-in that answers a
        question the real server answers differently tests nothing. */
+    /* ONLY JAMB HAS A COMPULSORY SUBJECT, AND THE FAKE HAS TO SAY SO.
+
+       It served one list for every examination, so WAEC arrived carrying a
+       compulsory "Use of English" — which is not true of WAEC, and is the flag
+       the practice flow forks on. So the drive chose WAEC, met the JAMB fork
+       instead of the subject list, and case 7 failed with "nothing to tap:
+       Mathematics" one case after the mock it was actually testing.
+
+       A fake that is not honest about the shape of the real data does not
+       prove the thing it is standing in for. */
     const forExam = url.searchParams.get("subjects");
-    if (forExam) return json(res, 200, { ok: true, subjects: SUBJECTS });
+    if (forExam) {
+      const list = forExam === "jamb"
+        ? SUBJECTS
+        : SUBJECTS.filter((s) => !s.compulsory)
+            .map((s) => ({ ...s, compulsory: false }));
+      return json(res, 200, { ok: true, subjects: list });
+    }
 
     const chooserId = url.searchParams.get("chooser");
     if (chooserId) {
