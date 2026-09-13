@@ -76,17 +76,15 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
   Sitting get sitting => widget.sitting;
   ServedQuestion get q => sitting.questions[_idx];
 
-  /// The name of the subject the current question came from, or null on a
-  /// single-subject sitting where saying it would be noise. Resolved through
-  /// the paper's own subject list rather than guessed from the label.
-  String? get _subjectName {
-    if (sitting.subjects.length < 2) return null;
-    final id = q.subjectId;
-    if (id == null || id.isEmpty) return null;
-    for (final s in sitting.subjects) {
-      if (s.id == id) return s.name;
-    }
-    return null;
+  /// Move to the FIRST question of a subject. A student who realises they are
+  /// weakest in Chemistry should be able to go there without swiping through
+  /// sixty questions of English, and the grid is two taps away rather than
+  /// one.
+  void _jumpToSubject(String subjectId) {
+    final at = sitting.questions.indexWhere((x) => x.subjectId == subjectId);
+    // Through _go, so the position is persisted exactly as every other jump
+    // is — a student who closes the app on Chemistry reopens on Chemistry.
+    if (at >= 0) _go(at);
   }
 
   /// A resumed sitting arrives without the answer key, and a timed CBT never
@@ -379,21 +377,7 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
                         ],
                       ),
                     ),
-                    /* WHICH SUBJECT THIS QUESTION IS. Only a paper built from
-                       more than one subject needs saying, and a JAMB mock is
-                       unreadable without it: 180 questions arrive as one
-                       stream and nothing on screen marks where English ends
-                       and Physics begins. */
-                    if (_subjectName != null) ...[
-                      const SizedBox(width: Gap.sm),
-                      Flexible(
-                        child: LipChip(
-                          _subjectName!,
-                          tone: ChipTone.brand,
-                          selected: true,
-                        ),
-                      ),
-                    ],
+
                     if (sitting.timed) _Clock(left: _left),
                     IconButton(
                       onPressed: _openGrid,
@@ -413,6 +397,43 @@ class _SessionState extends ConsumerState<PracticeSessionScreen> {
                   ],
                 ),
               ),
+              /* ====================================================================
+                 THE SUBJECT RAIL.
+
+                 /api/attempts has returned the paper's `subjects` on every
+                 start and resume since JAMB mocks existed, and this app threw
+                 it away — so 180 questions arrived as one undifferentiated
+                 stream with nothing on screen saying where Use of English
+                 ended and Physics began.
+
+                 It names all four, marks the one being asked, and jumps to a
+                 subject's first question when tapped. A single-subject sitting
+                 has no rail at all: there is nothing to say and nowhere else
+                 to go.
+                 ==================================================================== */
+              if (sitting.subjects.length > 1)
+                Padding(
+                  padding: const EdgeInsets.only(top: Gap.sm),
+                  child: SizedBox(
+                    height: 34,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: Gap.md),
+                      itemCount: sitting.subjects.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: Gap.sm),
+                      itemBuilder: (_, i) {
+                        final s = sitting.subjects[i];
+                        final here = s.id == q.subjectId;
+                        return LipChip(
+                          s.name,
+                          selected: here,
+                          tone: here ? ChipTone.brand : ChipTone.neutral,
+                          onTap: here ? null : () => _jumpToSubject(s.id),
+                        );
+                      },
+                    ),
+                  ),
+                ),
               ClipRRect(
                 borderRadius: BorderRadius.circular(Radii.pill),
                 child: LinearProgressIndicator(

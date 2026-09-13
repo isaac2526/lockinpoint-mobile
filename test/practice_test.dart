@@ -92,6 +92,57 @@ Sitting _sitting() => const Sitting(
   passages: {},
 );
 
+/// A JAMB paper: four subjects, one question each, in the order the route
+/// builds them. Enough to drive the rail — the rail's job is naming the
+/// subjects and moving between them, not counting to 180.
+Sitting _jambPaper() => const Sitting(
+  attemptId: 'attempt-jamb',
+  mode: 'jamb_mock',
+  label: 'JAMB Full Mock · Use of English + Physics + Chemistry + Biology',
+  duration: 7200,
+  subjects: [
+    (id: 'eng', name: 'Use of English'),
+    (id: 'phy', name: 'Physics'),
+    (id: 'chm', name: 'Chemistry'),
+    (id: 'bio', name: 'Biology'),
+  ],
+  questions: [
+    ServedQuestion(
+      id: 'e1',
+      subjectId: 'eng',
+      question: '<p>Choose the correct spelling.</p>',
+      options: ['recieve', 'receive'],
+      letters: ['A', 'B'],
+      answer: 'B',
+    ),
+    ServedQuestion(
+      id: 'p1',
+      subjectId: 'phy',
+      question: '<p>What is the unit of force?</p>',
+      options: ['joule', 'newton'],
+      letters: ['A', 'B'],
+      answer: 'B',
+    ),
+    ServedQuestion(
+      id: 'c1',
+      subjectId: 'chm',
+      question: '<p>What is the molar mass of water?</p>',
+      options: ['16', '18'],
+      letters: ['A', 'B'],
+      answer: 'B',
+    ),
+    ServedQuestion(
+      id: 'b1',
+      subjectId: 'bio',
+      question: '<p>Which organelle makes ATP?</p>',
+      options: ['ribosome', 'mitochondrion'],
+      letters: ['A', 'B'],
+      answer: 'B',
+    ),
+  ],
+  passages: {},
+);
+
 /// A clock the test owns, so a two minute exam can be lived through in a few
 /// milliseconds. Production reads the wall clock; see the widget for why.
 class _FakeClock {
@@ -531,6 +582,55 @@ void main() {
       expect(out.fraction, closeTo(0.6625, 0.0001));
     },
   );
+
+  /* =======================================================================
+     THE RAIL, ON THE SCREEN — not just in the model.
+
+     The tests above prove the subjects reach the app. These prove a student
+     can SEE them and move between them, which is the whole reason the data
+     matters: a 180 question paper with no rail is one stream in which nothing
+     says where Use of English ends and Physics begins.
+     ======================================================================= */
+
+  testWidgets('a four-subject paper names all four, and marks the one asked', (
+    tester,
+  ) async {
+    await _pumpSession(tester, sitting: _jambPaper());
+    for (final name in const [
+      'Use of English',
+      'Physics',
+      'Chemistry',
+      'Biology',
+    ]) {
+      expect(
+        find.text(name),
+        findsOneWidget,
+        reason: '$name is not on the rail',
+      );
+    }
+    // The first question is English, so English is the one marked.
+    expect(find.text('Question 1 of 4 · 0 answered'), findsOneWidget);
+  });
+
+  testWidgets('an ordinary sitting has no rail at all', (tester) async {
+    /* One subject means nothing to say and nowhere else to go. A rail there
+       would be a row of one chip taking a line of a phone screen. */
+    await _pumpSession(tester);
+    expect(find.text('Mathematics'), findsNothing);
+  });
+
+  testWidgets('tapping a subject jumps to its first question', (tester) async {
+    await _pumpSession(tester, sitting: _jambPaper());
+    expect(find.textContaining('correct spelling'), findsOneWidget);
+
+    await tester.tap(find.text('Chemistry'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('molar mass'), findsOneWidget);
+    expect(find.text('Question 3 of 4 · 0 answered'), findsOneWidget);
+    // And the English question is behind us, not still on screen.
+    expect(find.textContaining('correct spelling'), findsNothing);
+  });
 }
 
 /// One /api/attempts, answering by the `action` it is asked for.

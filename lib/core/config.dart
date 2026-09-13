@@ -35,7 +35,7 @@ class AppConfig {
 
   /// The build number, which is what an update check compares. Names are for
   /// people; only this ever increases, and only this can be ordered.
-  static const buildNumber = 20;
+  static const buildNumber = 21;
 
   static const userAgent = 'LockInPoint/$appVersion+$buildNumber (Flutter)';
 
