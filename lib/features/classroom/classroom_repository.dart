@@ -123,9 +123,17 @@ final subjectShelfProvider = FutureProvider.family<SubjectShelf, String>((
 });
 
 class Attachment {
-  const Attachment({required this.title, required this.url});
+  const Attachment({
+    required this.title,
+    required this.url,
+    this.isVideo = false,
+  });
   final String title;
   final String url;
+
+  /// A YouTube link attached in Materials Studio or a Theory / Practical
+  /// session, as opposed to a file to keep.
+  final bool isVideo;
 }
 
 class NoteDetail {
@@ -162,8 +170,15 @@ final noteProvider = FutureProvider.family<NoteDetail, String>((
   return NoteDetail(
     title: asText(n['title']),
     body: asText(n['body']),
-    attachments: asList(
-      n['attachments'],
-    ).whereType<Map>().map((a) => Attachment(title: asText(a['name']), url: asText(a['url']))).toList(),
+    attachments: asList(n['attachments'])
+        .whereType<Map>()
+        .map(
+          (a) => Attachment(
+            title: asText(a['name']),
+            url: asText(a['url']),
+            isVideo: asText(a['type']) == 'video',
+          ),
+        )
+        .toList(),
   );
 });

@@ -424,13 +424,26 @@ class _ClassroomNoteScreenState extends ConsumerState<ClassroomNoteScreen> {
                   const SizedBox(height: Gap.sm),
                   ...n.attachments.map(
                     (a) => _Row(
-                      icon: Icons.attach_file_rounded,
-                      hue: c.hues.amber,
-                      title: a.title.isEmpty ? 'Attachment' : a.title,
-                      onTap: () => launchUrl(
-                        Uri.parse(a.url),
-                        mode: LaunchMode.externalApplication,
-                      ),
+                      icon: a.isVideo
+                          ? Icons.play_circle_rounded
+                          : Icons.attach_file_rounded,
+                      hue: a.isVideo ? c.hues.rose : c.hues.amber,
+                      title: a.title.isEmpty
+                          ? (a.isVideo ? 'Video' : 'Attachment')
+                          : a.title,
+                      onTap: a.isVideo
+                          ? () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => VideoWatchScreen(
+                                  title: a.title.isEmpty ? 'Video' : a.title,
+                                  url: a.url,
+                                ),
+                              ),
+                            )
+                          : () => launchUrl(
+                              Uri.parse(a.url),
+                              mode: LaunchMode.externalApplication,
+                            ),
                     ),
                   ),
                 ],
