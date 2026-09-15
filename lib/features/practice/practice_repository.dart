@@ -365,6 +365,13 @@ class PracticeRepository {
     String kind = 'past',
     int count = 20,
 
+    /// A single year, sat untimed, is the WHOLE real paper — never a set
+    /// number of questions, and never capped at whatever that one year's own
+    /// bank happens to hold. The server pads a short year from the subject's
+    /// other years up to the real paper's size (40, 50 or 60 depending on
+    /// the exam) when this is true; [count] is ignored.
+    bool wantAll = false,
+
     /// 'practice' is the untimed room with instant marking; 'cbt' is the timed
     /// one, marked at the end exactly as the real hall does it.
     String mode = 'practice',
@@ -377,7 +384,7 @@ class PracticeRepository {
         'mode': mode,
         'examSlug': examSlug,
         'subjectIds': [subjectId],
-        'count': '$count',
+        'count': wantAll ? 'all' : '$count',
         'label': label,
         'year': ?year,
         'topicId': ?topicId,

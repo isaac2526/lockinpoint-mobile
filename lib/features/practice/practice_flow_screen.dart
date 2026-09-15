@@ -188,6 +188,10 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
     );
   });
 
+  /// A single year, sat untimed, is a whole paper — the same rule the
+  /// website's chooser uses to decide when to stop asking for a size.
+  bool get _wholeYear => _source == _Source.year && !_timed;
+
   Future<void> _start() => _guard(() async {
     final sitting = await _repo.start(
       examSlug: _exam!.slug,
@@ -197,6 +201,7 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
       topicId: _source == _Source.topic ? _topic!.id : null,
       kind: _source == _Source.tutorial ? 'tutorial' : 'past',
       count: _count,
+      wantAll: _wholeYear,
       mode: _timed ? 'cbt' : 'practice',
       minutes: _minutes,
     );
@@ -637,7 +642,6 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
               for (final y in data.years)
                 LipChip(
                   '${y.year}',
-                  count: y.n,
                   selected: _year == y.year,
                   onTap: () => setState(() => _year = y.year),
                 ),
@@ -655,7 +659,6 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
               for (final t in data.topics)
                 LipChip(
                   t.name,
-                  count: _source == _Source.tutorial ? t.nTutorial : t.n,
                   selected: _topic?.id == t.id,
                   onTap: () => setState(() => _topic = t),
                 ),
@@ -663,20 +666,22 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
           ),
           const SizedBox(height: Gap.md),
         ],
-        const LipLabel('How many questions'),
-        const SizedBox(height: Gap.sm),
-        Wrap(
-          spacing: Gap.sm,
-          children: [
-            for (final n in const [10, 20, 40])
-              LipChip(
-                '$n',
-                selected: _count == n,
-                onTap: () => setState(() => _count = n),
-              ),
-          ],
-        ),
-        const SizedBox(height: Gap.lg),
+        if (!_wholeYear) ...[
+          const LipLabel('How many questions'),
+          const SizedBox(height: Gap.sm),
+          Wrap(
+            spacing: Gap.sm,
+            children: [
+              for (final n in const [10, 20, 40])
+                LipChip(
+                  '$n',
+                  selected: _count == n,
+                  onTap: () => setState(() => _count = n),
+                ),
+            ],
+          ),
+          const SizedBox(height: Gap.lg),
+        ],
 
         // ---- the room: untimed practice, or a timed CBT ------------------
         const LipLabel('How do you want to sit it'),
