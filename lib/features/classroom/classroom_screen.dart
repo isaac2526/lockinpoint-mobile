@@ -440,9 +440,11 @@ class _ClassroomNoteScreenState extends ConsumerState<ClassroomNoteScreen> {
                                 ),
                               ),
                             )
-                          : () => launchUrl(
-                              Uri.parse(a.url),
-                              mode: LaunchMode.externalApplication,
+                          : () => _openDocument(
+                              context,
+                              ref,
+                              _attachmentCacheId(a.url),
+                              a.url,
                             ),
                     ),
                   ),
@@ -455,6 +457,13 @@ class _ClassroomNoteScreenState extends ConsumerState<ClassroomNoteScreen> {
     );
   }
 }
+
+/// A note's attachment carries no id of its own — unlike a subject's kept
+/// Files, which have a `documents` row. The url itself already IS a stable,
+/// filesystem-safe identifier: it is `/api/attachment?u=<base64url>`, and
+/// base64url never contains a character a filename cannot hold.
+String _attachmentCacheId(String url) =>
+    Uri.tryParse(url)?.queryParameters['u'] ?? url.hashCode.toString();
 
 /// WATCH INSIDE THE APP · a video lesson plays here, the student never
 /// leaves the classroom for it — the same rule the website's /watch/[vid]
