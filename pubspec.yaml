@@ -64,6 +64,13 @@ dependencies:
   # complete a purchase is worse than no button.
   in_app_purchase: ^3.2.0
 
+  # A video lesson plays INSIDE the app — the same wall the website never
+  # lets a student leave for a note or a question. Wraps YouTube's own
+  # iframe player, the identical technique /watch/[vid] uses on the site,
+  # so both surfaces keep the student on the one page that has the Keep
+  # button, the subject context and the login it already trusts.
+  youtube_player_iframe: ^6.0.2
+
   # ---- polish -------------------------------------------------------------
   # NOTE: google_fonts was removed deliberately. It fetched Space Grotesk,
   # Inter and JetBrains Mono over the network on first launch — three round

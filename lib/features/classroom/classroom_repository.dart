@@ -122,7 +122,28 @@ final subjectShelfProvider = FutureProvider.family<SubjectShelf, String>((
   );
 });
 
-final noteProvider = FutureProvider.family<Map<String, String>, String>((
+class Attachment {
+  const Attachment({required this.title, required this.url});
+  final String title;
+  final String url;
+}
+
+class NoteDetail {
+  const NoteDetail({
+    required this.title,
+    required this.body,
+    this.attachments = const [],
+  });
+  final String title;
+  final String body;
+
+  /// Files attached in Materials Studio, in addition to whatever is
+  /// embedded inline in [body] — the same `notes.attachments` the website
+  /// reads on /notes/[id].
+  final List<Attachment> attachments;
+}
+
+final noteProvider = FutureProvider.family<NoteDetail, String>((
   ref,
   noteId,
 ) async {
@@ -138,5 +159,11 @@ final noteProvider = FutureProvider.family<Map<String, String>, String>((
   )).value;
   final n = res['note'];
   if (n is! Map) throw ApiFailure('That note is not available.');
-  return {'title': asText(n['title']), 'body': asText(n['body'])};
+  return NoteDetail(
+    title: asText(n['title']),
+    body: asText(n['body']),
+    attachments: asList(
+      n['attachments'],
+    ).whereType<Map>().map((a) => Attachment(title: asText(a['name']), url: asText(a['url']))).toList(),
+  );
 });

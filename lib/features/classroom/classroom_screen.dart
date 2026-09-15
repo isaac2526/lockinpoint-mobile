@@ -3,6 +3,7 @@ import '../../core/json.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 import '../../core/api.dart';
 import '../../core/progress_mark.dart';
@@ -260,9 +261,13 @@ class ClassroomShelfScreen extends ConsumerWidget {
                               ? null
                               : () {
                                   ref.read(progressMarkerProvider).video(m.id);
-                                  launchUrl(
-                                    Uri.parse(m.url),
-                                    mode: LaunchMode.externalApplication,
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => VideoWatchScreen(
+                                        title: m.title,
+                                        url: m.url,
+                                      ),
+                                    ),
                                   );
                                 },
                         ),
@@ -397,7 +402,7 @@ class _ClassroomNoteScreenState extends ConsumerState<ClassroomNoteScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  n['title'] ?? '',
+                  n.title,
                   style: LipType.title.copyWith(color: c.text1),
                 ),
                 const SizedBox(height: Gap.md),
@@ -410,13 +415,91 @@ class _ClassroomNoteScreenState extends ConsumerState<ClassroomNoteScreen> {
                    practice questions; it now lives in the design system where
                    any screen can use it. */
                 LipHtml(
-                  n['body'] ?? '',
+                  n.body,
                   baseStyle: LipType.body.copyWith(color: c.text2, height: 1.6),
                 ),
+                if (n.attachments.isNotEmpty) ...[
+                  const SizedBox(height: Gap.lg),
+                  const LipLabel('Attached files'),
+                  const SizedBox(height: Gap.sm),
+                  ...n.attachments.map(
+                    (a) => _Row(
+                      icon: Icons.attach_file_rounded,
+                      hue: c.hues.amber,
+                      title: a.title.isEmpty ? 'Attachment' : a.title,
+                      onTap: () => launchUrl(
+                        Uri.parse(a.url),
+                        mode: LaunchMode.externalApplication,
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// WATCH INSIDE THE APP · a video lesson plays here, the student never
+/// leaves the classroom for it — the same rule the website's /watch/[vid]
+/// already holds. YouTube's own iframe player runs inside a WebView, so it
+/// is the identical playback surface the website embeds, not a second
+/// implementation that could drift from it.
+class VideoWatchScreen extends StatefulWidget {
+  const VideoWatchScreen({super.key, required this.title, required this.url});
+  final String title;
+  final String url;
+
+  @override
+  State<VideoWatchScreen> createState() => _VideoWatchScreenState();
+}
+
+class _VideoWatchScreenState extends State<VideoWatchScreen> {
+  YoutubePlayerController? _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    final videoId = YoutubePlayerController.convertUrlToId(widget.url);
+    if (videoId != null) {
+      _controller = YoutubePlayerController.fromVideoId(
+        videoId: videoId,
+        autoPlay: true,
+        params: const YoutubePlayerParams(showFullscreenButton: true),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.close();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.title)),
+      body: SafeArea(
+        child: controller == null
+            ? LipEmpty(
+                icon: Icons.play_disabled_rounded,
+                title: 'This is not a YouTube video',
+                message: 'The link on this lesson does not carry a YouTube video id.',
+                actionLabel: 'Open the link instead',
+                onAction: () => launchUrl(
+                  Uri.parse(widget.url),
+                  mode: LaunchMode.externalApplication,
+                ),
+              )
+            : Padding(
+                padding: const EdgeInsets.all(Gap.lg),
+                child: YoutubePlayer(controller: controller),
+              ),
       ),
     );
   }
