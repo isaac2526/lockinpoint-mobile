@@ -1,12 +1,12 @@
 # =============================================================================
-# THE BUILD · a real, installable APK.
+# THE BUILD · a real Android App Bundle (AAB).
 #
-# This is where the APK actually comes from: a GitHub runner has the Android
+# This is where the AAB actually comes from: a GitHub runner has the Android
 # SDK, so it can compile what a plain checkout cannot. Runs on a pull request
 # into main, or whenever you press "Run workflow" — never on an ordinary push,
 # because compiling Android is the slow part.
 #
-# The artifact it uploads is the file you install on your phone.
+# The artifact it uploads is the file you submit to Google Play.
 # =============================================================================
 name: build
 
@@ -39,35 +39,28 @@ jobs:
 
       - run: flutter pub get
 
-      # The version is read from pubspec so the downloaded file says which
-      # build it is. Three APKs in a downloads folder all called
-      # "app-debug.apk" are three APKs you cannot tell apart.
-      - name: Read the version
-        id: v
+      - name: Verify version code from pubspec.yaml
         run: |
-          V=$(grep -m1 '^version:' pubspec.yaml | sed 's/version: *//' | tr '+' '-')
-          echo "name=lockinpoint-$V-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          VERSION=$(grep -m1 '^version:' pubspec.yaml | sed 's/version: *//')
+          CODE="${VERSION##*+}"
+          if [ "$CODE" -le 21 ]; then
+            echo "::error::versionCode must be greater than 21, got $CODE from pubspec.yaml ($VERSION)"
+            exit 1
+          fi
+          echo "::notice::Building AAB with pubspec version $VERSION (versionCode $CODE)."
 
-      # Debug, deliberately: it installs on any phone without a signing key.
-      # Release signing arrives with release.yml when there is something to
-      # release, so no key material is needed to get a build into your hands.
-      - name: Build debug APK
-        run: flutter build apk --debug
-
-      - name: Name the APK after the build
-        run: |
-          mv build/app/outputs/flutter-apk/app-debug.apk \
-             "build/app/outputs/flutter-apk/${{ steps.v.outputs.name }}.apk"
+      - name: Build release AAB
+        run: flutter build appbundle --release
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.v.outputs.name }}
-          path: build/app/outputs/flutter-apk/${{ steps.v.outputs.name }}.apk
+          name: lockinpoint-aab
+          path: build/app/outputs/bundle/release/app-release.aab
           retention-days: 14
           if-no-files-found: error
 
       - name: Say where it is
         run: |
-          echo "### APK ready" >> "$GITHUB_STEP_SUMMARY"
+          echo "### AAB ready" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**${{ steps.v.outputs.name }}.apk** is in the Artifacts section of this run." >> "$GITHUB_STEP_SUMMARY"
+          echo "**lockinpoint-aab** (app-release.aab) is in the Artifacts section of this run." >> "$GITHUB_STEP_SUMMARY"
