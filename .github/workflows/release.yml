@@ -169,9 +169,6 @@ jobs:
             exit 1
           fi
 
-      - name: Build release APK
-        run: flutter build apk --release
-
       # ---------------------------------------------------------------------
       # INTERROGATE THE FINISHED BUNDLE.
       #
@@ -252,12 +249,6 @@ jobs:
           # Named for what it is: the verified, release-signed Play bundle.
           name: lockinpoint-release-aab
           path: build/app/outputs/bundle/release/app-release.aab
-          retention-days: 30
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        with:
-          name: lockinpoint-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
           if-no-files-found: error
 
@@ -494,7 +485,6 @@ jobs:
           # release wants flat files with versioned names.
           copy() { [ -f "$1" ] && cp "$1" "out/$2" && echo "  $2"; }
           copy incoming/lockinpoint-release-aab/app-release.aab      "lockinpoint-$V.aab"
-          copy incoming/lockinpoint-release-apk/app-release.apk      "lockinpoint-$V.apk"
           copy incoming/lockinpoint-unsigned-ipa/lockinpoint-unsigned.ipa "lockinpoint-$V-unsigned.ipa"
           copy incoming/lockinpoint-windows/lockinpoint-windows.zip  "lockinpoint-$V-windows.zip"
           copy incoming/lockinpoint-macos-dmg/lockinpoint-macos.dmg  "lockinpoint-$V-macos.dmg"
