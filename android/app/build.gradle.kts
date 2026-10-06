@@ -1,5 +1,5 @@
-import java.util.Properties
 import java.io.FileInputStream
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -10,27 +10,32 @@ plugins {
 /* ============================================================================
    THE UPLOAD KEY.
 
-   android/key.properties is git-ignored and holds four lines:
-
-       storeFile=/absolute/path/to/upload-keystore.jks
-       storePassword=…
-       keyAlias=upload
-       keyPassword=…
-
-   CI writes that file from repository secrets before building; a developer
-   creates it once by hand. When it is absent — a fresh clone, a contributor,
-   `flutter run --release` on a laptop — the build still works and signs with
-   the debug key, because a release build that cannot be run locally is a
-   release build nobody tests.
-
-   Google Play REFUSES a debug-signed bundle, so the artifact tells you which
-   it got rather than leaving you to find out at upload time.
+   CI writes android/key.properties from the GitHub Actions secrets before
+   Gradle is invoked. A release build must never silently fall back to the
+   debug key: Google Play rejects that certificate and the resulting AAB is
+   not a valid production artifact.
    ============================================================================ */
-val keystoreProperties = Properties().apply {
-    val f = rootProject.file("key.properties")
-    if (f.exists()) load(FileInputStream(f))
+val keyPropertiesFile = rootProject.file("key.properties")
+require(keyPropertiesFile.isFile) {
+    "Missing android/key.properties; release builds require the Play upload key"
 }
-val hasUploadKey = keystoreProperties.getProperty("storeFile") != null
+
+val keystoreProperties = Properties().apply {
+    FileInputStream(keyPropertiesFile).use { load(it) }
+}
+
+val uploadStoreFile = requireNotNull(keystoreProperties.getProperty("storeFile")) {
+    "android/key.properties is missing storeFile"
+}
+val uploadStorePassword = requireNotNull(keystoreProperties.getProperty("storePassword")) {
+    "android/key.properties is missing storePassword"
+}
+val uploadKeyAlias = requireNotNull(keystoreProperties.getProperty("keyAlias")) {
+    "android/key.properties is missing keyAlias"
+}
+val uploadKeyPassword = requireNotNull(keystoreProperties.getProperty("keyPassword")) {
+    "android/key.properties is missing keyPassword"
+}
 
 android {
     namespace = "com.lockinpoint.app"
@@ -58,27 +63,17 @@ android {
     }
 
     signingConfigs {
-        if (hasUploadKey) {
-            create("upload") {
-                storeFile = file(keystoreProperties.getProperty("storeFile"))
-                storePassword = keystoreProperties.getProperty("storePassword")
-                keyAlias = keystoreProperties.getProperty("keyAlias")
-                keyPassword = keystoreProperties.getProperty("keyPassword")
-            }
+        create("upload") {
+            storeFile = file(uploadStoreFile)
+            storePassword = uploadStorePassword
+            keyAlias = uploadKeyAlias
+            keyPassword = uploadKeyPassword
         }
     }
 
     buildTypes {
         release {
-            // The real key when there is one, the debug key when there is not.
-            // Never silently: the build prints which, so a debug-signed bundle
-            // is discovered here rather than by the Play Console.
-            signingConfig = if (hasUploadKey) {
-                signingConfigs.getByName("upload")
-            } else {
-                logger.lifecycle("[lockinpoint] No android/key.properties — signing the release with the DEBUG key. Google Play will refuse this bundle.")
-                signingConfigs.getByName("debug")
-            }
+            signingConfig = signingConfigs.getByName("upload")
         }
     }
 }
