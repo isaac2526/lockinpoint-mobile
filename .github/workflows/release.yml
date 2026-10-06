@@ -247,7 +247,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           # Named for what it is: the verified, release-signed Play bundle.
-          name: lockinpoint-release-aab
+          name: lockinpoint-aab
           path: build/app/outputs/bundle/release/app-release.aab
           retention-days: 30
           if-no-files-found: error
@@ -484,7 +484,7 @@ jobs:
           # download-artifact nests each artifact in its own directory; the
           # release wants flat files with versioned names.
           copy() { [ -f "$1" ] && cp "$1" "out/$2" && echo "  $2"; }
-          copy incoming/lockinpoint-release-aab/app-release.aab      "lockinpoint-$V.aab"
+          copy incoming/lockinpoint-aab/app-release.aab              "lockinpoint-$V.aab"
           copy incoming/lockinpoint-unsigned-ipa/lockinpoint-unsigned.ipa "lockinpoint-$V-unsigned.ipa"
           copy incoming/lockinpoint-windows/lockinpoint-windows.zip  "lockinpoint-$V-windows.zip"
           copy incoming/lockinpoint-macos-dmg/lockinpoint-macos.dmg  "lockinpoint-$V-macos.dmg"
