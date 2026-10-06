@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
+import '../practice/practice_repository.dart';
+import '../practice/practice_session_screen.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
 import '../../design/motion_widgets.dart';
@@ -196,6 +198,42 @@ class _AttemptCard extends StatelessWidget {
   const _AttemptCard(this.a);
   final Attempt a;
 
+  Future<void> _openReview(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    // A modal barrier rather than an inline spinner: the card is small, the
+    // fetch is quick, and a tap with no acknowledgement reads as a dead card
+    // all over again.
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      final container = ProviderScope.containerOf(context, listen: false);
+      final result = await container
+          .read(practiceRepositoryProvider)
+          .review(a.id);
+      navigator.pop();
+      await navigator.push<void>(
+        MaterialPageRoute(
+          builder: (_) => ResultView(
+            result: result,
+            // Attempt carries no label; the mode and date name it well
+            // enough for a sheet the student just chose to open.
+            label: a.mode == 'cbt' ? 'CBT sitting' : 'Practice sitting',
+          ),
+        ),
+      );
+    } on ApiFailure catch (e) {
+      navigator.pop();
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.lip;
@@ -203,8 +241,13 @@ class _AttemptCard extends StatelessWidget {
     final subjects = [...a.perSubject]
       ..sort((x, y) => x.percent.compareTo(y.percent));
 
+    /* A DEAD RECTANGLE UNTIL NOW. Every past sitting was a card that could
+       not be opened, and corrections vanished the moment the result screen
+       closed — so the paper that taught a student the most was the one they
+       could never look at again. The key was on the attempt all along. */
     return GlassSurface(
       tier: GlassTier.card,
+      onTap: () => _openReview(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

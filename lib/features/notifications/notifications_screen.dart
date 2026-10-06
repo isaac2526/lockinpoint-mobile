@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import '../../app/routes.dart';
 import '../../core/api.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
@@ -263,15 +263,12 @@ class _NoticeCard extends StatelessWidget {
 
   /// An internal route or an external link — the target says which by whether
   /// it carries a scheme, so one admin field serves both.
+  /// An admin's target: an app room, or a link. One router decides which -
+  /// the old branch here showed a toast SAYING "Opening /games" and then did
+  /// not open it, narrating an action instead of performing it.
   void _go(BuildContext context, String target) {
     if (target.isEmpty) return;
-    final uri = Uri.tryParse(target);
-    if (uri != null && uri.hasScheme) {
-      launchUrl(uri, mode: LaunchMode.externalApplication);
-      return;
-    }
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('Opening $target')));
+    openAppTarget(context, target);
   }
 
   static String _ago(String? iso) {

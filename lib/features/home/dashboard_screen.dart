@@ -3,8 +3,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import '../../app/shell.dart';
+import '../../core/open.dart';
 import '../../core/api.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
@@ -15,6 +16,7 @@ import '../../design/typography.dart';
 import '../../design/wordmark.dart';
 import '../../app/theme_controller.dart';
 import '../activation/activation_screen.dart';
+import '../auth/ui/verify_email_screen.dart';
 import '../auth/auth_controller.dart';
 import '../content/content_repository.dart';
 import '../profile/profile_screen.dart';
@@ -72,10 +74,21 @@ class DashboardController extends AsyncNotifier<Map<String, dynamic>> {
   }
 
   /// Pull to refresh, and the silent refresh behind a cached paint.
+  ///
+  /// EVERY WRITE HERE IS GUARDED BY ref.mounted.
+  /// This is a request with a screen behind it, and a student who logs out,
+  /// or whose session ends, while it is in flight leaves this provider
+  /// disposed before the answer lands. Writing `state` then throws
+  /// UnmountedRefException out of an async gap — an unhandled error with
+  /// nothing to catch it, at the exact moment the app is already changing
+  /// screens. Nothing is lost by dropping a refresh nobody is waiting for.
   Future<void> refresh() async {
     try {
-      state = AsyncData(await _fetch());
+      final data = await _fetch();
+      if (!ref.mounted) return;
+      state = AsyncData(data);
     } on ApiFailure catch (e, st) {
+      if (!ref.mounted) return;
       if (e.unauthorised) {
         await ref
             .read(authControllerProvider.notifier)
@@ -197,6 +210,8 @@ class _Content extends ConsumerWidget {
     final name = student['name'] as String? ?? 'Champion';
     final streak = (student['streak'] as num?)?.toInt() ?? 0;
     final activated = student['activated'] == true;
+    final verified = student['emailVerified'] == true;
+    final email = student['email'] as String? ?? '';
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -208,7 +223,11 @@ class _Content extends ConsumerWidget {
             children: [
               Builder(
                 builder: (context) => IconButton(
-                  onPressed: () => Scaffold.of(context).openDrawer(),
+                  /* The drawer lives on the SHELL's scaffold; this screen's own
+                     inner Scaffold has none, so Scaffold.of() here found a
+                     drawerless scaffold and this tap did nothing at all in
+                     release builds. */
+                  onPressed: () => lipShellKey.currentState?.openDrawer(),
                   icon: const Icon(Icons.menu_rounded),
                   tooltip: 'Menu',
                   padding: EdgeInsets.zero,
@@ -249,6 +268,15 @@ class _Content extends ConsumerWidget {
 
         // ---- what the team is saying, if anything --------------------
         const HomeCarousel(),
+
+        /* THE CODE HAS SOMEWHERE TO GO NOW. Signing up mails a six digit
+           code and tells the student to "enter it on the verify page" — a
+           page that existed only on the website, so a student who joined on
+           their phone was handed an instruction the app could not honour. */
+        if (!verified) ...[
+          _VerifyNotice(email: email),
+          const SizedBox(height: Gap.lg),
+        ],
 
         if (!activated) ...[
           _ActivationNotice(),
@@ -359,6 +387,48 @@ class _StreakBadge extends StatelessWidget {
   }
 }
 
+class _VerifyNotice extends StatelessWidget {
+  const _VerifyNotice({required this.email});
+  final String email;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.lip;
+    return GlassSurface(
+      tier: GlassTier.raised,
+      seam: true,
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => VerifyEmailScreen(email: email),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.mark_email_unread_rounded, size: 20, color: c.warning),
+          const SizedBox(width: Gap.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Confirm your email',
+                  style: LipType.subheading.copyWith(color: c.text1),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'We sent you a six digit code. Tap to enter it.',
+                  style: LipType.caption.copyWith(color: c.text3),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, size: 20, color: c.text3),
+        ],
+      ),
+    );
+  }
+}
+
 class _ActivationNotice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -425,6 +495,12 @@ class _ResumeCardState extends ConsumerState<_ResumeCard> {
           builder: (_) => PracticeSessionScreen(sitting: sitting),
         ),
       );
+      /* COMING BACK REFRESHES THE CARD. The student submits the paper, walks
+         back to the home, and this card was still offering to continue the
+         sitting they just finished — with its old "12 of 40 answered" under
+         it. Tapping it then failed, which is the moment the app stopped
+         looking trustworthy. The card is only as true as its last refresh. */
+      if (mounted) ref.read(dashboardProvider.notifier).refresh();
     } on ApiFailure catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -577,6 +653,27 @@ class _Footer extends ConsumerWidget {
   }
 }
 
+/// Menu, wordmark — the part of the home that is true before any request is.
+class _MenuBar extends StatelessWidget {
+  const _MenuBar();
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      IconButton(
+        // The drawer lives on the SHELL's scaffold, reached by its key.
+        onPressed: () => lipShellKey.currentState?.openDrawer(),
+        icon: const Icon(Icons.menu_rounded),
+        tooltip: 'Menu',
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+      ),
+      const SizedBox(width: Gap.sm),
+      const LipWordmark(size: 24),
+    ],
+  );
+}
+
 class _Skeleton extends StatelessWidget {
   const _Skeleton();
 
@@ -585,6 +682,14 @@ class _Skeleton extends StatelessWidget {
     physics: const AlwaysScrollableScrollPhysics(),
     padding: const EdgeInsets.all(Gap.lg),
     children: const [
+      /* THE MENU STAYS REACHABLE WHILE THE HOME LOADS.
+         The hamburger lives inside the loaded dashboard, so until the first
+         request came back there was no way into the drawer at all — on a slow
+         Nigerian connection that is several seconds of an app that looks like
+         it has nothing in it and offers no way out. The bar is not data; it
+         does not need the data to arrive. */
+      _MenuBar(),
+      SizedBox(height: Gap.lg),
       LipSkeleton(height: 26, width: 170),
       SizedBox(height: Gap.lg),
       LipSkeleton(height: 74, radius: Radii.lg),
@@ -626,8 +731,7 @@ class _ChannelCard extends ConsumerWidget {
       child: GlassSurface(
         tier: GlassTier.raised,
         hue: c.hues.green,
-        onTap: () =>
-            launchUrl(channel.uri, mode: LaunchMode.externalApplication),
+        onTap: () => openOutside(context, channel.uri),
         semanticLabel: channel.label.isEmpty
             ? 'Join the LockInPoint channel'
             : channel.label,

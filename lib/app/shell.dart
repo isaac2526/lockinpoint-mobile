@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../core/config.dart';
 import '../design/theme.dart';
@@ -12,6 +11,7 @@ import '../features/activation/activation_screen.dart';
 import '../features/career/career_screen.dart';
 import '../features/classroom/classroom_screen.dart';
 import '../features/games/games_screen.dart';
+import '../features/plan/plan_screen.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/content/content_repository.dart';
 import '../features/home/dashboard_screen.dart';
@@ -26,6 +26,7 @@ import '../features/saved/saved_screen.dart';
 import '../features/search/search_screen.dart';
 import '../features/tutor/tutor_screen.dart';
 import '../features/vault/vault_screen.dart';
+import '../core/open.dart';
 import '../core/vault/connectivity.dart';
 import '../core/vault/vault_repository.dart';
 import '../design/components.dart';
@@ -46,6 +47,13 @@ import '../design/components.dart';
 /// learning, account, guardian, contact — because that is how a student looks
 /// for something they have only seen once.
 /// ===========================================================================
+/// The one Scaffold that owns the drawer. Every embedded tab builds its own
+/// inner Scaffold for its app bar, so `Scaffold.of(context)` inside a tab
+/// finds a DRAWERLESS scaffold and openDrawer() is a silent no-op in release
+/// builds - the exact "menu button does nothing" the founder installed. The
+/// key lets any hamburger reach the real one.
+final GlobalKey<ScaffoldState> lipShellKey = GlobalKey<ScaffoldState>();
+
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
 
@@ -80,6 +88,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final c = context.lip;
 
     return Scaffold(
+      key: lipShellKey,
       drawer: const _LipDrawer(),
       body: Column(
         children: [
@@ -89,12 +98,31 @@ class _AppShellState extends ConsumerState<AppShell> {
              phone holding a thousand questions. */
           Consumer(
             builder: (context, ref, _) {
+              /* WHEN THE NETWORK RETURNS, THE QUEUE DRAINS ITSELF. Papers sat
+                 offline used to wait for the student to find the vault's sync
+                 banner; a result should not depend on anyone remembering it
+                 exists. Fire-and-forget: a failed sync stays queued and the
+                 next reconnect tries again. */
+              ref.listen(connectivityProvider, (prev, next) {
+                final was = prev?.value ?? false;
+                final now = next.value ?? false;
+                if (!was && now) {
+                  ref.read(vaultProvider).syncPending().catchError((_) => 0);
+                }
+              });
               final online = ref.watch(isOnlineProvider);
               if (online) return const SizedBox.shrink();
               final hasVault = ref.watch(hasVaultProvider).value ?? false;
               return SafeArea(
                 bottom: false,
-                child: LipOfflineBar(hasVault: hasVault),
+                child: LipOfflineBar(
+                  hasVault: hasVault,
+                  onOpenVault: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const VaultScreen(),
+                    ),
+                  ),
+                ),
               );
             },
           ),
@@ -153,13 +181,6 @@ class _LipDrawer extends ConsumerWidget {
     void go(Widget screen) {
       Navigator.of(context).pop();
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
-    }
-
-    void soon(String what) {
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$what arrives in the next build.')),
-      );
     }
 
     return Drawer(
@@ -263,17 +284,17 @@ class _LipDrawer extends ConsumerWidget {
                   onTap: () => go(const ResultsScreen()),
                 ),
                 _Row(
-                  icon: Icons.vpn_key_rounded,
-                  hue: FeatureHue.amber,
-                  title: 'Activate',
-                  subtitle: 'Card, transfer or a key',
-                  onTap: () => go(const ActivationScreen()),
-                ),
-                _Row(
                   icon: Icons.insights_rounded,
                   hue: FeatureHue.indigo,
                   title: 'Performance analysis',
                   onTap: () => go(const AnalysisScreen()),
+                ),
+                _Row(
+                  icon: Icons.event_note_rounded,
+                  hue: FeatureHue.amber,
+                  title: 'Study plan',
+                  subtitle: 'Fourteen days, from your weakest topics',
+                  onTap: () => go(const PlanScreen()),
                 ),
                 // No device to store packs on means no row offering to.
                 if (!kIsWeb)
@@ -284,12 +305,6 @@ class _LipDrawer extends ConsumerWidget {
                     subtitle: 'Practise with no signal',
                     onTap: () => go(const VaultScreen()),
                   ),
-                _Row(
-                  icon: Icons.auto_stories_rounded,
-                  hue: FeatureHue.violet,
-                  title: 'Classroom',
-                  onTap: () => soon('Classroom'),
-                ),
               ],
             ),
 
@@ -311,8 +326,8 @@ class _LipDrawer extends ConsumerWidget {
                 _Row(
                   icon: Icons.account_balance_wallet_rounded,
                   hue: FeatureHue.green,
-                  title: 'Activation',
-                  onTap: () => soon('Activation'),
+                  title: 'Activation & payment',
+                  onTap: () => go(const ActivationScreen()),
                 ),
               ],
             ),
@@ -326,10 +341,14 @@ class _LipDrawer extends ConsumerWidget {
                   title: 'Guardian Portal',
                   subtitle: 'For a parent, teacher or school',
                   onTap: () {
+                    /* Messenger grabbed BEFORE the drawer pops: the row's own
+                       context dies with the drawer, and a snackbar aimed at a
+                       dead context is one more silent failure. */
+                    final messenger = ScaffoldMessenger.of(context);
                     Navigator.of(context).pop();
-                    launchUrl(
+                    openOutside(
+                      messenger.context,
                       Uri.parse(AppConfig.guardianPortal),
-                      mode: LaunchMode.externalApplication,
                     );
                   },
                 ),
@@ -348,8 +367,9 @@ class _LipDrawer extends ConsumerWidget {
                       title: k.label.isEmpty ? k.kind : k.label,
                       subtitle: k.description.isEmpty ? null : k.description,
                       onTap: () {
+                        final messenger = ScaffoldMessenger.of(context);
                         Navigator.of(context).pop();
-                        launchUrl(k.uri, mode: LaunchMode.externalApplication);
+                        openOutside(messenger.context, k.uri);
                       },
                     ),
                 ],

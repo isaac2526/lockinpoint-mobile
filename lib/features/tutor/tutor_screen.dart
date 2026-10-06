@@ -73,9 +73,25 @@ class _TutorScreenState extends ConsumerState<TutorScreen> {
     });
   }
 
+  /// The last thing asked, kept so a failed answer can be retried with one
+  /// tap instead of retyped from memory.
+  String _lastAsked = '';
+
+  Future<void> _retry() {
+    if (_lastAsked.isEmpty || _busy) return Future.value();
+    // Drop the failed exchange so the transcript reads clean after recovery.
+    setState(() {
+      if (_turns.isNotEmpty && !_turns.last.mine) _turns.removeLast();
+      if (_turns.isNotEmpty && _turns.last.mine) _turns.removeLast();
+    });
+    _input.text = _lastAsked;
+    return _send();
+  }
+
   Future<void> _send() async {
     final text = _input.text.trim();
     if (text.isEmpty || _busy || _cool > 0) return;
+    _lastAsked = text;
 
     // Resolved before the gap, so a screen that is popped mid-answer does not
     // reach back into a container that has already been torn down.
@@ -101,7 +117,7 @@ class _TutorScreenState extends ConsumerState<TutorScreen> {
     setState(() {
       _busy = false;
       _needActivation = reply.needActivation;
-      _turns.add(Turn('model', reply.text));
+      _turns.add(Turn(reply.ok ? 'model' : 'error', reply.text));
     });
     if (reply.coolSeconds != null) _startCooldown(reply.coolSeconds!);
     _toBottom();
@@ -146,12 +162,24 @@ class _TutorScreenState extends ConsumerState<TutorScreen> {
                         Gap.md,
                       ),
                       itemCount: _turns.length + (_busy ? 1 : 0),
+                      /* THE INSTANT ACKNOWLEDGEMENT. The old busy state was a
+                         LipSkeleton - a component that deliberately waits
+                         200ms before appearing and then looks like an empty
+                         placeholder box. For an answer that takes twenty
+                         seconds, that read as a frozen screen, which is
+                         exactly what the founder reported. The thinking
+                         bubble appears the same frame the send lands, names
+                         who is thinking, and moves the whole time. */
                       itemBuilder: (_, i) => i == _turns.length
-                          ? const Padding(
-                              padding: EdgeInsets.only(bottom: Gap.md),
-                              child: LipSkeleton(height: 60),
-                            )
-                          : _Bubble(turn: _turns[i]),
+                          ? const _ThinkingBubble()
+                          : _Bubble(
+                              turn: _turns[i],
+                              onRetry:
+                                  _turns[i].role == 'error' &&
+                                      i == _turns.length - 1
+                                  ? _retry
+                                  : null,
+                            ),
                     ),
             ),
             if (_needActivation)
@@ -217,8 +245,12 @@ class _TutorScreenState extends ConsumerState<TutorScreen> {
 }
 
 class _Bubble extends StatelessWidget {
-  const _Bubble({required this.turn});
+  const _Bubble({required this.turn, this.onRetry});
   final Turn turn;
+
+  /// Offered only under a failed reply - a student should recover a lost
+  /// answer with one tap, not by retyping the question from memory.
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -250,9 +282,109 @@ class _Bubble extends StatelessWidget {
                   SelectableText(
                     turn.text,
                     style: LipType.body.copyWith(
-                      color: mine ? c.text1 : c.text2,
+                      color: turn.role == 'error'
+                          ? c.danger
+                          : mine
+                          ? c.text1
+                          : c.text2,
                       height: 1.5,
                     ),
+                  ),
+                  if (onRetry != null) ...[
+                    const SizedBox(height: Gap.sm),
+                    LipChip('Try again', tone: ChipTone.brand, onTap: onRetry),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Lumi is thinking" with three breathing dots — visible the same frame the
+/// question is sent. An acknowledgement is not decoration: without one, a
+/// twenty-second answer is indistinguishable from a dead screen.
+class _ThinkingBubble extends StatefulWidget {
+  const _ThinkingBubble();
+
+  @override
+  State<_ThinkingBubble> createState() => _ThinkingBubbleState();
+}
+
+class _ThinkingBubbleState extends State<_ThinkingBubble>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.lip;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Gap.md),
+      child: Row(
+        children: [
+          Flexible(
+            child: GlassSurface(
+              tier: GlassTier.card,
+              hue: c.hues.rose,
+              padding: const EdgeInsets.symmetric(
+                horizontal: Gap.md,
+                vertical: Gap.md,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const LipLabel('Lumi'),
+                  const SizedBox(height: Gap.sm),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'thinking',
+                        style: LipType.small.copyWith(color: c.text2),
+                      ),
+                      const SizedBox(width: Gap.sm),
+                      AnimatedBuilder(
+                        animation: _c,
+                        builder: (_, _) => Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (var d = 0; d < 3; d++)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 4),
+                                child: Opacity(
+                                  /* Each dot breathes a third of a cycle
+                                     behind the last, so the row reads as
+                                     motion rather than a blink. */
+                                  opacity:
+                                      0.25 +
+                                      0.75 *
+                                          (0.5 + 0.5 * _wave(_c.value - d / 3)),
+                                  child: Container(
+                                    width: 7,
+                                    height: 7,
+                                    decoration: BoxDecoration(
+                                      color: c.hues.rose.ink,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -262,4 +394,10 @@ class _Bubble extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A smooth -1..1 wave without dart:math imports the file does not need.
+double _wave(double t) {
+  final x = (t - t.floor()) * 2;
+  return x < 1 ? 2 * x - 1 : 3 - 2 * x;
 }

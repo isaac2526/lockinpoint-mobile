@@ -155,7 +155,34 @@ class AuthController extends AsyncNotifier<AuthState> {
       // The server may be unreachable; the phone still forgets the session.
     }
     await _forget();
+    await _forgetCaches();
     state = const AsyncData(SignedOut());
+  }
+
+  /* ONE PHONE, TWO STUDENTS. Screens cache their last good payload in
+     SharedPreferences so the app opens instantly - which meant the SECOND
+     student to sign in on a shared phone saw the FIRST one's name, email,
+     referral code and Product Key until something happened to refresh. On a
+     device shared between siblings, or a school's phone, that is somebody
+     else's identity on screen. Signing out forgets all of it. */
+  static const _cachedKeys = [
+    'lip.dashboard-snapshot',
+    'lip.contacts',
+    'lip.quote',
+    'lip.price',
+    'lip.carousel',
+    'lip.tiles',
+  ];
+
+  Future<void> _forgetCaches() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      for (final k in _cachedKeys) {
+        await prefs.remove(k);
+      }
+    } catch (_) {
+      // A phone that cannot clear its cache still signs out.
+    }
   }
 
   /// Ends a session the SERVER refused. The store is cleared rather than the
@@ -165,6 +192,7 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// Clearing makes the next launch deterministically signed out.
   Future<void> signOutBecause(String why) async {
     await _forget();
+    await _forgetCaches();
     state = AsyncData(SignedOut(message: why));
   }
 

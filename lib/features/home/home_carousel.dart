@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import '../../app/routes.dart';
 import '../../design/glass.dart';
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
@@ -68,14 +68,14 @@ class _Slide extends StatelessWidget {
       child: GlassSurface(
         tier: GlassTier.raised,
         padding: EdgeInsets.zero,
-        onTap: target.isEmpty
-            ? null
-            : () {
-                final uri = Uri.tryParse(target);
-                if (uri != null && uri.hasScheme) {
-                  launchUrl(uri, mode: LaunchMode.externalApplication);
-                }
-              },
+        /* THE TAP THAT DID NOTHING. An admin's target of '/games' or a
+           scheme-less 'www...' failed the hasScheme check and fell through
+           to silence: the slide animated on press and went nowhere. Every
+           admin-typed target now goes through the one router that knows the
+           app's rooms, launches real URLs honestly, and SAYS SO when a
+           target is broken - so the admin hears about a typo from the first
+           student instead of never. */
+        onTap: target.isEmpty ? null : () => openAppTarget(context, target),
         semanticLabel: '${slide['headline'] ?? ''}. $subtext',
         child: Stack(
           fit: StackFit.expand,

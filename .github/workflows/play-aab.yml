@@ -1,0 +1,125 @@
+# =============================================================================
+# THE GOOGLE PLAY BUNDLE — and nothing else.
+#
+# One job, one artifact, one question answered: is this .aab actually signed
+# with the upload key and fit to upload?
+#
+# IT REFUSES TO PRODUCE A DEBUG-SIGNED BUNDLE. The release matrix used to fall
+# back to the debug key and warn; a warning on a run summary is exactly the
+# kind of thing that gets scrolled past, and the bundle it produced was then
+# offered as if it were a release. Worse, GitHub runners generate a FRESH
+# RANDOM debug keystore per run, so even a bundle Play somehow accepted could
+# never be updated — every later build would carry a different key. This job
+# fails instead, and names the missing secrets.
+#
+# WHAT IT PROVES, rather than asserts:
+#   · the signer certificate is read back OUT of the finished .aab, and the
+#     build fails if it is the Android Debug certificate
+#   · the package name, versionCode and versionName are read back out of the
+#     bundle's own manifest with Google's bundletool — not from pubspec.yaml,
+#     which is what the build was told, not what it produced
+# =============================================================================
+name: play-aab
+
+on:
+  workflow_dispatch:
+
+jobs:
+  aab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.2"
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      # -----------------------------------------------------------------------
+      # THE UPLOAD KEY IS REQUIRED. Not optional, not warned about.
+      # -----------------------------------------------------------------------
+      - name: Require the upload key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=""
+          if [ -z "$KEYSTORE_BASE64" ]; then missing="$missing ANDROID_KEYSTORE_BASE64"; fi
+          if [ -z "$STORE_PASSWORD" ];   then missing="$missing ANDROID_KEYSTORE_PASSWORD"; fi
+          if [ -z "$KEY_ALIAS" ];        then missing="$missing ANDROID_KEY_ALIAS"; fi
+          if [ -z "$KEY_PASSWORD" ];     then missing="$missing ANDROID_KEY_PASSWORD"; fi
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing — refusing to build a debug-signed bundle Google Play would reject."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload-keystore.jks"
+          # key.properties is git-ignored and exists only on this runner.
+          {
+            echo "storeFile=$RUNNER_TEMP/upload-keystore.jks"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > android/key.properties
+          echo "Upload key written for alias $KEY_ALIAS."
+
+      - name: Build the bundle
+        run: flutter build appbundle --release
+
+      # -----------------------------------------------------------------------
+      # READ THE ANSWER BACK OUT OF THE ARTIFACT.
+      # -----------------------------------------------------------------------
+      - name: Prove it is release-signed and fit for Play
+        run: |
+          set -euo pipefail
+          AAB=build/app/outputs/bundle/release/app-release.aab
+          test -s "$AAB" || { echo "::error::no bundle was produced"; exit 1; }
+
+          echo "### The bundle" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          ls -lh "$AAB" | tee -a "$GITHUB_STEP_SUMMARY"
+
+          # --- the signer, read from the finished bundle -------------------
+          keytool -printcert -jarfile "$AAB" > signer.txt
+          if grep -q "CN=Android Debug" signer.txt; then
+            echo "::error::This bundle is signed with the ANDROID DEBUG certificate. Google Play will refuse it."
+            cat signer.txt
+            exit 1
+          fi
+          grep -E "Owner:|Valid from:|SHA256:" signer.txt | head -4 | tee -a "$GITHUB_STEP_SUMMARY"
+
+          # --- the manifest, read from the bundle with Google's own tool ----
+          BT=1.17.2
+          curl -sSL -o bundletool.jar \
+            "https://github.com/google/bundletool/releases/download/$BT/bundletool-all-$BT.jar"
+          java -jar bundletool.jar dump manifest --bundle="$AAB" > manifest.xml
+
+          PKG=$(java -jar bundletool.jar dump manifest --bundle="$AAB" --xpath=/manifest/@package)
+          VC=$(java -jar bundletool.jar dump manifest --bundle="$AAB" --xpath=/manifest/@android:versionCode)
+          VN=$(java -jar bundletool.jar dump manifest --bundle="$AAB" --xpath=/manifest/@android:versionName)
+          echo "package=$PKG versionCode=$VC versionName=$VN" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          # The package name can never change once Play has seen it.
+          if [ "$PKG" != "com.lockinpoint.app" ]; then
+            echo "::error::package is $PKG, expected com.lockinpoint.app"
+            exit 1
+          fi
+          echo "::notice::Release-signed $PKG $VN ($VC) — ready to upload to Google Play."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lockinpoint-release-aab
+          path: build/app/outputs/bundle/release/app-release.aab
+          retention-days: 30
+          if-no-files-found: error

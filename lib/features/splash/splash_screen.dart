@@ -99,7 +99,17 @@ class _LipSplashState extends State<LipSplash> with TickerProviderStateMixin {
                     ),
                     Transform.scale(
                       scale: 0.7 + 0.3 * mark.value,
-                      child: Opacity(opacity: mark.value, child: child),
+                      /* CLAMPED, BECAUSE THE SPRING OVERSHOOTS.
+                         Motion.spring is Cubic(.2,.9,.25,1.1) — it deliberately
+                         travels past 1 so the mark lands with a little weight.
+                         Feeding that straight to Opacity trips its 0..1
+                         assertion and takes down the very first frame of the
+                         app. The overshoot belongs to the scale, which wants
+                         it; opacity only ever wants the fraction. */
+                      child: Opacity(
+                        opacity: mark.value.clamp(0.0, 1.0),
+                        child: child,
+                      ),
                     ),
                   ],
                 ),
@@ -183,7 +193,8 @@ class _Rise extends StatelessWidget {
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: t,
     builder: (_, c) => Opacity(
-      opacity: t.value,
+      // Same reason: any curve handed to this may overshoot.
+      opacity: t.value.clamp(0.0, 1.0),
       child: Transform.translate(
         offset: Offset(0, 14 * (1 - t.value)),
         child: c,

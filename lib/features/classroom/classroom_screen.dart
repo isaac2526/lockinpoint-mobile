@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/open.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
 import '../../design/theme.dart';
@@ -211,10 +211,7 @@ class _ShelfScreen extends ConsumerWidget {
                           title: m.title,
                           onTap: m.url.isEmpty
                               ? null
-                              : () => launchUrl(
-                                  Uri.parse(m.url),
-                                  mode: LaunchMode.externalApplication,
-                                ),
+                              : () => openOutside(context, Uri.parse(m.url)),
                         ),
                       ),
                       const SizedBox(height: Gap.lg),
@@ -229,10 +226,7 @@ class _ShelfScreen extends ConsumerWidget {
                           title: m.title,
                           onTap: m.url.isEmpty
                               ? null
-                              : () => launchUrl(
-                                  Uri.parse(m.url),
-                                  mode: LaunchMode.externalApplication,
-                                ),
+                              : () => openOutside(context, Uri.parse(m.url)),
                         ),
                       ),
                     ],

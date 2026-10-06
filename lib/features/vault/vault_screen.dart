@@ -5,6 +5,7 @@ import '../../core/api.dart';
 import '../../core/vault/connectivity.dart';
 import '../../core/vault/vault_db.dart';
 import '../../core/vault/vault_repository.dart';
+import 'offline_session_screen.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
 import '../../design/motion_widgets.dart';
@@ -66,6 +67,19 @@ class VaultScreen extends ConsumerWidget {
                       ? ListView(
                           physics: const AlwaysScrollableScrollPhysics(),
                           children: [
+                            /* Queued papers must stay visible even with no
+                               packs left: a student who removed their last
+                               download while results were still waiting used
+                               to lose all sight of them. */
+                            const Padding(
+                              padding: EdgeInsets.fromLTRB(
+                                Gap.lg,
+                                Gap.lg,
+                                Gap.lg,
+                                0,
+                              ),
+                              child: _PendingBanner(),
+                            ),
                             SizedBox(
                               height: MediaQuery.sizeOf(context).height * 0.1,
                             ),
@@ -146,7 +160,6 @@ class _PendingBannerState extends ConsumerState<_PendingBanner> {
   Widget build(BuildContext context) {
     if (_pending == 0) return const SizedBox.shrink();
     final c = context.lip;
-    final online = ref.watch(isOnlineProvider);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: Gap.md),
@@ -163,18 +176,43 @@ class _PendingBannerState extends ConsumerState<_PendingBanner> {
                 style: LipType.small.copyWith(color: c.text1),
               ),
             ),
-            if (online)
-              TextButton(
-                onPressed: _busy
-                    ? null
-                    : () async {
-                        setState(() => _busy = true);
-                        await ref.read(vaultProvider).syncPending();
-                        await _count();
-                        if (mounted) setState(() => _busy = false);
-                      },
-                child: Text(_busy ? 'Sending…' : 'Send now'),
-              ),
+            /* ALWAYS OFFERED. This button used to hide whenever the
+               connectivity probe said offline - and the probe lies on
+               desktop, so the installed build told students "papers waiting
+               to be sent" while hiding the only button that sends them. The
+               attempt itself is the truth: it drains the queue or it says
+               why not. */
+            TextButton(
+              onPressed: _busy
+                  ? null
+                  : () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      setState(() => _busy = true);
+                      var sent = 0;
+                      try {
+                        sent = await ref.read(vaultProvider).syncPending();
+                      } catch (_) {
+                        sent = 0;
+                      }
+                      await _count();
+                      if (!mounted) return;
+                      setState(() => _busy = false);
+                      messenger
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              sent > 0
+                                  ? '$sent paper${sent == 1 ? '' : 's'} sent home.'
+                                  : 'Could not reach LockInPoint - your papers '
+                                        'are safe and will go when you have '
+                                        'a connection.',
+                            ),
+                          ),
+                        );
+                    },
+              child: Text(_busy ? 'Sending…' : 'Send now'),
+            ),
           ],
         ),
       ),
@@ -186,12 +224,96 @@ class _PackCard extends ConsumerWidget {
   const _PackCard({required this.pack});
   final Pack pack;
 
+  Future<void> _practise(BuildContext context, WidgetRef ref) async {
+    final vault = ref.read(vaultProvider);
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+
+    final count = await showModalBottomSheet<int>(
+      context: context,
+      builder: (ctx) {
+        final c = ctx.lip;
+        final sizes = [
+          10,
+          20,
+          40,
+          pack.count,
+        ].where((n) => n <= pack.count).toSet().toList()..sort();
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(Gap.lg),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'How many questions?',
+                  style: LipType.title.copyWith(color: c.text1),
+                ),
+                const SizedBox(height: Gap.xs),
+                Text(
+                  'Shuffled fresh each sitting, marked on this phone. '
+                  'No connection needed.',
+                  style: LipType.small.copyWith(color: c.text3),
+                ),
+                const SizedBox(height: Gap.md),
+                Wrap(
+                  spacing: Gap.sm,
+                  runSpacing: Gap.sm,
+                  children: [
+                    for (final n in sizes)
+                      LipChip(
+                        n == pack.count ? 'All $n' : '$n',
+                        onTap: () => Navigator.pop(ctx, n),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: Gap.md),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (count == null) return;
+
+    final sitting = await vault.openSitting(pack.subjectId, count: count);
+    if (sitting == null || sitting.questions.isEmpty) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'That pack could not be opened. Remove it and download again.',
+            ),
+          ),
+        );
+      return;
+    }
+
+    // `true` back means "sit it again" — reopen with a fresh shuffle.
+    final again = await navigator.push<bool>(
+      MaterialPageRoute(builder: (_) => OfflineSessionScreen(sitting: sitting)),
+    );
+    if (again == true && context.mounted) {
+      await _practise(context, ref);
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.lip;
 
+    /* THE DOOR THAT WAS MISSING. This card used to have exactly one
+       interactive element: delete. A downloaded pack could be removed and
+       could not be OPENED — the vault was a store with no reader, which is
+       precisely the failure the founder hit in the installed build. Tapping
+       now starts an offline sitting, and the subtitle says so. */
     return GlassSurface(
       tier: GlassTier.card,
+      // A pack of zero questions has nothing to open; its card offers only
+      // removal instead of a count sheet whose best option is "All 0".
+      onTap: pack.count == 0 ? null : () => _practise(context, ref),
       child: Row(
         children: [
           Container(
@@ -221,7 +343,9 @@ class _PackCard extends ConsumerWidget {
                   // The exam is named, always. WAEC and WAEC GCE are
                   // different examinations and a student must be able to see
                   // which one they are holding.
-                  '${pack.examShort} · ${pack.count} questions',
+                  pack.count == 0
+                      ? '${pack.examShort} · empty - remove and re-download'
+                      : '${pack.examShort} · ${pack.count} questions · tap to practise',
                   style: LipType.small.copyWith(color: c.text3),
                 ),
               ],

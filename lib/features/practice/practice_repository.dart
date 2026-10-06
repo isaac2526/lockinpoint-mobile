@@ -102,6 +102,7 @@ class ServedQuestion {
     this.answer,
     this.explanation,
     this.media,
+    this.subjectId,
   });
 
   final String id;
@@ -111,6 +112,10 @@ class ServedQuestion {
   final String? passageId;
   final String? section;
   final int? year;
+
+  /// Which subject this question belongs to, in a multi-subject sitting.
+  /// Null in single-subject papers, where the answer is obvious.
+  final String? subjectId;
   final String? answer;
   final String? explanation;
   final Map<String, dynamic>? media;
@@ -134,6 +139,7 @@ class ServedQuestion {
     answer: (j['answer'] as String?)?.toUpperCase(),
     explanation: j['explanation'] as String?,
     media: j['media'] as Map<String, dynamic>?,
+    subjectId: j['subject_id'] as String?,
   );
 }
 
@@ -156,6 +162,7 @@ class Sitting {
     this.initialAnswers = const {},
     this.initialChecked = const {},
     this.initialFlags = const {},
+    this.subjects = const [],
   });
 
   final String attemptId;
@@ -175,6 +182,11 @@ class Sitting {
   final Map<String, String> initialAnswers;
   final Map<String, bool> initialChecked;
   final Map<String, bool> initialFlags;
+
+  /// The subjects in this paper, in served order. The server has sent this
+  /// list since the beginning — the app parsed it and dropped it, which is
+  /// why a four-subject UTME mock rendered as one undifferentiated stream.
+  final List<({String id, String name})> subjects;
 
   bool get timed => duration > 0;
 }
@@ -237,6 +249,8 @@ class SubmitResult {
     required this.overall,
     required this.perSubject,
     this.corrections = const [],
+    this.isJamb = false,
+    this.scaled = const [],
   });
 
   final int correct;
@@ -244,6 +258,22 @@ class SubmitResult {
   final int overall;
   final List<({String name, int correct, int total})> perSubject;
   final List<Correction> corrections;
+
+  /// A UTME mock is scored OUT OF 400, not as a percentage. The server has
+  /// always said which this is; the app dropped the flag and printed "265%"
+  /// in a circle whose thresholds painted every mock green.
+  final bool isJamb;
+
+  /// Per-subject scores on JAMB's own scale, as the server computed them.
+  final List<({String name, int score})> scaled;
+
+  /// What to show in the big circle, and what it is out of.
+  String get headline => isJamb ? '$overall' : '$overall%';
+  String? get outOf => isJamb ? 'out of 400' : null;
+
+  /// Thresholds that mean the same thing on both scales: a 280 in JAMB is
+  /// the same achievement as 70%.
+  int get percentEquivalent => isJamb ? (overall / 4).round() : overall;
 
   List<Correction> get missed => corrections.where((c) => !c.isRight).toList();
 }
@@ -322,6 +352,12 @@ class PracticeRepository {
     /// one, marked at the end exactly as the real hall does it.
     String mode = 'practice',
     int minutes = 30,
+
+    /// SHUFFLE THE OPTIONS. On by default, because practising a paper twice
+    /// should teach the subject rather than "question 14 is C". The server
+    /// leaves comprehension questions alone and records the order it used, so
+    /// resuming shows the same paper the student left.
+    bool shuffleOptions = true,
   }) async {
     final res = await _api.post(
       '/api/attempts',
@@ -335,10 +371,113 @@ class PracticeRepository {
         'year': ?year,
         'topicId': ?topicId,
         'kind': kind,
+        'shuffleOptions': shuffleOptions,
         if (mode == 'cbt') 'minutes': '$minutes',
       },
     );
     return _sitting(res, label);
+  }
+
+  /// A FULL UTME SITTING — Use of English plus three chosen subjects, run
+  /// through the same jamb_mock/jamb_mini engine the website has always had.
+  ///
+  /// The app never sent more than one subject id, so the four-subject mock —
+  /// the sitting JAMB candidates actually face — could not be started from a
+  /// phone at all. The server has supported subjectIds[] since the engine was
+  /// written; this is the call that finally uses it.
+  Future<Sitting> startUtme({
+    required List<({String id, String name})> combination,
+    bool mini = false,
+
+    /// Questions per subject in a MINI mock. The route has read this as
+    /// `body.per` since the mode existed and the app never sent it, so every
+    /// mini mock was the route's fallback of ten and the student's choice
+    /// went nowhere. Ignored for a full mock, which is JAMB's own shape.
+    int per = 10,
+  }) async {
+    final label = combination.map((s) => s.name).join(', ');
+    final res = await _api.post(
+      '/api/attempts',
+      body: {
+        'action': 'start',
+        'mode': mini ? 'jamb_mini' : 'jamb_mock',
+        'examSlug': 'jamb',
+        'subjectIds': combination.map((s) => s.id).toList(),
+        'label': label,
+        'shuffleOptions': true,
+        if (mini) 'per': per,
+      },
+    );
+    return _sitting(res, label);
+  }
+
+  /// Remember the student's combination on their profile, so next time the
+  /// picker opens on THEIR four subjects rather than a blank slate. Fire and
+  /// forget — failing to save a preference must never block a mock.
+  Future<void> saveCombination(List<String> names) async {
+    try {
+      await _api.post(
+        '/api/profile/complete',
+        body: {'subjectCombination': names.join(' · ')},
+      );
+    } on ApiFailure {
+      // A preference, not a paper. Nothing is lost but a prefill.
+    }
+  }
+
+  /// REOPEN A FINISHED PAPER. The answer key is stored on the attempt, so a
+  /// sitting from last week can be walked through again — the corrections
+  /// used to exist for exactly as long as the result screen stayed open.
+  Future<SubmitResult> review(String attemptId) async {
+    final res = await _api.post(
+      '/api/attempts',
+      body: {'action': 'review', 'attemptId': attemptId},
+    );
+    return _submitResult(res);
+  }
+
+  /// Keep this question, or let it go. The same /api/qmark the website has
+  /// always used, so a question saved on a phone is in the list on the site.
+  Future<void> setSaved(String questionId, bool saved) => _api.post(
+    '/api/qmark',
+    body: {'op': saved ? 'save' : 'unsave', 'questionId': questionId},
+  );
+
+  /// Which questions this student has already kept, so a sitting can show
+  /// the bookmark already filled rather than making them guess.
+  Future<Set<String>> savedIds() async {
+    try {
+      final res = await _api.post('/api/qmark', body: {'op': 'saved_ids'});
+      return ((res['ids'] as List?) ?? const []).map((e) => '$e').toSet();
+    } on ApiFailure {
+      // Not knowing is not an error worth blocking a sitting for.
+      return <String>{};
+    }
+  }
+
+  /// A paper built from the questions this student saved.
+  ///
+  /// The saved list existed and nothing turned it into a sitting — so the
+  /// questions a student had explicitly marked as hard were the only ones they
+  /// could not practise as a set. The server picks them; the app only asks.
+  Future<Sitting> startFromSaved({
+    int count = 20,
+    String mode = 'practice',
+    int minutes = 30,
+  }) async {
+    final res = await _api.post(
+      '/api/attempts',
+      body: {
+        'action': 'start',
+        'mode': mode,
+        'fromSaved': true,
+        'count': '$count',
+        'label': 'Saved questions',
+        'shuffleOptions': true,
+        if (mode == 'cbt') 'minutes': '$minutes',
+      },
+    );
+    return _sitting(res, 'Saved questions');
   }
 
   Future<Sitting> resume(String attemptId) async {
@@ -389,6 +528,11 @@ class PracticeRepository {
         ),
       ),
     ),
+    subjects: ((res['subjects'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((m) => (id: '${m['id'] ?? ''}', name: '${m['name'] ?? ''}'))
+        .where((x) => x.id.isNotEmpty)
+        .toList(),
     initialIndex: initialIndex,
     initialAnswers: initialAnswers,
     initialChecked: initialChecked,
@@ -428,7 +572,14 @@ class PracticeRepository {
       '/api/attempts',
       body: {'action': 'submit', 'attemptId': attemptId, 'answers': answers},
     );
-    final score = (res['score'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return _submitResult(res);
+  }
+
+  /// One parse for a graded paper, whether it was just submitted or is being
+  /// reopened weeks later — two parsers would eventually disagree about a
+  /// student's own score.
+  SubmitResult _submitResult(Map<String, dynamic> res) {
+    final score = ((res['score'] as Map?) ?? const {}).cast<String, dynamic>();
     return SubmitResult(
       correct: (score['correct'] as num?)?.toInt() ?? 0,
       total: (score['total'] as num?)?.toInt() ?? 0,
@@ -446,6 +597,16 @@ class PracticeRepository {
       corrections: ((res['corrections'] as List?) ?? const [])
           .cast<Map<String, dynamic>>()
           .map(Correction.fromJson)
+          .toList(),
+      isJamb: score['isJamb'] == true,
+      scaled: ((score['scaled'] as List?) ?? const [])
+          .whereType<Map>()
+          .map(
+            (p) => (
+              name: p['name'] as String? ?? '',
+              score: (p['score'] as num?)?.toInt() ?? 0,
+            ),
+          )
           .toList(),
     );
   }

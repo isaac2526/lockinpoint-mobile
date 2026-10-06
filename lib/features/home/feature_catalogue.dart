@@ -86,11 +86,12 @@ class Feature {
     String? subtitle,
     String? badge,
     FeatureHue? hue,
+    IconData? icon,
   }) => Feature(
     key: key,
     title: title ?? this.title,
     subtitle: subtitle ?? this.subtitle,
-    icon: icon,
+    icon: icon ?? this.icon,
     hue: hue ?? this.hue,
     ready: ready,
     badge: badge ?? this.badge,
@@ -219,8 +220,21 @@ List<Feature> mergeFeatureTiles(List<Map<String, dynamic>> rows) {
   final byKey = {for (final f in visibleFeatures) f.key: f};
   final out = <Feature>[];
 
+  /* HIDING A TILE ACTUALLY HIDES IT. `active` and `show_on_app` are
+     editable columns in the admin panel and this merge ignored both, so
+     switching a tile off changed nothing in the app and contradicted the
+     panel that offered the switch. A row that says "not on the app" is a
+     row the app must not render — and, further down, must not restore from
+     the defaults either. */
+  final hidden = <String>{};
   for (final r in rows) {
-    final base = byKey[r['key'] as String? ?? ''];
+    final key = r['key'] as String? ?? '';
+    final off = r['active'] == false || r['show_on_app'] == false;
+    if (off) {
+      hidden.add(key);
+      continue;
+    }
+    final base = byKey[key];
     if (base == null) continue;
     out.add(
       base.copyWith(
@@ -231,6 +245,10 @@ List<Feature> mergeFeatureTiles(List<Map<String, dynamic>> rows) {
             ? r['subtitle'] as String
             : null,
         badge: (r['badge'] as String?) ?? '',
+        // `icon` is editable in the panel too, and was likewise ignored.
+        icon: r['icon'] == null
+            ? null
+            : iconNamed(r['icon'] as String, base.icon),
         hue: r['hue'] == null ? null : FeatureHueX.parse(r['hue'] as String),
       ),
     );
@@ -239,7 +257,11 @@ List<Feature> mergeFeatureTiles(List<Map<String, dynamic>> rows) {
   // A tile the admin has not mentioned still belongs on the grid; silence is
   // not a request to hide something.
   final named = out.map((f) => f.key).toSet();
-  out.addAll(visibleFeatures.where((f) => !named.contains(f.key)));
+  out.addAll(
+    visibleFeatures.where(
+      (f) => !named.contains(f.key) && !hidden.contains(f.key),
+    ),
+  );
   return out;
 }
 

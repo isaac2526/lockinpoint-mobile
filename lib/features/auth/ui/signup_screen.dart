@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api.dart';
+import '../../../core/countries.dart';
 import '../../../design/components.dart';
 import '../../../design/motion_widgets.dart';
 import '../../../design/theme.dart';
@@ -12,15 +13,6 @@ import '../../../design/typography.dart';
 import '../../../design/wordmark.dart';
 import '../auth_controller.dart';
 import 'login_screen.dart';
-
-/// The five nations LockInPoint serves, matching `src/lib/countries.ts`.
-const _countries = <({String code, String name, String dial, String flag})>[
-  (code: 'NG', name: 'Nigeria', dial: '+234', flag: '🇳🇬'),
-  (code: 'GH', name: 'Ghana', dial: '+233', flag: '🇬🇭'),
-  (code: 'SL', name: 'Sierra Leone', dial: '+232', flag: '🇸🇱'),
-  (code: 'LR', name: 'Liberia', dial: '+231', flag: '🇱🇷'),
-  (code: 'GM', name: 'The Gambia', dial: '+220', flag: '🇬🇲'),
-];
 
 /// ===========================================================================
 /// CREATE AN ACCOUNT
@@ -69,7 +61,30 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   _NameCheck _nameCheck = _NameCheck.idle;
   String _nameWhy = '';
 
-  String get _dial => _countries.firstWhere((c) => c.code == _country).dial;
+  String get _dial => dialOf(_country);
+
+  /// The country list as a sheet, for the students who reach for the dial box
+  /// rather than the chips above it.
+  Future<void> _pickCountry() async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final country in kCountries)
+              ListTile(
+                title: Text('${country.flag}  ${country.name}'),
+                trailing: Text(country.dial, style: LipType.mono),
+                selected: country.code == _country,
+                onTap: () => Navigator.of(sheet).pop(country.code),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked != null && mounted) setState(() => _country = picked);
+  }
 
   @override
   void initState() {
@@ -443,7 +458,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               spacing: Gap.sm,
               runSpacing: Gap.sm,
               children: [
-                for (final country in _countries)
+                for (final country in kCountries)
                   LipChip(
                     '${country.flag}  ${country.name}',
                     selected: _country == country.code,
@@ -456,18 +471,37 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             const SizedBox(height: Gap.sm),
             Row(
               children: [
-                Container(
-                  height: 56,
-                  padding: const EdgeInsets.symmetric(horizontal: Gap.md),
-                  decoration: BoxDecoration(
-                    color: c.glassDeep,
-                    borderRadius: BorderRadius.circular(Radii.md),
-                    border: Border.all(color: c.glassBorder),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    _dial,
-                    style: LipType.mono.copyWith(color: c.text1),
+                /* IT LOOKED LIKE A CONTROL. A boxed "+234" sitting beside a
+                   text field reads as a country dropdown to every student who
+                   has ever filled in a phone number, and this one did nothing
+                   at all when tapped. It now opens the country list. */
+                InkWell(
+                  borderRadius: BorderRadius.circular(Radii.md),
+                  onTap: _pickCountry,
+                  child: Container(
+                    height: 56,
+                    padding: const EdgeInsets.symmetric(horizontal: Gap.md),
+                    decoration: BoxDecoration(
+                      color: c.glassDeep,
+                      borderRadius: BorderRadius.circular(Radii.md),
+                      border: Border.all(color: c.glassBorder),
+                    ),
+                    alignment: Alignment.center,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _dial,
+                          style: LipType.mono.copyWith(color: c.text1),
+                        ),
+                        const SizedBox(width: 2),
+                        Icon(
+                          Icons.expand_more_rounded,
+                          size: 18,
+                          color: c.text3,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(width: Gap.sm),

@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/shell.dart';
 import '../../core/api.dart';
 import '../../design/components.dart';
 import '../../design/glass.dart';
@@ -8,6 +11,9 @@ import '../../design/motion_widgets.dart';
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/typography.dart';
+import '../../core/vault/vault_repository.dart';
+import '../home/dashboard_screen.dart';
+import '../vault/vault_screen.dart';
 import 'practice_repository.dart';
 import 'practice_session_screen.dart';
 
@@ -33,6 +39,10 @@ class PracticeFlowScreen extends ConsumerStatefulWidget {
 
 enum _Source { year, topic, random, tutorial }
 
+/// The shortcuts on the mini mock's size. The field beside them takes any
+/// number, because a chip is a shortcut and never a limit.
+const _kPerSubject = [5, 10, 15, 20, 25];
+
 class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
   int _step = 0;
 
@@ -55,6 +65,27 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
   bool _busy = false;
   String? _error;
 
+  /// The three subjects chosen BESIDE Use of English for a full UTME mock.
+  /// English itself is never in this set: it is compulsory, so it is locked
+  /// into the paper rather than offered as a choice a student could un-make.
+  final Set<String> _combo = {};
+
+  /// Mini mock: fewer questions, projected onto the 400 scale. The full mock
+  /// is the two-hour, four-subject sitting the real hall runs.
+  bool _utmeMini = false;
+
+  /* HOW MANY QUESTIONS A MINI MOCK ASKS PER SUBJECT.
+     /api/attempts has read `per` for a jamb_mini since the mode was added
+     — `parseInt(body.per) || 10` — and the app never sent it, so every mini
+     mock in the product was silently forty questions and the student had no
+     say. The full mock is JAMB's own shape (60 English + 40 each) and is not
+     a number anybody should be choosing. */
+  int _utmePer = 10;
+
+  /// The failure was the NETWORK, not the server — which changes the right
+  /// next step from "retry" to "practise what is already on the phone".
+  bool _errorOffline = false;
+
   PracticeRepository get _repo => ref.read(practiceRepositoryProvider);
 
   @override
@@ -67,11 +98,15 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
     setState(() {
       _busy = true;
       _error = null;
+      _errorOffline = false;
     });
     try {
       await work();
     } on ApiFailure catch (e) {
-      setState(() => _error = e.message);
+      setState(() {
+        _error = e.message;
+        _errorOffline = e.offline;
+      });
     } catch (_) {
       setState(() => _error = 'That did not load. Pull back and try again.');
     } finally {
@@ -91,8 +126,81 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
       _subjects = list;
       _subject = null;
       _chooser = null;
-      _step = 1;
+      /* JAMB IS NOT A SUBJECT LIST. A UTME candidate sits FOUR subjects at
+         once, so dropping them straight into single-subject practice - which
+         is what this screen did - was the wrong flow for the exam this whole
+         product is named for. JAMB forks first: one subject, or the full
+         combination. Every other exam goes to its subjects as before. */
+      if (exam.slug == 'jamb') {
+        _combo.clear();
+        _prefillCombination(list);
+        _step = 5;
+      } else {
+        _step = 1;
+      }
     });
+  });
+
+  /// Open the picker on the student's OWN four, saved from their last mock.
+  /// A prefill, never a lock - every chip stays changeable.
+  void _prefillCombination(List<SubjectOption> subjects) {
+    final saved =
+        (ref.read(dashboardProvider).value?['student']
+                as Map<String, dynamic>?)?['subjectCombination']
+            as String?;
+    if (saved == null || saved.isEmpty) return;
+    final wanted = saved.toLowerCase();
+    for (final s in subjects) {
+      if (s.compulsory) continue;
+      if (wanted.contains(s.name.toLowerCase()) && _combo.length < 3) {
+        _combo.add(s.id);
+      }
+    }
+  }
+
+  SubjectOption? get _english {
+    final list = _subjects ?? const [];
+    for (final s in list) {
+      if (s.compulsory) return s;
+    }
+    // The flag is data an admin can forget; the name is the safety net.
+    for (final s in list) {
+      if (s.name.toLowerCase().contains('english')) return s;
+    }
+    return null;
+  }
+
+  Future<void> _startUtme() => _guard(() async {
+    final english = _english;
+    if (english == null) return;
+    final byId = {
+      for (final s in _subjects ?? const <SubjectOption>[]) s.id: s,
+    };
+    final combination = [
+      (id: english.id, name: english.name),
+      for (final id in _combo)
+        if (byId[id] != null) (id: id, name: byId[id]!.name),
+    ];
+    final sitting = await _repo.startUtme(
+      combination: combination,
+      mini: _utmeMini,
+      per: _utmePer,
+    );
+    // Remembered for next time, never blocking this time.
+    unawaited(_repo.saveCombination(combination.map((s) => s.name).toList()));
+    if (!mounted) return;
+    /* PUSH, NEVER REPLACE. When this flow is the embedded Practice TAB, the
+       current route is the shell itself - replacing it swapped the whole
+       shell out for the sitting, so "Back to the dashboard" had no dashboard
+       behind it and Leave popped into a dead black screen the student had to
+       force-close. */
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PracticeSessionScreen(sitting: sitting),
+      ),
+    );
+    // The Continue card and counts go stale the moment a sitting ends.
+    ref.invalidate(dashboardProvider);
   });
 
   Future<void> _pickSubject(SubjectOption subject) => _guard(() async {
@@ -100,7 +208,15 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
     setState(() {
       _subject = subject;
       _chooser = data;
-      _source = _Source.random;
+      /* START ON A SOURCE THAT HAS QUESTIONS IN IT.
+         This always opened on "Random mix", whose card is disabled when the
+         subject has no past questions. On a tutorial-only subject the student
+         therefore landed on a greyed-out choice that was nonetheless the
+         selected one, and Start asked the server for past questions that do
+         not exist. A disabled card must never be the one already chosen. */
+      _source = data.past > 0
+          ? _Source.random
+          : (data.tutorial > 0 ? _Source.tutorial : _Source.random);
       _year = null;
       _topic = null;
       _step = 2;
@@ -137,11 +253,18 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
       minutes: _minutes,
     );
     if (!mounted) return;
-    await Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
+    /* PUSH, NEVER REPLACE. When this flow is the embedded Practice TAB, the
+       current route is the shell itself - replacing it swapped the whole
+       shell out for the sitting, so "Back to the dashboard" had no dashboard
+       behind it and Leave popped into a dead black screen the student had to
+       force-close. */
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
         builder: (_) => PracticeSessionScreen(sitting: sitting),
       ),
     );
+    // The Continue card and counts go stale the moment a sitting ends.
+    ref.invalidate(dashboardProvider);
   });
 
   void _back() {
@@ -152,10 +275,98 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
       Navigator.of(context).pop();
     } else {
       setState(() {
+        /* The JAMB branch has its own spine: combination -> fork -> exams,
+           and the single-subject list also returns to the fork rather than
+           skipping it. Decrementing blindly would strand a student on step
+           4 - a screen that does not exist. */
+        if (_step == 6) {
+          _step = 5;
+          return;
+        }
+        if (_step == 5) {
+          _step = 0;
+          return;
+        }
+        if (_step == 1 && _exam?.slug == 'jamb') {
+          _step = 5;
+          return;
+        }
         _step -= 1;
         _error = null;
       });
     }
+  }
+
+  /// Ask for a number the chips do not offer.
+  ///
+  /// Bounded on both sides and the bounds are explained: below 1 there is no
+  /// paper, and above 200 a single sitting stops being practice and starts
+  /// being a way to time out a phone.
+  Future<void> _askCount() => _askNumber(
+    title: 'How many questions?',
+    hint: 'Between 1 and 200',
+    initial: _count,
+    min: 1,
+    max: 200,
+    onPicked: (n) => setState(() => _count = n),
+  );
+
+  Future<void> _askPerSubject() => _askNumber(
+    title: 'How many per subject?',
+    hint: 'Between 1 and 60',
+    initial: _utmePer,
+    min: 1,
+    max: 60,
+    onPicked: (n) => setState(() => _utmePer = n),
+  );
+
+  Future<void> _askMinutes() => _askNumber(
+    title: 'How many minutes?',
+    hint: 'Between 1 and 240',
+    initial: _minutes,
+    min: 1,
+    max: 240,
+    onPicked: (n) => setState(() => _minutes = n),
+  );
+
+  Future<void> _askNumber({
+    required String title,
+    required String hint,
+    required int initial,
+    required int min,
+    required int max,
+    required void Function(int) onPicked,
+  }) async {
+    final controller = TextEditingController(text: '$initial');
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(hintText: hint),
+          onSubmitted: (v) => Navigator.of(ctx).pop(int.tryParse(v.trim())),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(ctx).pop(int.tryParse(controller.text.trim())),
+            child: const Text('Use it'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (picked == null) return;
+    // Clamped rather than refused: a student who typed 500 meant "as many as
+    // you have", and an error dialog would just make them type again.
+    onPicked(picked.clamp(min, max));
   }
 
   @override
@@ -175,7 +386,11 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
                   if (widget.embedded && _step == 0)
                     Builder(
                       builder: (context) => IconButton(
-                        onPressed: () => Scaffold.of(context).openDrawer(),
+                        /* The drawer lives on the SHELL's scaffold; this screen's own
+                     inner Scaffold has none, so Scaffold.of() here found a
+                     drawerless scaffold and this tap did nothing at all in
+                     release builds. */
+                        onPressed: () => lipShellKey.currentState?.openDrawer(),
                         icon: const Icon(Icons.menu_rounded),
                         tooltip: 'Menu',
                       ),
@@ -194,10 +409,21 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
                         Text(switch (_step) {
                           0 => 'Choose your exam',
                           1 => _exam?.shortName ?? 'Choose your subject',
+                          5 => 'JAMB',
+                          6 => 'Your combination',
                           _ => _chooser?.subjectName ?? 'Set up your session',
                         }, style: LipType.heading.copyWith(color: c.text1)),
                         Text(
-                          'Step ${_step + 1} of 3',
+                          /* The counter only counts the classic spine. The
+                             JAMB fork is its own short road, and "Step 6 of
+                             3" - which this used to print there - is the
+                             kind of nonsense that makes an app feel broken
+                             even when it works. */
+                          switch (_step) {
+                            5 => 'One subject, or the full mock',
+                            6 => 'Use of English + 3 of yours',
+                            _ => 'Step ${_step + 1} of 3',
+                          },
                           style: LipType.label.copyWith(color: c.text3),
                         ),
                       ],
@@ -210,18 +436,49 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
             if (_error != null)
               Expanded(
                 child: Center(
-                  child: LipError(
-                    message: _error!,
-                    onRetry: () {
-                      switch (_step) {
-                        case 0:
-                          _loadExams();
-                        case 1:
-                          _pickExam(_exam!);
-                        default:
-                          setState(() => _error = null);
-                      }
-                    },
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      /* NO SIGNAL IS NOT A DEAD END. If the phone is holding
+                         downloaded packs, the right answer to "could not
+                         load" is the vault, offered right here — not a retry
+                         button pointed at a network that is not there. */
+                      if (_errorOffline)
+                        Consumer(
+                          builder: (context, ref, _) {
+                            final has =
+                                ref.watch(hasVaultProvider).value ?? false;
+                            if (!has) return const SizedBox.shrink();
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: Gap.lg),
+                              child: LipButton(
+                                gold: true,
+                                icon: Icons.offline_bolt_rounded,
+                                label: 'Practise from your vault',
+                                expand: false,
+                                onPressed: () => Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => const VaultScreen(),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      LipError(
+                        message: _error!,
+                        onRetry: () {
+                          switch (_step) {
+                            case 0:
+                              _loadExams();
+                            case 1:
+                              _pickExam(_exam!);
+                            default:
+                              setState(() => _error = null);
+                          }
+                        },
+                      ),
+                    ],
                   ),
                 ),
               )
@@ -249,6 +506,8 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
     return switch (_step) {
       0 => _examStep(),
       1 => _subjectStep(),
+      5 => _jambForkStep(),
+      6 => _combinationStep(),
       _ => _chooserStep(),
     };
   }
@@ -317,6 +576,175 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
     );
   }
 
+  Widget _jambForkStep() {
+    final c = context.lip;
+    return ListView(
+      padding: const EdgeInsets.all(Gap.md),
+      children: [
+        Text(
+          'How do you want to face JAMB today?',
+          style: LipType.heading.copyWith(color: c.text1),
+        ),
+        const SizedBox(height: Gap.md),
+        LipChoiceCard(
+          icon: Icons.menu_book_rounded,
+          title: 'Practise one subject',
+          subtitle: 'Drill a single subject - by year, by topic, or mixed',
+          selected: false,
+          onTap: _busy ? null : () => setState(() => _step = 1),
+        ),
+        const SizedBox(height: Gap.md),
+        LipChoiceCard(
+          icon: Icons.workspace_premium_rounded,
+          title: 'Full UTME mock - 4 subjects',
+          subtitle:
+              'Use of English plus your three, sat together and scored '
+              'out of 400, exactly like the hall',
+          selected: false,
+          onTap: _busy ? null : () => setState(() => _step = 6),
+        ),
+      ],
+    );
+  }
+
+  Widget _combinationStep() {
+    final c = context.lip;
+    final english = _english;
+    final others = (_subjects ?? const <SubjectOption>[])
+        .where((s) => s.id != english?.id)
+        .toList();
+
+    if (english == null) {
+      return const Center(
+        child: LipEmpty(
+          icon: Icons.menu_book_rounded,
+          title: 'Use of English is missing',
+          message:
+              'The JAMB bank has no English subject yet, and a UTME sitting '
+              'cannot exist without it. Try again shortly.',
+        ),
+      );
+    }
+
+    final ready = _combo.length == 3;
+    return ListView(
+      padding: const EdgeInsets.all(Gap.md),
+      children: [
+        Text(
+          'Your combination',
+          style: LipType.heading.copyWith(color: c.text1),
+        ),
+        const SizedBox(height: Gap.xs),
+        Text(
+          'Use of English sits in every UTME paper. Pick the three subjects '
+          'that make up YOUR combination - it is saved for next time.',
+          style: LipType.small.copyWith(color: c.text3, height: 1.5),
+        ),
+        const SizedBox(height: Gap.md),
+        Wrap(
+          spacing: Gap.sm,
+          runSpacing: Gap.sm,
+          children: [
+            LipChip('${english.name} - always in', tone: ChipTone.gold),
+            for (final s in others)
+              LipChip(
+                s.name,
+                selected: _combo.contains(s.id),
+                onTap: _busy
+                    ? null
+                    : () => setState(() {
+                        if (_combo.contains(s.id)) {
+                          _combo.remove(s.id);
+                        } else if (_combo.length < 3) {
+                          _combo.add(s.id);
+                        } else {
+                          /* Full. Say so - a chip that silently refuses reads
+                             as a broken chip, which is the exact bug class
+                             this build is curing. */
+                          ScaffoldMessenger.of(context)
+                            ..hideCurrentSnackBar()
+                            ..showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Three chosen already. Unpick one to swap '
+                                  'this one in.',
+                                ),
+                              ),
+                            );
+                        }
+                      }),
+              ),
+          ],
+        ),
+        const SizedBox(height: Gap.lg),
+        const LipLabel('Which sitting'),
+        const SizedBox(height: Gap.sm),
+        LipChoiceCard(
+          icon: Icons.timer_rounded,
+          title: 'Full mock',
+          subtitle: 'The real thing: four subjects, two hours, one score',
+          selected: !_utmeMini,
+          onTap: () => setState(() => _utmeMini = false),
+        ),
+        const SizedBox(height: Gap.md),
+        LipChoiceCard(
+          icon: Icons.bolt_rounded,
+          title: 'Mini mock',
+          subtitle: 'Shorter, still projected onto the 400 scale',
+          selected: _utmeMini,
+          onTap: () => setState(() => _utmeMini = true),
+        ),
+
+        /* THE MINI MOCK IS NOW THE STUDENT'S SIZE, NOT A HIDDEN DEFAULT.
+           A full mock is JAMB's own shape and nobody should be picking its
+           numbers. A mini mock is a revision tool, and how long it is depends
+           entirely on how long the student has - twenty minutes on a bus is a
+           different sitting from an hour at a desk. */
+        if (_utmeMini) ...[
+          const SizedBox(height: Gap.lg),
+          const LipLabel('How many questions per subject'),
+          const SizedBox(height: Gap.sm),
+          Wrap(
+            spacing: Gap.sm,
+            runSpacing: Gap.sm,
+            children: [
+              for (final n in _kPerSubject)
+                LipChip(
+                  '$n',
+                  selected: _utmePer == n,
+                  onTap: () => setState(() => _utmePer = n),
+                ),
+              LipChip(
+                _kPerSubject.contains(_utmePer) ? 'Other' : '$_utmePer',
+                selected: !_kPerSubject.contains(_utmePer),
+                onTap: _askPerSubject,
+              ),
+            ],
+          ),
+          const SizedBox(height: Gap.sm),
+          Text(
+            '$_utmePer each across four subjects - ${_utmePer * 4} questions, '
+            'about ${((_utmePer * 4 * 40) / 60).round()} minutes.',
+            style: LipType.small.copyWith(color: c.text3),
+          ),
+        ],
+
+        const SizedBox(height: Gap.xl),
+        LipButton(
+          gold: true,
+          icon: Icons.play_arrow_rounded,
+          label: ready
+              ? (_utmeMini
+                    ? 'Start: ${english.name} + 3 - ${_utmePer * 4} questions'
+                    : 'Start: ${english.name} + 3')
+              : 'Pick ${3 - _combo.length} more subject${_combo.length == 2 ? '' : 's'}',
+          busy: _busy,
+          onPressed: ready && !_busy ? _startUtme : null,
+        ),
+      ],
+    );
+  }
+
   Widget _chooserStep() {
     final data = _chooser;
     if (data == null) return const SizedBox.shrink();
@@ -355,11 +783,16 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
             ),
         ];
 
+    /* Ready means "this sitting can actually be built", not "a card is
+       highlighted". A subject with nothing published in it offers no Start at
+       all, and says why below, rather than a button that fails on tap. */
     final ready = switch (_source) {
       _Source.year => _year != null,
       _Source.topic => _topic != null,
-      _ => true,
+      _Source.random => data.past > 0,
+      _Source.tutorial => data.tutorial > 0,
     };
+    final empty = data.past == 0 && data.tutorial == 0;
 
     return ListView(
       padding: const EdgeInsets.all(Gap.md),
@@ -418,17 +851,52 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
           ),
           const SizedBox(height: Gap.md),
         ],
+        /* THE DOWNLOAD BUTTON, FINALLY MOUNTED. It was built, tested at the
+           repository level, promised by the vault's empty state ("open a
+           subject in Practice and download it") — and placed on no screen at
+           all, so no student could ever put a pack on their phone. This is
+           that screen. */
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Keep ${_subject?.name ?? 'this subject'} on your phone',
+                style: LipType.small.copyWith(color: context.lip.text2),
+              ),
+            ),
+            if (_subject != null)
+              DownloadPackButton(
+                subjectId: _subject!.id,
+                subjectName: _subject!.name,
+              ),
+          ],
+        ),
+        const SizedBox(height: Gap.lg),
+
         const LipLabel('How many questions'),
         const SizedBox(height: Gap.sm),
         Wrap(
           spacing: Gap.sm,
+          runSpacing: Gap.sm,
           children: [
-            for (final n in const [10, 20, 40])
+            for (final n in const [10, 20, 40, 60, 100])
               LipChip(
                 '$n',
                 selected: _count == n,
                 onTap: () => setState(() => _count = n),
               ),
+            /* A CHIP IS A SHORTCUT, NOT A LIMIT. Three fixed sizes meant a
+               student revising one weak topic could not sit five questions,
+               and one grinding before an exam could not sit 150. The chips
+               stay because most people want one of them; the field is for
+               everyone else. */
+            LipChip(
+              const [10, 20, 40, 60, 100].contains(_count)
+                  ? 'Other'
+                  : '$_count',
+              selected: !const [10, 20, 40, 60, 100].contains(_count),
+              onTap: _askCount,
+            ),
           ],
         ),
         const SizedBox(height: Gap.lg),
@@ -458,13 +926,21 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
           const SizedBox(height: Gap.sm),
           Wrap(
             spacing: Gap.sm,
+            runSpacing: Gap.sm,
             children: [
-              for (final m in const [10, 20, 30, 45])
+              for (final m in const [10, 20, 30, 45, 60, 120])
                 LipChip(
                   '$m min',
                   selected: _minutes == m,
                   onTap: () => setState(() => _minutes = m),
                 ),
+              LipChip(
+                const [10, 20, 30, 45, 60, 120].contains(_minutes)
+                    ? 'Other'
+                    : '$_minutes min',
+                selected: !const [10, 20, 30, 45, 60, 120].contains(_minutes),
+                onTap: _askMinutes,
+              ),
             ],
           ),
         ],
@@ -478,14 +954,27 @@ class _PracticeFlowState extends ConsumerState<PracticeFlowScreen> {
           ),
         ),
         const SizedBox(height: Gap.md),
-        LipButton(
-          label: _timed ? 'Start the clock' : 'Start practising',
-          icon: _timed ? Icons.timer_rounded : Icons.play_arrow_rounded,
-          // Gold marks the serious action, as it does on the website.
-          gold: _timed,
-          busy: _busy,
-          onPressed: ready ? _start : null,
-        ),
+        if (empty)
+          /* NO QUESTIONS MEANS NO BUTTON, AND A REASON. A dead Start with no
+             explanation is the single most common way this app felt broken:
+             the student taps, nothing happens, and nothing tells them why. */
+          LipEmpty(
+            icon: Icons.hourglass_empty_rounded,
+            title: 'Nothing published here yet',
+            message:
+                '${_subject?.name ?? 'This subject'} has no questions in the '
+                'bank yet. Pick another subject - or come back, because they '
+                'are added all the time.',
+          )
+        else
+          LipButton(
+            label: _timed ? 'Start the clock' : 'Start practising',
+            icon: _timed ? Icons.timer_rounded : Icons.play_arrow_rounded,
+            // Gold marks the serious action, as it does on the website.
+            gold: _timed,
+            busy: _busy,
+            onPressed: ready ? _start : null,
+          ),
         const SizedBox(height: Gap.xl),
       ],
     );

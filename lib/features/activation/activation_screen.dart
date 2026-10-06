@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/open.dart';
 import '../../core/api.dart';
 import '../../core/config.dart';
 import '../../design/components.dart';
@@ -37,14 +37,55 @@ class ActivationScreen extends ConsumerStatefulWidget {
 
 class _ActivationScreenState extends ConsumerState<ActivationScreen> {
   final _key = TextEditingController();
+  final _code = TextEditingController();
   String _message = '';
   bool _ok = false;
   bool _busy = false;
+  bool _paying = false;
   String _copied = '';
+
+  /// Open Paystack, carrying a code if one was typed.
+  ///
+  /// The checkout opens in the SYSTEM BROWSER rather than a webview: a bank's
+  /// 3-D Secure page and an in-app webview disagree often enough that a
+  /// student loses a payment over it.
+  ///
+  /// A code is checked here first, so a bad one is a sentence on this screen
+  /// rather than a surprise on a payment page.
+  Future<void> _payByCard() async {
+    final api = ref.read(apiProvider);
+    final code = _code.text.trim();
+    setState(() {
+      _paying = true;
+      _message = '';
+    });
+    try {
+      final res = await api.post(
+        '/api/pay/init',
+        body: {if (code.isNotEmpty) 'code': code},
+      );
+      final url = res['url'] as String?;
+      if (url != null && url.isNotEmpty) {
+        if (!mounted) return;
+        // Result checked: a checkout that silently fails to open reads as a
+        // dead Pay button, and a dead Pay button costs real money.
+        await openOutside(context, Uri.parse(url));
+      }
+    } on ApiFailure catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _message = e.message;
+        _ok = false;
+      });
+    } finally {
+      if (mounted) setState(() => _paying = false);
+    }
+  }
 
   @override
   void dispose() {
     _key.dispose();
+    _code.dispose();
     super.dispose();
   }
 
@@ -141,15 +182,35 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                     ),
                     const SizedBox(height: Gap.lg),
 
+                    // ---- a code, if they have one -----------------------
+                    /* THE OTHER HALF OF THE REFERRAL LOOP. A referrer earned
+                       ₦500 and the person being referred got nothing, so the
+                       only reason to type somebody's code was generosity.
+                       Either a promotion code or another student's referral
+                       code works here; the SERVER decides what either is
+                       worth, and refuses one it does not recognise rather
+                       than quietly charging full price. */
+                    const LipLabel('Have a discount or referral code?'),
+                    const SizedBox(height: Gap.sm),
+                    TextField(
+                      controller: _code,
+                      textCapitalization: TextCapitalization.characters,
+                      style: LipType.body.copyWith(
+                        color: c.text1,
+                        fontFamily: 'JetBrainsMono',
+                        letterSpacing: 1.5,
+                      ),
+                      decoration: const InputDecoration(hintText: 'Optional'),
+                    ),
+                    const SizedBox(height: Gap.lg),
+
                     // ---- card ------------------------------------------
                     LipButton(
                       gold: true,
                       icon: Icons.credit_card_rounded,
                       label: 'Pay by card, transfer or USSD',
-                      onPressed: () => launchUrl(
-                        Uri.parse('${AppConfig.apiBase}/activate'),
-                        mode: LaunchMode.externalApplication,
-                      ),
+                      busy: _paying,
+                      onPressed: _payByCard,
                     ),
                     Padding(
                       padding: const EdgeInsets.only(top: Gap.xs),
@@ -207,6 +268,17 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                                         await a.copy();
                                         if (!context.mounted) return;
                                         setState(() => _copied = a.id);
+                                        /* "Copied" is a MOMENT, not a state.
+                                           It used to stay lit forever, so on
+                                           a later visit it claimed a number
+                                           was on the clipboard that no longer
+                                           was. */
+                                        await Future<void>.delayed(
+                                          const Duration(seconds: 3),
+                                        );
+                                        if (mounted && _copied == a.id) {
+                                          setState(() => _copied = '');
+                                        }
                                       },
                                       icon: Icon(
                                         _copied == a.id
@@ -250,12 +322,22 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                       ),
                       const SizedBox(height: Gap.sm),
                       OutlinedButton.icon(
-                        onPressed: () => launchUrl(
+                        onPressed: () => openOutside(
+                          context,
                           Uri.parse('${AppConfig.apiBase}/activate'),
-                          mode: LaunchMode.externalApplication,
                         ),
-                        icon: const Icon(Icons.upload_file_rounded, size: 18),
-                        label: const Text('I have sent it · upload my receipt'),
+                        icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                        /* HONEST ABOUT WHERE IT GOES. This button opened the
+                           website's /activate, which requires a session the
+                           browser does not have - so the student met a login
+                           page, then landed on /dashboard, and the upload
+                           form it promised never appeared. Uploading a photo
+                           from inside the app needs a picker this build does
+                           not carry; until it does, the label says what will
+                           actually happen rather than promising a form. */
+                        label: const Text(
+                          'Upload my receipt on the website · sign in there',
+                        ),
                       ),
                     ],
                     const SizedBox(height: Gap.lg),
@@ -278,10 +360,23 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                       ),
                     ),
                     const SizedBox(height: Gap.sm),
-                    LipButton(
-                      label: 'Redeem key',
-                      busy: _busy,
-                      onPressed: _key.text.trim().length < 4 ? null : _redeem,
+                    /* THE BUTTON THAT COULD NEVER ENABLE. Its onPressed read
+                       _key.text at BUILD time, and nothing rebuilt this
+                       screen while the student typed - so the decision was
+                       made once, on an empty field, and "Redeem key" stayed
+                       greyed out no matter what was entered. Activation by
+                       key was impossible in the installed app. Listening to
+                       the controller is what makes a text-driven button
+                       real. */
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _key,
+                      builder: (_, value, _) => LipButton(
+                        label: 'Redeem key',
+                        busy: _busy,
+                        onPressed: value.text.trim().length < 4
+                            ? null
+                            : _redeem,
+                      ),
                     ),
                     if (_message.isNotEmpty) ...[
                       const SizedBox(height: Gap.md),

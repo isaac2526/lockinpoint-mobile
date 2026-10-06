@@ -86,7 +86,11 @@ void main() {
     expect(find.text('adaeze@example.com'), findsOneWidget);
     expect(find.text('ada_the_great'), findsOneWidget);
     expect(find.text('+234 8012345678'), findsOneWidget);
-    expect(find.text('NG'), findsOneWidget);
+    /* A COUNTRY, NOT A COLUMN VALUE. The profile printed the stored code —
+       "NG" — at a human. It names the country now, so this asserts on what
+       the student actually reads. */
+    expect(find.text('🇳🇬  Nigeria'), findsOneWidget);
+    expect(find.text('NG'), findsNothing);
   });
 
   testWidgets('an activated account is told so, plainly', (tester) async {

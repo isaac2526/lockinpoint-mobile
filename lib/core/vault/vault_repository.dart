@@ -66,6 +66,17 @@ class VaultRepository {
         .map((m) => m.cast<String, dynamic>())
         .toList();
 
+    /* AN EMPTY PACK IS A REFUSAL, NOT A DOWNLOAD. A subject with no
+       published questions used to save a pack of zero, whose card then
+       dead-ended in "remove it and download again" - advice that cannot
+       work. Better to say now, while the student is online and can pick
+       another subject. */
+    if (questions.isEmpty) {
+      throw ApiFailure(
+        'This subject has no questions published yet. Try another one.',
+      );
+    }
+
     await _db.savePack(pack: pack, questions: questions, passages: passages);
     return (await _db.pack(subjectId))!;
   }
