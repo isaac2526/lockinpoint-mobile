@@ -11,7 +11,32 @@ publish_to: "none"
 # signing key are fixed for the life of the product: change either and every
 # existing installation loses the ability to update, which is the one mistake
 # that cannot be undone from the server side.
-version: 1.0.13+22
+#
+# THE TRAIL SO FAR, so neither number is ever guessed again:
+#   v2.0.0 → 2.0.0+15
+#   v2.1.0 → 2.1.0+17
+#   v2.2.0 → 2.2.0+18
+#   v2.3.0 → 2.3.0+21   ← still live in Closed testing, and the ONLY build
+#                         that still carries READ_MEDIA_IMAGES/VIDEO
+#   prod   → 2.4.0+23   ← uploaded to Production
+#   here   → 2.4.1+24   ← supersedes 21 in Closed testing
+#
+# 23, not 22: a debug-signed bundle carrying 22 was offered to the Play
+# Console and refused. A refused upload should leave its number free, but
+# stepping over it costs nothing and removes the one way this can be sent
+# back a second time.
+#
+# The name was briefly knocked back from 2.3.0 to 1.0.13 by a stale branch.
+# A version name that goes backwards is what every installed copy shows in
+# its Play listing, so it is restored and moved forward.
+#
+# WHY A SECOND BUILD. Google Play refuses the Production submission while
+# ANY live release still declares READ_MEDIA_IMAGES or READ_MEDIA_VIDEO,
+# and 2.3.0+21 — sat in Closed testing since 14 September — is the last one
+# that does. That track offers no way to halt a release: its Recovery tools
+# menu holds only "Prompt users to update". The only lever left is to
+# supersede it, which needs a build number above 23.
+version: 2.4.1+24
 
 environment:
   sdk: ^3.13.2

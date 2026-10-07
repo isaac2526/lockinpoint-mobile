@@ -28,6 +28,8 @@ jobs:
   aab:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    permissions:
+      contents: write        # to attach the bundle to a Release
     steps:
       - uses: actions/checkout@v4
 
@@ -116,6 +118,75 @@ jobs:
             exit 1
           fi
           echo "::notice::Release-signed $PKG $VN ($VC) — ready to upload to Google Play."
+
+          # --- the signer must be OUR key, not merely some non-debug key ----
+          # Same pinned fingerprint release.yml checks against. A bundle
+          # signed by anything else would be refused by Play anyway; better
+          # to learn it here than at the upload screen.
+          EXPECTED=2953BB83663A352EA750F661001D6893B294B7F98B3881BEA936E282EF542E27
+          GOT=$(grep -oiE "([0-9A-F]{2}:){31}[0-9A-F]{2}" signer.txt | head -1 | tr -d ':' | tr 'a-f' 'A-F')
+          if [ "$GOT" != "$EXPECTED" ]; then
+            echo "::error::Signed with an UNEXPECTED key.%0Aexpected $EXPECTED%0Agot      $GOT"
+            exit 1
+          fi
+          echo "::notice::Signer matches the upload key: SHA-256 $GOT"
+
+          # --- the numbers a truncated download will not match --------------
+          BYTES=$(stat -c%s "$AAB")
+          SHA=$(sha256sum "$AAB" | cut -d' ' -f1)
+          {
+            echo ""
+            echo "### Verify your download"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| exact size | \`$BYTES\` bytes |"
+            echo "| sha256 | \`$SHA\` |"
+            echo ""
+            echo "If the file on your phone is not EXACTLY $BYTES bytes, the download was cut short — delete it and fetch it again."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::app-release.aab is $BYTES bytes, sha256 $SHA"
+          cp "$AAB" "lockinpoint-$VN-$VC.aab"
+          echo "ASSET=lockinpoint-$VN-$VC.aab" >> "$GITHUB_ENV"
+          echo "BYTES=$BYTES" >> "$GITHUB_ENV"
+          echo "SHA=$SHA" >> "$GITHUB_ENV"
+          echo "VN=$VN" >> "$GITHUB_ENV"
+          echo "VC=$VC" >> "$GITHUB_ENV"
+
+      # -----------------------------------------------------------------------
+      # A DIRECT LINK, BECAUSE THE ARTIFACT ZIP IS A TRAP ON A PHONE.
+      #
+      # Actions artifacts only download wrapped in a .zip, so getting the
+      # bundle onto a phone means a 62MB transfer over mobile data and then an
+      # extraction in a file manager — two more places for the file to arrive
+      # short. A Release asset is the .aab itself: one tap, no unwrapping, and
+      # a resumable download. The size and checksum are in the body so a bad
+      # copy can be spotted before Play rejects it.
+      # -----------------------------------------------------------------------
+      - name: Publish the bundle as a Release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="aab-$VN-$VC"
+          NOTES=$(printf '%s\n' \
+            "Google Play upload bundle." \
+            "" \
+            "- version **$VN ($VC)**" \
+            "- package \`com.lockinpoint.app\`" \
+            "- size \`$BYTES\` bytes" \
+            "- sha256 \`$SHA\`" \
+            "" \
+            "Download **$ASSET** and upload that file to Play exactly as it arrives — do not extract or re-zip it." \
+            "" \
+            "If the downloaded file is not exactly $BYTES bytes, the transfer was cut short. Delete it and download again.")
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ASSET" --clobber
+          else
+            gh release create "$TAG" "$ASSET" \
+              --title "Play bundle $VN ($VC)" --notes "$NOTES" --latest=false
+          fi
+          echo "::notice::Direct download: $(gh release view "$TAG" --json url -q .url)"
 
       - uses: actions/upload-artifact@v4
         with:

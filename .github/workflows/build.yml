@@ -1,12 +1,31 @@
 # =============================================================================
-# THE BUILD · a real Android App Bundle (AAB).
+# THE BUILD · a real, installable APK for TESTING. NEVER a Play upload.
 #
-# This is where the AAB actually comes from: a GitHub runner has the Android
+# This is where the APK actually comes from: a GitHub runner has the Android
 # SDK, so it can compile what a plain checkout cannot. Runs on a pull request
 # into main, or whenever you press "Run workflow" — never on an ordinary push,
 # because compiling Android is the slow part.
 #
-# The artifact it uploads is the file you submit to Google Play.
+# The artifact it uploads is the file you install on your phone.
+#
+# -----------------------------------------------------------------------------
+# WHY THIS FILE DOES NOT BUILD AN AAB  (Oct 2026)
+#
+# For one day it did. It was changed to run `flutter build appbundle --release`
+# — but this workflow holds NO signing key and never writes android/key.properties,
+# so Gradle fell back to the debug key and the artifact was a DEBUG-SIGNED .aab.
+# It was uploaded to the Play Console, which answered that the certificate was
+# not the app's. That is the whole of what went wrong; nothing was corrupted.
+#
+# A Play bundle comes from ONE of two places, both of which hold the upload key
+# and both of which read the certificate back out of the finished bundle before
+# handing it over:
+#
+#     play-aab.yml   ← press this one. It does only this job.
+#     release.yml    ← the full set of artifacts for a tagged release.
+#
+# This workflow stays debug on purpose, so it needs no key material to put a
+# testable build in your hands. If you ever want an AAB, run play-aab.
 # =============================================================================
 name: build
 
@@ -39,28 +58,40 @@ jobs:
 
       - run: flutter pub get
 
-      - name: Verify version code from pubspec.yaml
+      # The version is read from pubspec so the downloaded file says which
+      # build it is. Three APKs in a downloads folder all called
+      # "app-debug.apk" are three APKs you cannot tell apart.
+      - name: Read the version
+        id: v
         run: |
-          VERSION=$(grep -m1 '^version:' pubspec.yaml | sed 's/version: *//')
-          CODE="${VERSION##*+}"
-          if [ "$CODE" -le 21 ]; then
-            echo "::error::versionCode must be greater than 21, got $CODE from pubspec.yaml ($VERSION)"
-            exit 1
-          fi
-          echo "::notice::Building AAB with pubspec version $VERSION (versionCode $CODE)."
+          V=$(grep -m1 '^version:' pubspec.yaml | sed 's/version: *//' | tr '+' '-')
+          echo "name=lockinpoint-$V-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - name: Build release AAB
-        run: flutter build appbundle --release
+      # Debug, deliberately: it installs on any phone without a signing key.
+      # Release signing arrives with release.yml / play-aab.yml when there is
+      # something to release, so no key material is needed to get a build into
+      # your hands. The name carries "-debug-DO-NOT-UPLOAD" so this file can
+      # never again be mistaken for the one Google Play wants.
+      - name: Build debug APK
+        run: flutter build apk --debug
+
+      - name: Name the APK after the build
+        run: |
+          mv build/app/outputs/flutter-apk/app-debug.apk \
+             "build/app/outputs/flutter-apk/${{ steps.v.outputs.name }}-debug-DO-NOT-UPLOAD.apk"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: lockinpoint-aab
-          path: build/app/outputs/bundle/release/app-release.aab
+          name: ${{ steps.v.outputs.name }}-debug-DO-NOT-UPLOAD
+          path: build/app/outputs/flutter-apk/${{ steps.v.outputs.name }}-debug-DO-NOT-UPLOAD.apk
           retention-days: 14
           if-no-files-found: error
 
       - name: Say where it is
         run: |
-          echo "### AAB ready" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Test APK ready" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**lockinpoint-aab** (app-release.aab) is in the Artifacts section of this run." >> "$GITHUB_STEP_SUMMARY"
+          echo "**${{ steps.v.outputs.name }}-debug-DO-NOT-UPLOAD.apk** is in the Artifacts section of this run." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "This is a DEBUG build for installing on a phone. Google Play will refuse it." >> "$GITHUB_STEP_SUMMARY"
+          echo "For a Play upload run the **play-aab** workflow instead." >> "$GITHUB_STEP_SUMMARY"
