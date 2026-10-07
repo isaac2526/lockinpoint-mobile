@@ -11,7 +11,23 @@ publish_to: "none"
 # signing key are fixed for the life of the product: change either and every
 # existing installation loses the ability to update, which is the one mistake
 # that cannot be undone from the server side.
-version: 1.0.13+22
+#
+# THE TRAIL SO FAR, so neither number is ever guessed again:
+#   v2.0.0 → 2.0.0+15
+#   v2.1.0 → 2.1.0+17
+#   v2.2.0 → 2.2.0+18
+#   v2.3.0 → 2.3.0+21   ← the highest build Google Play has accepted
+#   here   → 2.4.0+23
+#
+# 23, not 22: a debug-signed bundle carrying 22 was offered to the Play
+# Console and refused. A refused upload should leave its number free, but
+# stepping over it costs nothing and removes the one way this can be sent
+# back a second time.
+#
+# The name was briefly knocked back from 2.3.0 to 1.0.13 by a stale branch.
+# A version name that goes backwards is what every installed copy shows in
+# its Play listing, so it is restored and moved forward.
+version: 2.4.0+23
 
 environment:
   sdk: ^3.13.2
